@@ -1016,27 +1016,27 @@ function updateOverview() {
   if (yr === '2026') {
     // Use saved plans + real transactions
     closedMonths.forEach(mes => {
-      const plan  = getPlan(mes);
-      const pt    = planTotals(plan);
+      const plan = getPlan(mes);
+      const pt   = planTotals(plan);
       const { total: txTotal, totals: realTotals } = txTotals(mes);
 
-      // Real gastos = ALL txs cargados + fijos auto (if not explicitly entered)
-      const fijoSet = new Set(plan.fijos.map(r => r.l));
-      const txCats  = new Set(Object.keys(realTotals));
-      
-      // Fijos: use tx value if entered, else use presupuestado
-      const realFijos = plan.fijos.reduce((s, r) => {
-        return s + (realTotals[r.l] != null ? realTotals[r.l] : r.v);
-      }, 0);
-      
-      // Variables: sum ALL tx amounts not in fijos (catches any category name)
-      const realVarsTx = Object.entries(realTotals)
-        .filter(([cat]) => !fijoSet.has(cat))
-        .reduce((s, [, v]) => s + v, 0);
-
+      // Ingresos: from plan (always)
       totalIng += pt.ing;
-      totalGas += realFijos + realVarsTx;
       totalInv += pt.inv;
+
+      // Gastos: sum ALL real txs for this month
+      // For fijos not entered manually → use presupuestado as real
+      const fijoSet = new Set(plan.fijos.map(r => r.l));
+      
+      // All txs (any category, normalized)
+      const txGastos = Object.values(realTotals).reduce((s, v) => s + v, 0);
+      
+      // Fijos auto (not manually entered)
+      const fijosAuto = plan.fijos
+        .filter(r => realTotals[r.l] == null)
+        .reduce((s, r) => s + r.v, 0);
+
+      totalGas += txGastos + fijosAuto;
     });
   } else {
     // Use historical HIST data
@@ -1373,6 +1373,59 @@ function updateHeaderMes() {
 // ══════════════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════
+// NAME NORMALIZATION MAP
+// Maps old names → canonical plan names
+// ══════════════════════════════════════════════════════
+const NAME_MAP = {
+  // Tarjetas
+  'Tarjeta BSF':       'TC BSF',
+  'Tarjeta BBVA':      'TC BBVA',
+  'Tarjeta Municipal': 'TC Municipal',
+  'Tarjeta MP':        'TC MP',
+  // Tennis / Club
+  'Club / Tennis':     'Tennis',
+  'Club/Tennis':       'Tennis',
+  // Dpto Rosario
+  'Dpto Rosario — Alquiler':  'Alquiler',
+  'Dpto Rosario — Expensas':  'Expensas',
+  'Dpto Rosario — Servicios': 'EPE / Gas',
+  'Dpto Rosario — Otros':     'Gastos Dpto',
+  // Casa Roldán
+  'Casa Roldán — Limpieza':      'Limpieza',
+  'Casa Roldán — Servicios':     'Cable / Flow',
+  'Casa Roldán — Mantenimiento': 'Casa Roldán',
+  'Casa Roldán — Otros':         'Casa Roldán',
+  // Servicios
+  'EPE / Gas Dpto':    'EPE / Gas',
+  'EPE / Gas Roldán':  'EPE / Gas',
+  // Efectivo
+  'Efectivo':          'Efectivo',
+};
+
+function normalizeCat(cat) {
+  return NAME_MAP[cat] || cat;
+}
+
+function migrateOldTxNames() {
+  const txsAll = DB.get('txs', {});
+  let changed = false;
+  Object.keys(txsAll).forEach(mes => {
+    txsAll[mes].forEach(tx => {
+      const normalized = normalizeCat(tx.cat);
+      if (normalized !== tx.cat) {
+        tx.cat = normalized;
+        changed = true;
+      }
+    });
+  });
+  if (changed) {
+    DB.set('txs', txsAll);
+    console.log('Migrated tx category names');
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   // Set today's date in cargar form
   const fechaEl = document.getElementById('tx-fecha');
