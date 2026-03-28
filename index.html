@@ -1279,14 +1279,139 @@ function buildDonut() {
 }
 
 // ══════════════════════════════════════════════════════
+// COTIZACIONES EN TIEMPO REAL
+// ══════════════════════════════════════════════════════
+let cotizCache = {};
+let cotizTs = null;
+
+async function fetchCotizaciones() {
+  const now = Date.now();
+  // Cache for 10 minutes
+  if (cotizTs && (now - cotizTs) < 600000) return cotizCache;
+
+  const results = {};
+  
+  try {
+    // BTC price in USD (CoinGecko)
+    const btcRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd', {cache:'no-cache'});
+    if (btcRes.ok) {
+      const btcData = await btcRes.json();
+      results.BTC  = btcData.bitcoin?.usd;
+      results.ETH  = btcData.ethereum?.usd;
+    }
+  } catch(e) { console.log('CoinGecko error:', e.message); }
+
+  try {
+    // Dólar MEP y CCL (DolarApi)
+    const mepRes = await fetch('https://dolarapi.com/v1/dolares/bolsa', {cache:'no-cache'});
+    if (mepRes.ok) {
+      const mep = await mepRes.json();
+      results.MEP = mep.venta;
+    }
+    const cclRes = await fetch('https://dolarapi.com/v1/dolares/contadoconliqui', {cache:'no-cache'});
+    if (cclRes.ok) {
+      const ccl = await cclRes.json();
+      results.CCL = ccl.venta;
+    }
+  } catch(e) { console.log('DolarApi error:', e.message); }
+
+  try {
+    // Letras del Tesoro (ArgentinaDatos)
+    const letRes = await fetch('https://api.argentinadatos.com/v1/finanzas/rendimientos/letras', {cache:'no-cache'});
+    if (letRes.ok) {
+      const letras = await letRes.json();
+      // Build map: ticker → TNA
+      if (Array.isArray(letras)) {
+        letras.forEach(l => { if (l.ticker) results['LETRA_' + l.ticker] = l; });
+      }
+    }
+  } catch(e) { console.log('Letras error:', e.message); }
+
+  cotizCache = results;
+  cotizTs    = now;
+  return results;
+}
+
+function getArsFromCotiz(inv, cotiz) {
+  if (!cotiz || !inv) return inv.ars || 0;
+  const tipo = inv.tipo;
+  const tc   = cotiz.MEP || TC;
+
+  if (tipo === 'Cripto') {
+    const sym = inv.activo.toUpperCase();
+    const usdPrice = cotiz[sym];
+    if (usdPrice && inv.cantidad > 0) return Math.round(inv.cantidad * usdPrice * tc);
+    return inv.ars || 0; // fallback to manual
+  }
+  if (tipo === 'Stablecoin' || tipo === 'Dólar') {
+    const cantUSD = parseFloat(inv.cantidadUSD || (inv.ars / tc));
+    return Math.round(cantUSD * tc);
+  }
+  if (tipo === 'Letra') {
+    const key = 'LETRA_' + (inv.ticker || inv.activo);
+    const letra = cotiz[key];
+    if (letra) return Math.round((inv.vn || inv.ars) * (1 + (letra.tna||0)/100/365*30));
+    return inv.ars || 0;
+  }
+  return inv.ars || 0; // FCI, manual
+}
+
+function buildCotizBadge(inv, cotiz) {
+  if (!cotiz) return '';
+  const tipo = inv.tipo;
+  
+  if (tipo === 'Cripto') {
+    const sym = inv.activo.toUpperCase();
+    const price = cotiz[sym];
+    if (price) return `<span style="font-size:.65rem;color:var(--blue);background:rgba(56,189,248,.1);padding:1px 6px;border-radius:4px;margin-left:6px">u$s ${price.toLocaleString('es-AR')}</span>`;
+  }
+  if (tipo === 'Stablecoin' || tipo === 'Dólar') {
+    const tc = cotiz.MEP;
+    if (tc) return `<span style="font-size:.65rem;color:var(--green);background:rgba(34,211,160,.1);padding:1px 6px;border-radius:4px;margin-left:6px">MEP $${Math.round(tc).toLocaleString('es-AR')}</span>`;
+  }
+  if (tipo === 'Letra') {
+    const key = 'LETRA_' + (inv.ticker || inv.activo);
+    const letra = cotiz[key];
+    if (letra) return `<span style="font-size:.65rem;color:var(--yellow);background:rgba(251,191,36,.1);padding:1px 6px;border-radius:4px;margin-left:6px">TNA ${((letra.tna||0)*100).toFixed(1)}%</span>`;
+  }
+  return '';
+}
+
+// ══════════════════════════════════════════════════════
 // INVERSIONES
 // ══════════════════════════════════════════════════════
 function getInv() {
   return DB.get('inversiones', INV_DEFAULT);
 }
 
-function renderInvList() {
+async function renderInvList() {
   const invs = getInv();
+
+  // Show loading state
+  const listEl = document.getElementById('inv-list');
+  if (listEl) listEl.innerHTML = '<div style="color:var(--muted);font-size:.75rem;padding:16px;text-align:center">⟳ Actualizando cotizaciones...</div>';
+
+  // Fetch live prices
+  const cotiz = await fetchCotizaciones().catch(() => ({}));
+
+  // Update ARS values for crypto/USD from live prices
+  invs.forEach(inv => {
+    const live = getArsFromCotiz(inv, cotiz);
+    if (live > 0 && (inv.tipo === 'Cripto' || inv.tipo === 'Stablecoin' || inv.tipo === 'Dólar')) {
+      inv.ars = live;
+    }
+  });
+
+  // Update TC from MEP if available
+  if (cotiz.MEP) {
+    TC = Math.round(cotiz.MEP);
+    DB.set('tc', TC);
+    const tcEl = document.getElementById('inv-tc-kpi');
+    if (tcEl) tcEl.textContent = fmt(TC);
+    const cfgTc = document.getElementById('cfg-tc');
+    if (cfgTc) cfgTc.value = TC;
+  }
+
   const total = invs.reduce((s, i) => s + (i.ars||0), 0);
   const fci   = invs.filter(i=>i.tipo==='FCI').reduce((s,i)=>s+(i.ars||0),0);
   const usdVal= invs.filter(i=>i.moneda==='USD').reduce((s,i)=>s+(i.ars||0)/TC,0);
@@ -1300,21 +1425,27 @@ function renderInvList() {
   const icons = {FCI:'📊',Cripto:'₿',Stablecoin:'💲',Dólar:'💵',Bono:'📋',Acciones:'📈'};
   const colors = {FCI:P.purple,Cripto:P.yellow,Stablecoin:P.blue,Dólar:P.green,Bono:P.orange};
 
-  document.getElementById('inv-list').innerHTML = invs.map((inv, i) => {
-    const color = colors[inv.tipo] || P.blue;
-    const rc    = inv.rend > 0 ? P.green : inv.rend < 0 ? P.red : P.yellow;
-    return `<div class="inv-row">
-      <div class="inv-icon" style="background:${color}15">${icons[inv.tipo]||'📈'}</div>
-      <div class="inv-body">
-        <div class="inv-name">${inv.activo} <span style="font-size:.62rem;color:${color};background:${color}15;padding:1px 6px;border-radius:4px;margin-left:4px">${inv.tipo}</span></div>
-        <div class="inv-meta">${inv.pos}${inv.nota?' · '+inv.nota:''} · ${inv.moneda}</div>
-      </div>
-      <div style="text-align:right">
-        <div class="inv-val" style="color:${color}">${fmt(inv.ars)}</div>
-        <div class="inv-rend" style="color:${rc}">${fmtp(inv.rend)}</div>
-      </div>
-    </div>`;
-  }).join('');
+  const tsLabel = cotizTs ? new Date(cotizTs).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : '—';
+  document.getElementById('inv-list').innerHTML = 
+    `<div style="font-size:.62rem;color:var(--muted);margin-bottom:10px;text-align:right">Cotizaciones: ${tsLabel}</div>` +
+    invs.map((inv, i) => {
+      const color   = colors[inv.tipo] || P.blue;
+      const ganLoss = inv.costo > 0 ? inv.ars - inv.costo : 0;
+      const rendPct = inv.costo > 0 ? ((inv.ars - inv.costo) / inv.costo) : (inv.rend || 0);
+      const rc      = rendPct > 0 ? P.green : rendPct < 0 ? P.red : P.yellow;
+      const badge   = buildCotizBadge(inv, cotiz);
+      return `<div class="inv-row">
+        <div class="inv-icon" style="background:${color}15">${icons[inv.tipo]||'📈'}</div>
+        <div class="inv-body">
+          <div class="inv-name">${inv.activo} <span style="font-size:.62rem;color:${color};background:${color}15;padding:1px 6px;border-radius:4px">${inv.tipo}</span>${badge}</div>
+          <div class="inv-meta">${inv.nota||''}${inv.fechaEntrada?' · Entrada: '+inv.fechaEntrada:''}</div>
+        </div>
+        <div style="text-align:right">
+          <div class="inv-val" style="color:${color}">${fmt(inv.ars)}</div>
+          <div style="font-size:.7rem;color:${rc};font-weight:600">${rendPct>=0?'+':''}${(rendPct*100).toFixed(1)}%${ganLoss!==0?' ('+fmt(Math.abs(ganLoss))+')':''}</div>
+        </div>
+      </div>`;
+    }).join('');
 
   // Donut
   if (total > 0) {
@@ -1361,30 +1492,37 @@ function toggleInvEditor() {
 function renderInvEditor() {
   const invs = getInv();
   document.getElementById('inv-editor-rows').innerHTML = invs.map((inv, i) => `
-    <div style="display:grid;grid-template-columns:1.8fr 0.7fr 0.7fr 1fr 1fr 0.5fr;gap:8px;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border);align-items:end;min-width:600px">
-      <div><div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">Activo</div>
-        <input type="text" value="${inv.activo}" id="ie-n-${i}" class="fi" style="font-size:.75rem;padding:7px 10px"></div>
-      <div><div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">Tipo</div>
-        <select id="ie-t-${i}" class="fi" style="font-size:.72rem;padding:7px 6px">
-          ${['FCI','Cripto','Stablecoin','Dólar','Bono','Acciones'].map(t=>`<option ${t===inv.tipo?'selected':''}>${t}</option>`).join('')}
-        </select></div>
-      <div><div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">Moneda</div>
-        <select id="ie-m-${i}" class="fi" style="font-size:.72rem;padding:7px 6px">
-          <option ${inv.moneda==='ARS'?'selected':''}>ARS</option><option ${inv.moneda==='USD'?'selected':''}>USD</option>
-        </select></div>
-      <div><div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">Posición</div>
-        <input type="text" value="${inv.pos}" id="ie-p-${i}" class="fi" style="font-size:.72rem;padding:7px 10px"></div>
-      <div><div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">Valor ARS</div>
-        <input type="number" value="${inv.ars}" id="ie-a-${i}" class="fi" style="font-size:.75rem;padding:7px 10px;color:${P.green};text-align:right"></div>
-      <div style="padding-bottom:2px">
-        <button onclick="delInvRow(${i})" style="background:none;border:none;color:${P.red};cursor:pointer;font-size:1rem;padding:7px 4px">✕</button>
+    <div style="background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="font-size:.78rem;font-weight:600;color:var(--text)">${inv.activo}</div>
+        <button onclick="delInvRow(${i})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:.85rem;padding:2px 6px">✕ Eliminar</button>
       </div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;min-width:600px">
-      <div><div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">Rendimiento %</div>
-        <input type="number" value="${(inv.rend*100).toFixed(1)}" id="ie-r-${i}" class="fi" step="0.1" style="font-size:.75rem;padding:7px 10px;color:${inv.rend>=0?P.green:P.red};text-align:right"></div>
-      <div><div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">Notas</div>
-        <input type="text" value="${inv.nota||''}" id="ie-no-${i}" class="fi" style="font-size:.72rem;padding:7px 10px"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+        <div><div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">Nombre</div>
+          <input type="text" value="${inv.activo}" id="ie-n-${i}" class="fi" style="font-size:.75rem;padding:7px 10px"></div>
+        <div><div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">Tipo</div>
+          <select id="ie-t-${i}" class="fi" style="font-size:.72rem;padding:7px 6px">
+            ${['FCI','Cripto','Stablecoin','Dólar','Bono','CEDEAR','Acciones'].map(t=>`<option ${t===inv.tipo?'selected':''}>${t}</option>`).join('')}
+          </select></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+        <div><div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">Valor actual ARS $</div>
+          <input type="number" value="${inv.ars}" id="ie-a-${i}" class="fi" style="font-size:.82rem;padding:8px 10px;color:var(--green);text-align:right;font-weight:600"></div>
+        <div><div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">Costo de entrada ARS $</div>
+          <input type="number" value="${inv.costo||inv.ars}" id="ie-c-${i}" class="fi" style="font-size:.82rem;padding:8px 10px;color:var(--blue);text-align:right"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+        <div><div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">Cantidad <span style="color:var(--muted)">(cripto/USD)</span></div>
+          <input type="number" value="${inv.cantidad||''}" id="ie-qty-${i}" class="fi" placeholder="ej: 0.001" step="any" style="font-size:.75rem;padding:7px 10px;text-align:right"></div>
+        <div><div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">Ticker <span style="color:var(--muted)">(letras)</span></div>
+          <input type="text" value="${inv.ticker||''}" id="ie-tk-${i}" class="fi" placeholder="ej: S31M5" style="font-size:.72rem;padding:7px 10px;text-transform:uppercase"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div><div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">Fecha entrada</div>
+          <input type="date" value="${inv.fechaEntrada||''}" id="ie-fe-${i}" class="fi" style="font-size:.72rem;padding:7px 8px"></div>
+        <div><div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">Notas</div>
+          <input type="text" value="${inv.nota||''}" id="ie-no-${i}" class="fi" style="font-size:.72rem;padding:7px 10px"></div>
+      </div>
     </div>`).join('');
 }
 
@@ -1405,13 +1543,19 @@ function delInvRow(i) {
 function saveInv() {
   const invs = getInv();
   invs.forEach((inv, i) => {
-    inv.activo = document.getElementById(`ie-n-${i}`)?.value  || inv.activo;
-    inv.tipo   = document.getElementById(`ie-t-${i}`)?.value  || inv.tipo;
-    inv.moneda = document.getElementById(`ie-m-${i}`)?.value  || inv.moneda;
-    inv.pos    = document.getElementById(`ie-p-${i}`)?.value  || inv.pos;
-    inv.ars    = parseFloat(document.getElementById(`ie-a-${i}`)?.value) || 0;
-    inv.rend   = (parseFloat(document.getElementById(`ie-r-${i}`)?.value) || 0) / 100;
-    inv.nota   = document.getElementById(`ie-no-${i}`)?.value || '';
+    const ars   = parseFloat(document.getElementById(`ie-a-${i}`)?.value) || 0;
+    const costo = parseFloat(document.getElementById(`ie-c-${i}`)?.value) || ars;
+    inv.activo      = document.getElementById(`ie-n-${i}`)?.value  || inv.activo;
+    inv.tipo        = document.getElementById(`ie-t-${i}`)?.value  || inv.tipo;
+    inv.ars         = ars;
+    inv.costo       = costo;
+    inv.rend        = costo > 0 ? (ars - costo) / costo : 0; // auto-calc from values
+    inv.fechaEntrada= document.getElementById(`ie-fe-${i}`)?.value || '';
+    inv.nota        = document.getElementById(`ie-no-${i}`)?.value || '';
+    inv.cantidad    = parseFloat(document.getElementById(`ie-qty-${i}`)?.value) || inv.cantidad || 0;
+    inv.ticker      = (document.getElementById(`ie-tk-${i}`)?.value || '').toUpperCase() || inv.ticker || '';
+    inv.moneda      = inv.moneda || 'ARS';
+    inv.pos         = inv.pos    || '';
   });
   DB.set('inversiones', invs);
   toggleInvEditor();
