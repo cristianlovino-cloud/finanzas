@@ -1430,9 +1430,13 @@ async function renderInvList() {
     `<div style="font-size:.62rem;color:var(--muted);margin-bottom:10px;text-align:right">Cotizaciones: ${tsLabel}</div>` +
     invs.map((inv, i) => {
       const color   = colors[inv.tipo] || P.blue;
-      const ganLoss = inv.costo > 0 ? inv.ars - inv.costo : 0;
-      const rendPct = inv.costo > 0 ? ((inv.ars - inv.costo) / inv.costo) : (inv.rend || 0);
-      const rc      = rendPct > 0 ? P.green : rendPct < 0 ? P.red : P.yellow;
+      const hasVal  = inv.ars > 0;
+      const ganLoss = (hasVal && inv.costo > 0) ? inv.ars - inv.costo : 0;
+      const rendPct = (hasVal && inv.costo > 0) ? ((inv.ars - inv.costo) / inv.costo) : (hasVal ? (inv.rend || 0) : null);
+      const rc      = rendPct === null ? P.yellow : rendPct > 0 ? P.green : rendPct < 0 ? P.red : P.yellow;
+      const rendLabel = rendPct === null 
+        ? '<span style="font-size:.65rem;color:var(--muted)">— actualizar valor</span>'
+        : `<span style="color:${rc};font-size:.7rem;font-weight:600">${rendPct>=0?'+':''}${(rendPct*100).toFixed(1)}%${ganLoss!==0?' ('+fmt(Math.abs(ganLoss))+')':''}</span>`;
       const badge   = buildCotizBadge(inv, cotiz);
       return `<div class="inv-row">
         <div class="inv-icon" style="background:${color}15">${icons[inv.tipo]||'📈'}</div>
@@ -1441,8 +1445,8 @@ async function renderInvList() {
           <div class="inv-meta">${inv.nota||''}${inv.fechaEntrada?' · Entrada: '+inv.fechaEntrada:''}</div>
         </div>
         <div style="text-align:right">
-          <div class="inv-val" style="color:${color}">${fmt(inv.ars)}</div>
-          <div style="font-size:.7rem;color:${rc};font-weight:600">${rendPct>=0?'+':''}${(rendPct*100).toFixed(1)}%${ganLoss!==0?' ('+fmt(Math.abs(ganLoss))+')':''}</div>
+          <div class="inv-val" style="color:${hasVal?color:'var(--muted)'}">${hasVal?fmt(inv.ars):'— completar'}</div>
+          ${rendLabel}
         </div>
       </div>`;
     }).join('');
