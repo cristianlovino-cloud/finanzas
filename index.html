@@ -2066,6 +2066,18 @@ function migrateOldTxNames() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  // Migrate inversiones: if saved data has no CEDEARs, replace with INVIU data
+  (function() {
+    const saved = DB.get('inversiones', null);
+    if (saved && !saved.some(i => i.tipo === 'CEDEAR')) {
+      DB.set('inversiones', JSON.parse(JSON.stringify(INV_DEFAULT)));
+      console.log('Migrated: loaded INVIU portfolio');
+    }
+  })();
+
+  // Migrate old tx category names to normalized names
+  migrateOldTxNames();
+
   // Set today's date in cargar form
   const fechaEl = document.getElementById('tx-fecha');
   fechaEl.value = new Date().toISOString().split('T')[0];
