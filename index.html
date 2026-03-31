@@ -265,6 +265,9 @@ nav::-webkit-scrollbar{display:none}
         <option value="2025-11">Nov 2025</option>
         <option value="2025-10">Oct 2025</option>
       </select>
+      <button onclick="copyPrevMonth()" style="padding:8px 14px;background:none;border:1px solid var(--border2);color:var(--muted2);border-radius:20px;font-family:var(--fh);font-size:.72rem;cursor:pointer;white-space:nowrap" title="Copiar variables del mes anterior">
+        ↩ Copiar anterior
+      </button>
       <button onclick="savePlan()" style="padding:8px 16px;background:var(--green);color:var(--bg);border:none;border-radius:20px;font-family:var(--fh);font-size:.78rem;font-weight:700;cursor:pointer;white-space:nowrap">
         💾 Guardar
       </button>
@@ -654,6 +657,12 @@ const PLAN_PRELOADED = {
     vars:  [{l:'TC BSF',v:3320},{l:'TC BBVA',v:1550},{l:'TC Municipal',v:200},{l:'Limpieza',v:250},{l:'Tennis',v:40},{l:'Efectivo',v:70},{l:'Casa Roldán',v:636},{l:'Farmacia',v:178},{l:'Gastos Dpto',v:270}],
     inv:   [{l:'FCI Cocos',v:0}],
   },
+  '2026-04': {
+    ing:   [{l:'Sueldo',v:9000}],
+    fijos: [{l:'Alquiler',v:1167},{l:'Expensas',v:140},{l:'Seguros',v:60},{l:'Cable / Flow',v:144},{l:'Luz Dpto',v:110},{l:'Luz Roldan',v:68},{l:'Gas Dpto',v:30},{l:'Gas Roldán',v:30},{l:'Agua Dpto',v:55},{l:'Api Dpto',v:54},{l:'TGI Roldán',v:28},{l:'TGI Dpto',v:62}],
+    vars:  [{l:'TC BSF',v:3400},{l:'TC BBVA',v:900},{l:'TC Municipal',v:400},{l:'TC MP',v:300},{l:'Efectivo',v:500},{l:'Farmacia',v:100},{l:'Club / Tennis',v:150},{l:'Almuerzo',v:100}],
+    inv:   [{l:'FCI Cocos',v:0}],
+  },
 };
 
 const PLAN_DEFAULT = {
@@ -957,7 +966,10 @@ function go(id, btn) {
   const stickySave = document.getElementById('sticky-save');
   if (stickySave) stickySave.style.display = id === 'presupuesto' ? 'flex' : 'none';
   // Auto-refresh data when switching to key pages
-  if (id === 'overview')    updateOverview();
+  if (id === 'overview') {
+    updateOverview();
+    setTimeout(() => buildEvolChart(overviewYear || '2026'), 100);
+  }
   if (id === 'flujo')       renderFlujo();
   if (id === 'patrimonio')  updatePatrimonio();
 }
@@ -1055,6 +1067,27 @@ function recalcPlanKPIs() {
   set('pk-gas',  t.gastos);
   set('pk-inv',  t.inv);
   set('pk-neto', t.neto, true);
+}
+
+function copyPrevMonth() {
+  // Get previous month key from current
+  const [yr, mo] = curMes.split('-').map(Number);
+  const prevDate = new Date(yr, mo - 2, 1); // mo-2 because months are 0-indexed and we want previous
+  const prevMes = prevDate.getFullYear() + '-' + String(prevDate.getMonth()+1).padStart(2,'0');
+  
+  const prevPlan = getPlan(prevMes);
+  if (!prevPlan) { showToast('No hay presupuesto guardado para ' + prevMes, P.yellow); return; }
+  
+  // Copy vars, fijos and inv from previous month — keep current ing (salaries may differ)
+  const curIng = curPlan ? [...curPlan.ing] : prevPlan.ing;
+  curPlan = {
+    ing:   curIng,
+    fijos: JSON.parse(JSON.stringify(prevPlan.fijos)),
+    vars:  JSON.parse(JSON.stringify(prevPlan.vars)),
+    inv:   JSON.parse(JSON.stringify(prevPlan.inv)),
+  };
+  renderPlanSections();
+  showToast('✓ Gastos copiados de ' + MESES[prevDate.getMonth()] + ' ' + prevDate.getFullYear() + ' — revisá y guardá');
 }
 
 function savePlan() {
@@ -2066,12 +2099,14 @@ function migrateOldTxNames() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  // Migrate inversiones: if saved data has no CEDEARs, replace with INVIU data
+  // Migrate inversiones: replace if saved data has fewer CEDEARs than INV_DEFAULT
   (function() {
     const saved = DB.get('inversiones', null);
-    if (saved && !saved.some(i => i.tipo === 'CEDEAR')) {
+    const defaultCedears = INV_DEFAULT.filter(i => i.tipo === 'CEDEAR').length;
+    const savedCedears   = saved ? saved.filter(i => i.tipo === 'CEDEAR').length : 0;
+    if (savedCedears < defaultCedears) {
       DB.set('inversiones', JSON.parse(JSON.stringify(INV_DEFAULT)));
-      console.log('Migrated: loaded INVIU portfolio');
+      console.log('Migrated: loaded full INVIU portfolio (' + defaultCedears + ' CEDEARs)');
     }
   })();
 
