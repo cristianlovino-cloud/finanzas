@@ -1495,14 +1495,15 @@ Chart.defaults.font.size = 10;
 
 let chartEvol;
 function buildEvolChart(year='2026') {
-  const ctx = document.getElementById('c-evol').getContext('2d');
+  const canvasEl = document.getElementById('c-evol');
+  if (!canvasEl) return;
   
   let g, i, labels;
   if (year === '2026') {
-    // Build from saved plans + real txs for each month
     const now = new Date();
     const curMonthIdx = now.getFullYear() === 2026 ? now.getMonth() : 11;
-    const months = MESES.slice(0, curMonthIdx + 1).map((_, idx) => {
+    const months = [];
+    for (let idx = 0; idx <= curMonthIdx; idx++) {
       const mes = '2026-' + String(idx+1).padStart(2,'0');
       const plan = getPlan(mes);
       const pt   = planTotals(plan);
@@ -1510,17 +1511,29 @@ function buildEvolChart(year='2026') {
       const hasTxs = txTotal > 0;
       const fijosAuto = plan.fijos.filter(r => realTotals[r.l] == null).reduce((s,r) => s+r.v, 0);
       const gastosMes = hasTxs ? txTotal + fijosAuto : pt.gastos;
-      return { label: MESES[idx], ing: pt.ing, gas: gastosMes };
-    });
+      months.push({ label: MESES[idx], ing: Math.round(pt.ing), gas: Math.round(gastosMes) });
+    }
     labels = months.map(m => m.label);
     i = months.map(m => m.ing);
     g = months.map(m => m.gas);
   } else {
-    g = HIST.gastos[year].filter(v => v != null);
-    i = HIST.ingresos[year].filter(v => v != null);
-    labels = MESES.slice(0, g.length);
+    g = (HIST.gastos[year] || []).filter(v => v != null);
+    i = (HIST.ingresos[year] || []).filter(v => v != null);
+    const len = Math.min(g.length, i.length);
+    g = g.slice(0, len);
+    i = i.slice(0, len);
+    labels = MESES.slice(0, len);
   }
-  if (chartEvol) chartEvol.destroy();
+
+  // Destroy existing chart properly
+  if (chartEvol) { chartEvol.destroy(); chartEvol = null; }
+  
+  // Replace canvas to avoid stale context issues
+  const parent = canvasEl.parentNode;
+  const newCanvas = document.createElement('canvas');
+  newCanvas.id = 'c-evol';
+  newCanvas.height = 65;
+  parent.replaceChild(newCanvas, canvasEl);
   chartEvol = new Chart(ctx, {
     type: 'line',
     data: { labels, datasets: [
@@ -1751,7 +1764,28 @@ async function renderInvList() {
   const colors = {FCI:P.purple,Cripto:P.yellow,Stablecoin:P.blue,Dólar:P.green,Bono:P.orange};
 
   const tsLabel = cotizTs ? new Date(cotizTs).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : '—';
-  document.getElementById('inv-list').innerHTML = 
+  // Calculate P&L totals
+  const totalValor  = invs.reduce((s, inv) => s + (inv.ars||0), 0);
+  const totalCosto  = invs.reduce((s, inv) => s + (inv.costo||0), 0);
+  const totalPnL    = totalValor - totalCosto;
+  const totalPnLPct = totalCosto > 0 ? (totalPnL / totalCosto) * 100 : 0;
+  const pnlColor    = totalPnL >= 0 ? P.green : P.red;
+  const pnlSign     = totalPnL >= 0 ? '+' : '';
+
+  // P&L summary banner
+  const pnlBanner = totalCosto > 0 ? `
+    <div style="background:${totalPnL>=0?'rgba(34,211,160,.08)':'rgba(244,63,94,.08)'};border:1px solid ${totalPnL>=0?'rgba(34,211,160,.2)':'rgba(244,63,94,.2)'};border-radius:8px;padding:12px 16px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">Resultado total de la cartera</div>
+        <div style="font-family:var(--fh);font-size:1.3rem;font-weight:700;color:${pnlColor}">${pnlSign}$${Math.abs(Math.round(totalPnL)).toLocaleString('es-AR')}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:.65rem;color:var(--muted);margin-bottom:3px">Invertido: $${Math.round(totalCosto).toLocaleString('es-AR')}</div>
+        <div style="font-family:var(--fh);font-size:1.1rem;font-weight:700;color:${pnlColor}">${pnlSign}${totalPnLPct.toFixed(1)}%</div>
+      </div>
+    </div>` : '';
+
+  document.getElementById('inv-list').innerHTML = pnlBanner +
     `<div style="font-size:.62rem;color:var(--muted);margin-bottom:10px;text-align:right">Cotizaciones: ${tsLabel}</div>` +
     invs.map((inv, i) => {
       const color   = colors[inv.tipo] || P.blue;
