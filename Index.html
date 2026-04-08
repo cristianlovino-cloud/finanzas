@@ -1,0 +1,2200 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
+<meta name="theme-color" content="#080a0f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="CL Finanzas">
+<title>CL · Finanzas</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+/* ── RESET & VARS ── */
+:root {
+  --bg:#080a0f; --s1:#0e1117; --s2:#141920; --s3:#1c2233;
+  --border:rgba(255,255,255,0.07); --border2:rgba(255,255,255,0.13);
+  --text:#e2e8f0; --muted:#64748b; --muted2:#94a3b8;
+  --green:#22d3a0; --red:#f43f5e; --yellow:#fbbf24;
+  --blue:#38bdf8; --purple:#a78bfa; --orange:#fb923c;
+  --fh:'Syne',sans-serif; --fm:'JetBrains Mono',monospace;
+  --r:10px;
+}
+[data-theme="light"] {
+  --bg:#f0f4f8; --s1:#ffffff; --s2:#f1f5f9; --s3:#e2e8f0;
+  --border:rgba(0,0,0,0.08); --border2:rgba(0,0,0,0.15);
+  --text:#1a202c; --muted:#64748b; --muted2:#475569;
+  --green:#059669; --red:#dc2626; --yellow:#d97706;
+  --blue:#0284c7; --purple:#7c3aed; --orange:#ea580c;
+}
+[data-theme="light"] body::before { display:none; }
+[data-theme="light"] header { background:rgba(240,244,248,.95); }
+[data-theme="light"] nav { background:var(--s1); }
+[data-theme="light"] .fi { color:var(--text); }
+[data-theme="light"] .plan-label { color:var(--text); }
+[data-theme="light"] .plan-val { color:var(--text); background:var(--s2); }
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--fm);font-size:13px;min-height:100vh;overflow-x:hidden;-webkit-tap-highlight-color:transparent}
+body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 60% 40% at 80% 10%,rgba(34,211,160,.04) 0%,transparent 60%),radial-gradient(ellipse 40% 30% at 10% 80%,rgba(56,189,248,.03) 0%,transparent 60%);pointer-events:none;z-index:0}
+button,select,input{touch-action:manipulation}
+
+/* ── HEADER ── */
+header{position:sticky;top:0;z-index:200;background:rgba(8,10,15,.92);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);padding:0 20px;height:52px;display:flex;align-items:center;justify-content:space-between}
+.logo{font-family:var(--fh);font-size:1rem;font-weight:800;letter-spacing:-.03em}
+.logo em{color:var(--green);font-style:normal}
+.mes-badge{background:var(--s2);border:1px solid var(--border2);border-radius:20px;padding:4px 12px;font-size:.72rem;color:var(--green)}
+
+/* ── NAV ── */
+nav{position:sticky;top:52px;z-index:199;background:var(--s1);border-bottom:1px solid var(--border);display:flex;overflow-x:auto;padding:0 16px;scrollbar-width:none}
+nav::-webkit-scrollbar{display:none}
+.nb{padding:12px 14px;font-family:var(--fm);font-size:.72rem;color:var(--muted);background:none;border:none;cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;white-space:nowrap}
+.nb.active{color:var(--green);border-bottom-color:var(--green)}
+.nb:hover:not(.active){color:var(--text)}
+
+/* ── PAGES ── */
+.page{display:none;padding:20px;max-width:1100px;margin:0 auto;position:relative;z-index:1}
+.page.active{display:block;animation:fadeUp .25s ease}
+@keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+
+/* ── CARDS ── */
+.card{background:var(--s1);border:1px solid var(--border);border-radius:var(--r);padding:18px}
+.ct{font-family:var(--fh);font-size:.7rem;font-weight:600;color:var(--muted2);text-transform:uppercase;letter-spacing:.1em;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.ct span{color:var(--text)}
+
+/* ── KPI GRID ── */
+.kg{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+.kpi{background:var(--s1);border:1px solid var(--border);border-radius:var(--r);padding:16px 18px;position:relative;overflow:hidden;transition:border-color .2s}
+.kpi::after{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:var(--kc,var(--green))}
+.kpi:hover{border-color:var(--kc,var(--green))}
+.kl{font-size:.63rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px}
+.kv{font-family:var(--fh);font-size:1.5rem;font-weight:700;line-height:1}
+.kv.pos{color:var(--green)} .kv.neg{color:var(--red)} .kv.warn{color:var(--yellow)}
+.ks{font-size:.68rem;color:var(--muted);margin-top:6px}
+.chip{display:inline-block;padding:1px 6px;border-radius:4px;font-size:.63rem;font-weight:500}
+.chip.up{background:rgba(244,63,94,.15);color:var(--red)}
+.chip.dn{background:rgba(34,211,160,.12);color:var(--green)}
+.chip.neu{background:rgba(251,191,36,.12);color:var(--yellow)}
+
+/* ── GRID ── */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.span2{grid-column:1/-1}
+
+/* ── FORMS ── */
+.field{margin-bottom:12px}
+.field label{display:block;font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px}
+.fi{width:100%;background:var(--s2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-family:var(--fm);font-size:.82rem;padding:9px 12px;outline:none;transition:border-color .2s;-webkit-appearance:none}
+.fi:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(34,211,160,.06)}
+.fi select option{background:var(--s2)}
+.r2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.btn{padding:11px 18px;border-radius:7px;font-family:var(--fm);font-size:.78rem;font-weight:600;border:none;cursor:pointer;transition:all .2s}
+.btn-g{background:var(--green);color:var(--bg)} .btn-g:hover{background:#34ecca;transform:translateY(-1px)}
+.btn-b{background:var(--blue);color:var(--bg)} .btn-b:hover{background:#60d5fc}
+.btn-p{background:var(--purple);color:white} .btn-p:hover{opacity:.88}
+.btn-o{background:none;border:1px solid var(--border2);color:var(--muted2)} .btn-o:hover{color:var(--text);border-color:var(--text)}
+.btn-full{width:100%}
+
+/* ── PLAN ROWS ── */
+.plan-row{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)}
+.plan-row:last-child{border-bottom:none}
+.plan-label{flex:1;background:none;border:none;color:var(--text);font-family:var(--fm);font-size:.78rem;outline:none;min-width:0}
+.plan-label::placeholder{color:var(--muted)}
+.plan-val{width:90px;background:var(--s2);border:1px solid var(--border);border-radius:5px;font-family:var(--fm);font-size:.8rem;padding:5px 8px;text-align:right;outline:none;transition:border-color .2s}
+.plan-val:focus{border-color:var(--green)}
+.plan-del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:.9rem;padding:2px 4px;transition:color .15s}
+.plan-del:hover{color:var(--red)}
+.add-row{display:flex;gap:8px;margin-top:10px}
+.add-row input{flex:1;background:var(--s2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--fm);font-size:.75rem;padding:7px 10px;outline:none}
+.add-row input:focus{border-color:var(--green)}
+.add-row .add-val{width:90px;text-align:right}
+.add-btn{padding:7px 12px;border-radius:6px;font-family:var(--fm);font-size:.78rem;font-weight:600;border:none;cursor:pointer;transition:all .2s}
+
+/* ── PRESUP VS REAL BARS ── */
+.pvr-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.pvr-row:last-child{border-bottom:none}
+.pvr-label{width:120px;font-size:.75rem;color:var(--muted2);flex-shrink:0;text-align:right}
+.pvr-bars{flex:1;display:flex;flex-direction:column;gap:3px}
+.pvr-bar-wrap{height:8px;background:var(--s3);border-radius:4px;overflow:hidden}
+.pvr-bar{height:100%;border-radius:4px;transition:width .6s cubic-bezier(.22,1,.36,1)}
+.pvr-vals{width:100px;text-align:right;font-size:.7rem;color:var(--muted);flex-shrink:0}
+.pvr-pct{width:42px;text-align:right;font-size:.7rem;font-weight:600;flex-shrink:0}
+
+/* ── TX TABLE ── */
+.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
+.tbl th{padding:8px 10px;text-align:left;font-size:.63rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid var(--border)}
+.tbl td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.04)}
+.tbl tr:hover td{background:var(--s2)}
+.tbl td:last-child{text-align:right;font-variant-numeric:tabular-nums}
+.tbl .pos{color:var(--green)} .tbl .neg{color:var(--red)}
+.tag{display:inline-block;padding:2px 7px;border-radius:4px;font-size:.62rem;background:var(--s3);color:var(--muted2)}
+
+/* ── ALERTS ── */
+.alert{padding:10px 14px;border-radius:7px;font-size:.75rem;display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.alert.warn{background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);color:var(--yellow)}
+.alert.danger{background:rgba(244,63,94,.08);border:1px solid rgba(244,63,94,.2);color:var(--red)}
+.alert.ok{background:rgba(34,211,160,.08);border:1px solid rgba(34,211,160,.2);color:var(--green)}
+
+/* ── INV TABLE ── */
+.inv-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
+.inv-row:last-child{border-bottom:none}
+.inv-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:.9rem;flex-shrink:0}
+.inv-body{flex:1;min-width:0}
+.inv-name{font-size:.82rem;color:var(--text);font-weight:500}
+.inv-meta{font-size:.65rem;color:var(--muted);margin-top:2px}
+.inv-val{font-family:var(--fh);font-size:1rem;font-weight:700;flex-shrink:0}
+.inv-rend{font-size:.68rem;font-weight:500;flex-shrink:0;width:50px;text-align:right}
+
+/* ── TOAST ── */
+.toast-wrap{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:9999;pointer-events:none}
+.toast{background:rgba(34,211,160,.12);border:1px solid rgba(34,211,160,.3);color:var(--green);padding:10px 20px;border-radius:8px;font-size:.78rem;white-space:nowrap;animation:fadeUp .3s ease;display:none}
+.toast.show{display:block}
+
+/* ── RESPONSIVE ── */
+@media(max-width:900px){.kg{grid-template-columns:1fr 1fr}.g2{grid-template-columns:1fr}.span2{grid-column:1}}
+@media(max-width:680px){
+  .page{padding:12px 10px} header{padding:0 12px;height:48px} .logo{font-size:.9rem}
+  nav{top:48px;padding:0 8px} .nb{padding:10px 10px;font-size:.68rem}
+  .kg{gap:8px} .kpi{padding:12px 14px} .kv{font-size:1.1rem}
+  .r2{grid-template-columns:1fr} .pvr-label{width:80px;font-size:.68rem}
+  .pvr-vals{display:none} .tbl{font-size:.72rem} .tbl th{font-size:.58rem;padding:7px 6px} .tbl td{padding:7px 6px}
+}
+@media(max-width:360px){.kg{grid-template-columns:1fr} .kv{font-size:.95rem}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo"><em>CL</em> · Finanzas</div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <button id="theme-btn" onclick="toggleTheme()" style="background:none;border:1px solid var(--border2);border-radius:20px;padding:4px 12px;color:var(--muted2);font-family:var(--fm);font-size:.7rem;cursor:pointer;transition:all .2s" title="Cambiar tema">🌙</button>
+    <div class="mes-badge" id="header-mes">Mar 2026</div>
+  </div>
+</header>
+
+<nav>
+  <button class="nb active" onclick="go('overview',this)">⬡ Overview</button>
+  <button class="nb" onclick="go('presupuesto',this)">◎ Presupuesto</button>
+  <button class="nb" onclick="go('flujo',this)">⇄ Flujo</button>
+  <button class="nb" onclick="go('cargar',this)">＋ Cargar</button>
+  <button class="nb" onclick="go('inversiones',this)">◈ Inversiones</button>
+  <button class="nb" onclick="go('patrimonio',this)">⬟ Patrimonio</button>
+  <button class="nb" onclick="go('config',this)">⚙ Config</button>
+</nav>
+
+<!-- TOAST -->
+<div class="toast-wrap"><div class="toast" id="toast"></div></div>
+
+<!-- ════════════ OVERVIEW ════════════ -->
+<div class="page active" id="page-overview">
+
+  <!-- Year selector + summary bar -->
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+    <div style="display:flex;gap:8px;align-items:center">
+      <span style="font-size:.7rem;color:var(--muted)">Año:</span>
+      <button onclick="setOverviewYear('2024',this)" class="yr-btn" style="padding:4px 12px;border-radius:16px;border:1px solid var(--border);background:var(--s2);color:var(--muted);font-family:var(--fm);font-size:.72rem;cursor:pointer">2024</button>
+      <button onclick="setOverviewYear('2025',this)" class="yr-btn" style="padding:4px 12px;border-radius:16px;border:1px solid var(--border);background:var(--s2);color:var(--muted);font-family:var(--fm);font-size:.72rem;cursor:pointer">2025</button>
+      <button onclick="setOverviewYear('2026',this)" class="yr-btn active-yr" style="padding:4px 12px;border-radius:16px;border:1px solid var(--green);background:rgba(34,211,160,.1);color:var(--green);font-family:var(--fm);font-size:.72rem;cursor:pointer">2026</button>
+    </div>
+    <div id="yr-summary" style="font-size:.72rem;color:var(--muted)"></div>
+  </div>
+
+  <div id="overview-alerts" style="margin-bottom:14px"></div>
+
+  <div class="kg">
+    <div class="kpi" style="--kc:var(--green)">
+      <div class="kl">Ingresos <span id="ov-mes-label">Mar 2026</span></div>
+      <div class="kv pos" id="ov-ing">$0</div>
+      <div class="ks">planificados</div>
+    </div>
+    <div class="kpi" style="--kc:var(--red)">
+      <div class="kl">Gastos reales</div>
+      <div class="kv neg" id="ov-gas">$0</div>
+      <div class="ks" id="ov-gas-sub">del mes</div>
+    </div>
+    <div class="kpi" style="--kc:var(--blue)">
+      <div class="kl">Neto libre</div>
+      <div class="kv" id="ov-neto">$0</div>
+      <div class="ks">ing − gastos − inv</div>
+    </div>
+    <div class="kpi" style="--kc:var(--purple)">
+      <div class="kl">Patrimonio neto</div>
+      <div class="kv" style="color:var(--purple)" id="ov-pat">$0</div>
+      <div class="ks">activos financieros</div>
+    </div>
+  </div>
+
+  <div class="g2">
+    <div class="card span2">
+      <div class="ct">Evolución mensual
+        <div style="display:flex;gap:6px">
+          <button class="chip neu" onclick="setEvolYear('2024',this)" style="cursor:pointer;border:none">2024</button>
+          <button class="chip neu" onclick="setEvolYear('2025',this)" style="cursor:pointer;border:none">2025</button>
+          <button class="chip dn"  onclick="setEvolYear('2026',this)" style="cursor:pointer;border:none" id="evol-active-btn">2026</button>
+        </div>
+      </div>
+      <canvas id="c-evol" height="65"></canvas>
+    </div>
+    <div class="card">
+      <div class="ct">Gastos vs Ingresos anuales</div>
+      <canvas id="c-anual" height="180"></canvas>
+    </div>
+    <div class="card">
+      <div class="ct">Composición del mes</div>
+      <canvas id="c-donut" height="180"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════ PRESUPUESTO ════════════ -->
+<div class="page" id="page-presupuesto">
+
+  <!-- Sticky save bar at top of presupuesto -->
+  <div id="sticky-save" style="position:sticky;top:96px;z-index:150;background:var(--bg);padding:8px 0 12px;margin-bottom:4px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+    <div>
+      <div style="font-family:var(--fh);font-size:1rem;font-weight:700">Planificación mensual</div>
+      <div style="font-size:.68rem;color:var(--muted)">Cargá una vez al inicio del mes.</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <select id="plan-sel-top" onchange="syncPlanSel('top')" class="fi" style="width:auto;padding:5px 10px;font-size:.7rem">
+        <option value="2026-05">May 2026</option>
+        <option value="2026-04">Abr 2026</option>
+        <option value="2026-03">Mar 2026</option>
+        <option value="2026-02">Feb 2026</option>
+        <option value="2026-01">Ene 2026</option>
+        <option value="2025-12">Dic 2025</option>
+        <option value="2025-11">Nov 2025</option>
+        <option value="2025-10">Oct 2025</option>
+      </select>
+      <button onclick="copyPrevMonth()" style="padding:8px 14px;background:none;border:1px solid var(--border2);color:var(--muted2);border-radius:20px;font-family:var(--fh);font-size:.72rem;cursor:pointer;white-space:nowrap" title="Copiar variables del mes anterior">
+        ↩ Copiar anterior
+      </button>
+      <button onclick="savePlan()" style="padding:8px 16px;background:var(--green);color:var(--bg);border:none;border-radius:20px;font-family:var(--fh);font-size:.78rem;font-weight:700;cursor:pointer;white-space:nowrap">
+        💾 Guardar
+      </button>
+    </div>
+  </div>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px" id="plan-header-hidden" style="display:none">
+    <div></div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <select id="plan-sel" onchange="syncPlanSel('main')" class="fi" style="width:auto;padding:6px 12px">
+        <option value="2026-04">Abr 2026</option>
+        <option value="2026-03" selected>Mar 2026</option>
+        <option value="2026-02">Feb 2026</option>
+        <option value="2026-01">Ene 2026</option>
+        <option value="2025-12">Dic 2025</option>
+        <option value="2025-11">Nov 2025</option>
+        <option value="2025-10">Oct 2025</option>
+        <option value="2025-09">Sep 2025</option>
+        <option value="2025-08">Ago 2025</option>
+        <option value="2025-07">Jul 2025</option>
+      </select>
+      <button class="btn btn-g" onclick="savePlan()">💾 Guardar mes</button>
+    </div>
+  </div>
+
+  <!-- KPIs del plan -->
+  <div class="kg" style="grid-template-columns:repeat(4,1fr)">
+    <div class="kpi" style="--kc:var(--green)"><div class="kl">Ingresos</div><div class="kv pos" id="pk-ing">$0</div></div>
+    <div class="kpi" style="--kc:var(--red)"><div class="kl">Gastos totales</div><div class="kv neg" id="pk-gas">$0</div></div>
+    <div class="kpi" style="--kc:var(--purple)"><div class="kl">Inversiones</div><div class="kv" style="color:var(--purple)" id="pk-inv">$0</div></div>
+    <div class="kpi" style="--kc:var(--blue)"><div class="kl">Neto proyectado</div><div class="kv" id="pk-neto">$0</div></div>
+  </div>
+
+  <div class="g2">
+    <!-- INGRESOS -->
+    <div class="card">
+      <div class="ct">💰 Ingresos del mes</div>
+      <div id="plan-ing-rows"></div>
+      <div class="add-row">
+        <input type="text" id="ni-label" placeholder="Concepto (sueldo, bono...)">
+        <input type="number" id="ni-val" class="add-val fi" placeholder="0" step="0.01" style="width:90px;padding:7px 8px;text-align:right">
+        <button class="add-btn btn-g" onclick="addPlanRow('ing')">＋</button>
+      </div>
+    </div>
+
+    <!-- INVERSIONES -->
+    <div class="card">
+      <div class="ct">📈 Inversiones planificadas</div>
+      <div id="plan-inv-rows"></div>
+      <div class="add-row">
+        <input type="text" id="nv-label" placeholder="Instrumento (FCI, cripto...)">
+        <input type="number" id="nv-val" class="add-val fi" placeholder="0" step="0.01" style="width:90px;padding:7px 8px;text-align:right">
+        <button class="add-btn btn-p" onclick="addPlanRow('inv')">＋</button>
+      </div>
+    </div>
+
+    <!-- GASTOS FIJOS -->
+    <div class="card">
+      <div class="ct">📌 Gastos fijos <span style="color:var(--muted);font-size:.63rem;font-weight:400">(se repiten cada mes)</span></div>
+      <div id="plan-fijos-rows"></div>
+      <div class="add-row">
+        <input type="text" id="nf-label" placeholder="Concepto">
+        <input type="number" id="nf-val" class="add-val fi" placeholder="0" step="0.01" style="width:90px;padding:7px 8px;text-align:right">
+        <button class="add-btn btn-b" onclick="addPlanRow('fijos')">＋</button>
+      </div>
+    </div>
+
+    <!-- VARIABLES -->
+    <div class="card">
+      <div class="ct">💸 Gastos variables estimados</div>
+      <div id="plan-vars-rows"></div>
+      <div class="add-row">
+        <input type="text" id="nva-label" placeholder="Concepto (TC BSF, efectivo...)">
+        <input type="number" id="nva-val" class="add-val fi" placeholder="0" step="0.01" style="width:90px;padding:7px 8px;text-align:right">
+        <button class="add-btn" style="background:rgba(251,146,60,.15);border:1px solid var(--orange);color:var(--orange);padding:7px 12px;border-radius:6px;font-size:.78rem;font-weight:600;cursor:pointer" onclick="addPlanRow('vars')">＋</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════ FLUJO ════════════ -->
+<div class="page" id="page-flujo">
+
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+    <div>
+      <div style="font-family:var(--fh);font-size:1.1rem;font-weight:700">Flujo mensual</div>
+      <div style="font-size:.72rem;color:var(--muted);margin-top:2px">Presupuestado vs Real — calculado desde tus gastos cargados</div>
+    </div>
+    <select id="flujo-sel" onchange="renderFlujo()" class="fi" style="width:auto;padding:6px 12px">
+      <option value="2026-04">Abr 2026</option>
+      <option value="2026-03" selected>Mar 2026</option>
+      <option value="2026-02">Feb 2026</option>
+      <option value="2026-01">Ene 2026</option>
+      <option value="2025-12">Dic 2025</option>
+      <option value="2025-11">Nov 2025</option>
+      <option value="2025-10">Oct 2025</option>
+    </select>
+  </div>
+
+  <!-- KPIs flujo -->
+  <div class="kg">
+    <div class="kpi" style="--kc:var(--green)"><div class="kl">Ingresos</div><div class="kv pos" id="fk-ing">$0</div><div class="ks">planificados</div></div>
+    <div class="kpi" style="--kc:var(--red)"><div class="kl">Gastos reales</div><div class="kv neg" id="fk-gas">$0</div><div class="ks">cargados en ＋</div></div>
+    <div class="kpi" style="--kc:var(--yellow)"><div class="kl">Vs presupuesto</div><div class="kv" id="fk-dif">$0</div><div class="ks">diferencia</div></div>
+    <div class="kpi" style="--kc:var(--blue)"><div class="kl">Neto libre</div><div class="kv" id="fk-neto">$0</div><div class="ks">ing − gastos − inv</div></div>
+  </div>
+
+  <!-- Barras presup vs real -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="ct">Presupuestado vs Real — <span id="flujo-mes-label">Mar 2026</span></div>
+    <div id="flujo-bars"></div>
+  </div>
+
+  <!-- Tabla detalle -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="ct">Detalle por categoría</div>
+    <div style="overflow-x:auto">
+      <table class="tbl">
+        <thead><tr><th>Categoría</th><th style="text-align:right">Presupuestado</th><th style="text-align:right">Real</th><th style="text-align:right">Diferencia</th><th style="text-align:right">%</th></tr></thead>
+        <tbody id="flujo-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Transacciones del mes -->
+  <div class="card">
+    <div class="ct">Transacciones del mes</div>
+    <div style="overflow-x:auto">
+      <table class="tbl">
+        <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Monto</th><th style="width:60px"></th></tr></thead>
+        <tbody id="flujo-tx-tbody"></tbody>
+      </table>
+      <!-- Edit modal -->
+      <div id="edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:900;display:none;align-items:center;justify-content:center;padding:20px">
+        <div style="background:var(--s1);border:1px solid var(--border2);border-radius:12px;padding:24px;width:100%;max-width:400px">
+          <div style="font-family:var(--fh);font-size:1rem;font-weight:700;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
+            ✏ Editar transacción
+            <button onclick="closeEditModal()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.2rem">✕</button>
+          </div>
+          <input type="hidden" id="edit-mes">
+          <input type="hidden" id="edit-idx">
+          <div class="field" style="margin-bottom:10px"><label style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Fecha</label>
+            <input type="date" id="edit-fecha" class="fi"></div>
+          <div class="field" style="margin-bottom:10px"><label style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Monto $</label>
+            <input type="number" id="edit-monto" class="fi" placeholder="0"></div>
+          <div class="field" style="margin-bottom:10px"><label style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Descripción</label>
+            <input type="text" id="edit-desc" class="fi"></div>
+          <div class="field" style="margin-bottom:16px"><label style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Categoría</label>
+            <input type="text" id="edit-cat" class="fi"></div>
+          <div style="display:flex;gap:8px">
+            <button onclick="saveEditTx()" class="btn btn-g" style="flex:1">Guardar</button>
+            <button onclick="deleteTx()" class="btn" style="background:var(--red);color:white;padding:11px 18px;border-radius:7px;border:none;cursor:pointer">🗑 Borrar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════ CARGAR ════════════ -->
+<div class="page" id="page-cargar">
+  <div style="max-width:480px;margin:0 auto">
+
+    <!-- Tipo selector -->
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px" id="tipo-btns">
+      <button onclick="setTipo('gasto',this)" class="tipo-btn active-tipo" style="padding:12px 8px;border-radius:8px;border:1px solid var(--green);background:rgba(34,211,160,.08);color:var(--green);font-family:var(--fm);font-size:.72rem;cursor:pointer;text-align:center">
+        <div style="font-size:1.1rem;margin-bottom:4px">💸</div>Gasto directo
+      </button>
+      <button onclick="setTipo('tc',this)" class="tipo-btn" style="padding:12px 8px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--muted);font-family:var(--fm);font-size:.72rem;cursor:pointer;text-align:center">
+        <div style="font-size:1.1rem;margin-bottom:4px">💳</div>Pago TC
+      </button>
+      <button onclick="setTipo('ingreso',this)" class="tipo-btn" style="padding:12px 8px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--muted);font-family:var(--fm);font-size:.72rem;cursor:pointer;text-align:center">
+        <div style="font-size:1.1rem;margin-bottom:4px">💰</div>Ingreso
+      </button>
+    </div>
+
+    <div class="card" style="margin-bottom:14px">
+      <div class="r2">
+        <div class="field"><label>Fecha</label><input type="date" id="tx-fecha" class="fi"></div>
+        <div class="field"><label>Monto $</label><input type="number" id="tx-monto" class="fi" placeholder="0" step="0.01"></div>
+      </div>
+      <div class="field"><label>Descripción</label><input type="text" id="tx-desc" class="fi" placeholder="ej: supermercado, nafta..."></div>
+      <div class="r2">
+        <div class="field">
+          <label>Categoría</label>
+          <select id="tx-cat" class="fi">
+            <option value="">— elegir —</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Medio de pago</label>
+          <select id="tx-medio" class="fi">
+            <option value="">— elegir —</option>
+            <option>Efectivo</option><option>Mercado Pago</option><option>Modo</option>
+            <option>Débito BSF</option><option>Débito BBVA</option><option>Transferencia</option>
+          </select>
+        </div>
+      </div>
+      <div class="field"><label>Notas (opcional)</label><textarea id="tx-notas" class="fi" rows="2" placeholder="detalle adicional..."></textarea></div>
+      <button class="btn btn-g btn-full" id="tx-submit" onclick="submitTx()">＋ Registrar gasto</button>
+    </div>
+
+    <!-- Últimas transacciones -->
+    <div class="card">
+      <div class="ct">Últimas registradas</div>
+      <div id="recent-txs"><div style="color:var(--muted);font-size:.75rem;text-align:center;padding:20px 0">Sin registros aún</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════ INVERSIONES ════════════ -->
+<div class="page" id="page-inversiones">
+
+  <div class="kg">
+    <div class="kpi" style="--kc:var(--green)"><div class="kl">Total portafolio</div><div class="kv pos" id="inv-total-kpi">$0</div><div class="ks">ARS estimado</div></div>
+    <div class="kpi" style="--kc:var(--blue)"><div class="kl">En USD</div><div class="kv" style="color:var(--blue)" id="inv-usd-kpi">u$s 0</div><div class="ks">Binance + BingX</div></div>
+    <div class="kpi" style="--kc:var(--purple)"><div class="kl">FCI / Bonos</div><div class="kv" style="color:var(--purple)" id="inv-fci-kpi">$0</div><div class="ks">en ARS</div></div>
+    <div class="kpi" style="--kc:var(--yellow)"><div class="kl">TC USD/ARS</div><div class="kv warn" id="inv-tc-kpi">$1.250</div><div class="ks"><a href="#" onclick="go('config',document.querySelectorAll('.nb')[6])" style="color:var(--muted)">actualizar →</a></div></div>
+  </div>
+
+  <div class="g2">
+    <div class="card span2" style="margin-bottom:0">
+      <div class="ct">Portafolio
+        <button class="btn btn-o" onclick="toggleInvEditor()" id="inv-edit-btn" style="padding:5px 12px;font-size:.7rem">✏ Editar posiciones</button>
+      </div>
+
+      <!-- Editor de posiciones -->
+      <div id="inv-editor" style="display:none;margin-bottom:16px">
+        <div style="font-size:.72rem;color:var(--muted);margin-bottom:12px">Actualizá precio y cantidad. El valor ARS se calcula con el TC configurado.</div>
+        <div id="inv-editor-rows" style="overflow-x:auto"></div>
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+          <button class="btn btn-o" onclick="addInvRow()" style="padding:6px 14px;font-size:.72rem">＋ Agregar activo</button>
+          <button class="btn btn-p" onclick="saveInv()" style="padding:6px 16px;font-size:.72rem">Guardar portafolio</button>
+        </div>
+      </div>
+
+      <!-- Lista de posiciones -->
+      <div id="inv-list"></div>
+    </div>
+
+    <div class="card">
+      <div class="ct">Distribución</div>
+      <canvas id="c-inv-donut" height="200"></canvas>
+    </div>
+
+    <div class="card">
+      <div class="ct">Movimientos recientes</div>
+      <div id="inv-movs"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════ PATRIMONIO ════════════ -->
+<div class="page" id="page-patrimonio">
+
+  <div class="kg" style="grid-template-columns:repeat(3,1fr)">
+    <div class="kpi" style="--kc:var(--purple)"><div class="kl">Activos totales</div><div class="kv" style="color:var(--purple)" id="pat-activos">$0</div><div class="ks">financieros</div></div>
+    <div class="kpi" style="--kc:var(--red)"><div class="kl">Pasivos</div><div class="kv neg" id="pat-pasivos">$0</div><div class="ks">deudas registradas</div></div>
+    <div class="kpi" style="--kc:var(--green)"><div class="kl">Patrimonio neto</div><div class="kv pos" id="pat-neto">$0</div><div class="ks"><span class="chip dn" id="pat-ytd">+0% ytd</span></div></div>
+  </div>
+
+  <div class="card" style="margin-bottom:14px">
+    <div class="ct">Composición del patrimonio</div>
+    <div id="pat-bar-wrap" style="height:10px;border-radius:6px;overflow:hidden;display:flex;gap:2px;margin:10px 0 8px"></div>
+    <div id="pat-legend" style="display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:10px"></div>
+  </div>
+
+  <div class="g2">
+    <div class="card">
+      <div class="ct">Evolución patrimonial 2026</div>
+      <canvas id="c-pat" height="200"></canvas>
+    </div>
+    <div class="card">
+      <div class="ct">Ahorro neto mensual 2026</div>
+      <canvas id="c-ahorro" height="200"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════ CONFIG ════════════ -->
+<div class="page" id="page-config">
+  <div style="max-width:600px">
+
+    <div class="card" style="margin-bottom:14px">
+      <div class="ct">💱 Tipo de cambio USD/ARS</div>
+      <p style="font-size:.75rem;color:var(--muted2);margin-bottom:12px">Usado para convertir posiciones en USD al portafolio en ARS.</p>
+      <div style="display:flex;gap:8px">
+        <input type="number" id="cfg-tc" class="fi" placeholder="1250" style="flex:1">
+        <button class="btn btn-g" onclick="saveTc()">Guardar</button>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:14px">
+      <div class="ct">📲 Instalar como app</div>
+      <p style="font-size:.75rem;color:var(--muted2);line-height:1.7;margin-bottom:8px"><strong>Android (Chrome):</strong> Menú ⋮ → Agregar a pantalla de inicio</p>
+      <p style="font-size:.75rem;color:var(--muted2);line-height:1.7"><strong>iPhone (Safari):</strong> Botón compartir □↑ → Añadir a pantalla de inicio</p>
+    </div>
+
+    <div class="card" style="margin-bottom:14px">
+      <div class="ct">🗑 Limpiar datos</div>
+      <p style="font-size:.75rem;color:var(--muted2);margin-bottom:12px">Borra todos los presupuestos y transacciones guardados en este dispositivo. Los datos pre-cargados del xlsx se mantienen.</p>
+      <button class="btn btn-o" onclick="clearAll()" style="border-color:var(--red);color:var(--red)">Borrar datos del dispositivo</button>
+    </div>
+
+    <div class="card">
+      <div class="ct">ℹ️ Acerca de</div>
+      <p style="font-size:.75rem;color:var(--muted2);line-height:1.7">
+        Dashboard financiero personal — CL Finanzas<br>
+        Datos guardados localmente en este dispositivo.<br>
+        Form de gastos: <a href="https://forms.gle/cgxE8FDbhaZPkwjn9" target="_blank" style="color:var(--green)">forms.gle/cgxE8FDbhaZPkwjn9</a>
+      </p>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════
+// DATA STORE — everything in localStorage
+// ══════════════════════════════════════════════════════
+const DB = {
+  get: (k, def={}) => { try { return JSON.parse(localStorage.getItem(k)) ?? def; } catch { return def; } },
+  set: (k, v)      => localStorage.setItem(k, JSON.stringify(v)),
+  del: (k)         => localStorage.removeItem(k),
+};
+
+// ── Current month (dynamic) ──
+function getCurMes() {
+  const now = new Date();
+  return now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+}
+function getCurMesLabel() {
+  const now = new Date();
+  return MESES[now.getMonth()] + ' ' + now.getFullYear();
+}
+
+// ── Historical data pre-loaded from xlsx ──
+const HIST = {
+  gastos: {
+    '2024': [6366,2848,2983,3228,3174,2881,3118,4203,5150,8452,5347,6306],
+    '2025': [5654,15723,39983,6043,6597,6156,6661,26329,7506,10804,10093,9933],
+    '2026': [8684,9731,7633,null,null,null,null,null,null,null,null,null],
+  },
+  ingresos: {
+    '2024': [11443,4200,3295,3606,4454,7500,5240,4542,6195,8751,7420,9782],
+    '2025': [5683,16324,40256,7004,9050,13327,10269,8212,7594,11172,11790,16785],
+    '2026': [13398,11662,9422,null,null,null,null,null,null,null,null,null],
+  },
+};
+
+const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+// Pre-loaded real plans from xlsx (used when no saved plan exists)
+const PLAN_PRELOADED = {
+  '2026-03': {
+    ing:   [{l:'Sueldo',v:9300},{l:'Adicionales',v:122}],
+    fijos: [{l:'Alquiler',v:1167},{l:'Expensas',v:132},{l:'EPE / Gas',v:87},{l:'Seguros',v:60},{l:'Cable / Flow',v:131}],
+    vars:  [{l:'TC BSF',v:3400},{l:'TC BBVA',v:900},{l:'TC Municipal',v:400},{l:'TC MP',v:200},{l:'Limpieza',v:450},{l:'Tennis',v:48},{l:'Efectivo',v:671},{l:'Farmacia',v:60}],
+    inv:   [{l:'FCI Cocos',v:0}],
+  },
+  '2026-02': {
+    ing:   [{l:'Sueldo',v:7250},{l:'Adicionales',v:4412}],
+    fijos: [{l:'Alquiler',v:1167},{l:'Expensas',v:132},{l:'EPE / Gas',v:99},{l:'Seguros',v:60},{l:'Cable / Flow',v:132}],
+    vars:  [{l:'TC BSF',v:2400},{l:'TC BBVA',v:1080},{l:'TC Municipal',v:412},{l:'TC MP',v:100},{l:'Limpieza',v:400},{l:'Tennis',v:45},{l:'Gastos Dpto',v:1800},{l:'Casa Roldán',v:1200}],
+    inv:   [{l:'FCI Cocos',v:0}],
+  },
+  '2026-01': {
+    ing:   [{l:'Sueldo',v:13222},{l:'Adicionales',v:176}],
+    fijos: [{l:'Alquiler',v:1167},{l:'Expensas',v:108},{l:'EPE / Gas',v:99},{l:'Seguros',v:60},{l:'Cable / Flow',v:129}],
+    vars:  [{l:'TC BSF',v:3300},{l:'TC BBVA',v:1390},{l:'TC Municipal',v:350},{l:'TC MP',v:535},{l:'Limpieza',v:400},{l:'Tennis',v:45},{l:'Efectivo',v:671},{l:'Casa Roldán',v:36}],
+    inv:   [{l:'FCI Cocos',v:0}],
+  },
+  '2025-12': {
+    ing:   [{l:'Sueldo',v:8900},{l:'Adicionales',v:7885}],
+    fijos: [{l:'Alquiler',v:1075},{l:'Expensas',v:143},{l:'EPE / Gas',v:86},{l:'Seguros',v:55},{l:'Cable / Flow',v:117}],
+    vars:  [{l:'TC BSF',v:4300},{l:'TC BBVA',v:1200},{l:'TC Municipal',v:333},{l:'TC MP',v:441},{l:'Limpieza',v:350},{l:'Tennis',v:42},{l:'Automotor',v:164},{l:'Casa Roldán',v:309},{l:'Farmacia',v:80}],
+    inv:   [{l:'FCI Cocos',v:0}],
+  },
+  '2025-11': {
+    ing:   [{l:'Sueldo',v:8960},{l:'Adicionales',v:2830}],
+    fijos: [{l:'Alquiler',v:1075},{l:'Expensas',v:175},{l:'EPE / Gas',v:82},{l:'Seguros',v:55},{l:'Cable / Flow',v:117}],
+    vars:  [{l:'TC BSF',v:2880},{l:'TC BBVA',v:1220},{l:'TC Municipal',v:522},{l:'TC MP',v:441},{l:'Limpieza',v:300},{l:'Tennis',v:42},{l:'Efectivo',v:480},{l:'Gastos Dpto',v:430}],
+    inv:   [{l:'FCI Cocos',v:0}],
+  },
+  '2025-10': {
+    ing:   [{l:'Sueldo',v:10500},{l:'Adicionales',v:672}],
+    fijos: [{l:'Alquiler',v:1075},{l:'Expensas',v:173},{l:'EPE / Gas',v:94},{l:'Seguros',v:55},{l:'Cable / Flow',v:133}],
+    vars:  [{l:'TC BSF',v:3320},{l:'TC BBVA',v:1550},{l:'TC Municipal',v:200},{l:'Limpieza',v:250},{l:'Tennis',v:40},{l:'Efectivo',v:70},{l:'Casa Roldán',v:636},{l:'Farmacia',v:178},{l:'Gastos Dpto',v:270}],
+    inv:   [{l:'FCI Cocos',v:0}],
+  },
+  '2026-04': {
+    ing:   [{l:'Sueldo',v:9000}],
+    fijos: [{l:'Alquiler',v:1167},{l:'Expensas',v:140},{l:'Seguros',v:60},{l:'Cable / Flow',v:144},{l:'Luz Dpto',v:110},{l:'Luz Roldan',v:68},{l:'Gas Dpto',v:30},{l:'Gas Roldán',v:30},{l:'Agua Dpto',v:55},{l:'Api Dpto',v:54},{l:'TGI Roldán',v:28},{l:'TGI Dpto',v:62}],
+    vars:  [{l:'TC BSF',v:3400},{l:'TC BBVA',v:900},{l:'TC Municipal',v:400},{l:'TC MP',v:300},{l:'Efectivo',v:500},{l:'Farmacia',v:100},{l:'Club / Tennis',v:150},{l:'Almuerzo',v:100}],
+    inv:   [{l:'FCI Cocos',v:0}],
+  },
+};
+
+const PLAN_DEFAULT = {
+  ing:   [{l:'Sueldo',v:0}],
+  fijos: [{l:'Alquiler',v:1167},{l:'Expensas',v:140},{l:'EPE / Gas',v:120},{l:'Seguros',v:60},{l:'Cable / Flow',v:144}],
+  vars:  [{l:'TC BSF',v:3300},{l:'TC BBVA',v:1200},{l:'TC Municipal',v:400},{l:'TC MP',v:300},{l:'Educación',v:700},{l:'Limpieza',v:450},{l:'Efectivo',v:500},{l:'Farmacia',v:100},{l:'Club / Tennis',v:150}],
+  inv:   [{l:'FCI Cocos',v:0}],
+};
+
+// ── Inversiones iniciales — importadas de INVIU 28/03/2026 ──
+const INV_DEFAULT = [
+  {
+    "activo": "CIBR",
+    "tipo": "CEDEAR",
+    "moneda": "ARS",
+    "cantidad": 24.0,
+    "ars": 214440,
+    "costo": 223651,
+    "rend": -0.0412,
+    "pos": "24 acciones",
+    "nota": "CEDEAR FIRST TRUST NASDAQ CYBE",
+    "fechaEntrada": "",
+    "ticker": "CIBR"
+  },
+  {
+    "activo": "XLP",
+    "tipo": "CEDEAR",
+    "moneda": "ARS",
+    "cantidad": 121.0,
+    "ars": 917785,
+    "costo": 882522,
+    "rend": 0.04,
+    "pos": "121 acciones",
+    "nota": "The consumer Staples Select Se",
+    "fechaEntrada": "",
+    "ticker": "XLP"
+  },
+  {
+    "activo": "UNH",
+    "tipo": "CEDEAR",
+    "moneda": "ARS",
+    "cantidad": 4.0,
+    "ars": 46120,
+    "costo": 62707,
+    "rend": -0.2645,
+    "pos": "4 acciones",
+    "nota": "UnitedHealth Group Inc",
+    "fechaEntrada": "",
+    "ticker": "UNH"
+  },
+  {
+    "activo": "GOOGL",
+    "tipo": "CEDEAR",
+    "moneda": "ARS",
+    "cantidad": 166.0,
+    "ars": 1159510,
+    "costo": 501759,
+    "rend": 1.3109,
+    "pos": "166 acciones",
+    "nota": "Google Inc.",
+    "fechaEntrada": "",
+    "ticker": "GOOGL"
+  },
+  {
+    "activo": "META",
+    "tipo": "CEDEAR",
+    "moneda": "ARS",
+    "cantidad": 6.0,
+    "ars": 194280,
+    "costo": 303252,
+    "rend": -0.3593,
+    "pos": "6 acciones",
+    "nota": "Meta Platforms",
+    "fechaEntrada": "",
+    "ticker": "META"
+  },
+  {
+    "activo": "PEP",
+    "tipo": "CEDEAR",
+    "moneda": "ARS",
+    "cantidad": 12.0,
+    "ars": 150360,
+    "costo": 145972,
+    "rend": 0.0301,
+    "pos": "12 acciones",
+    "nota": "CEDEAR PEPSICO INC",
+    "fechaEntrada": "",
+    "ticker": "PEP"
+  },
+  {
+    "activo": "VEA",
+    "tipo": "CEDEAR",
+    "moneda": "ARS",
+    "cantidad": 40.0,
+    "ars": 384200,
+    "costo": 245026,
+    "rend": 0.568,
+    "pos": "40 acciones",
+    "nota": "Vanguard FTSE Developed Market",
+    "fechaEntrada": "",
+    "ticker": "VEA"
+  },
+  {
+    "activo": "MCD",
+    "tipo": "CEDEAR",
+    "moneda": "ARS",
+    "cantidad": 6.0,
+    "ars": 113100,
+    "costo": 116314,
+    "rend": -0.0276,
+    "pos": "6 acciones",
+    "nota": "McDonalds Corp",
+    "fechaEntrada": "",
+    "ticker": "MCD"
+  },
+  {
+    "activo": "MELI",
+    "tipo": "CEDEAR",
+    "moneda": "ARS",
+    "cantidad": 16.0,
+    "ars": 315520,
+    "costo": 421106,
+    "rend": -0.2507,
+    "pos": "16 acciones",
+    "nota": "Mercadolibre Inc",
+    "fechaEntrada": "",
+    "ticker": "MELI"
+  },
+  {
+    "activo": "GLD",
+    "tipo": "CEDEAR",
+    "moneda": "ARS",
+    "cantidad": 21.0,
+    "ars": 257040,
+    "costo": 293981,
+    "rend": -0.1257,
+    "pos": "21 acciones",
+    "nota": "ETF SPDR GOLD TRUST",
+    "fechaEntrada": "",
+    "ticker": "GLD"
+  },
+  {
+    "activo": "PG",
+    "tipo": "CEDEAR",
+    "moneda": "ARS",
+    "cantidad": 6.0,
+    "ars": 84300,
+    "costo": 97270,
+    "rend": -0.1333,
+    "pos": "6 acciones",
+    "nota": "Procter & Gamble Co",
+    "fechaEntrada": "",
+    "ticker": "PG"
+  },
+  {
+    "activo": "QQQ",
+    "tipo": "CEDEAR",
+    "moneda": "ARS",
+    "cantidad": 17.0,
+    "ars": 738140,
+    "costo": 775596,
+    "rend": -0.0483,
+    "pos": "17 acciones",
+    "nota": "Invesco QQQ Trust",
+    "fechaEntrada": "",
+    "ticker": "QQQ"
+  },
+  {
+    "activo": "BRKB",
+    "tipo": "CEDEAR",
+    "moneda": "ARS",
+    "cantidad": 22.0,
+    "ars": 690800,
+    "costo": 742126,
+    "rend": -0.0692,
+    "pos": "22 acciones",
+    "nota": "Berkshire Hathaway Inc.",
+    "fechaEntrada": "",
+    "ticker": "BRKB"
+  },
+  {
+    "activo": "IVE",
+    "tipo": "CEDEAR",
+    "moneda": "ARS",
+    "cantidad": 42.0,
+    "ars": 320460,
+    "costo": 350168,
+    "rend": -0.0848,
+    "pos": "42 acciones",
+    "nota": "iShares S&P 500 Value ETF",
+    "fechaEntrada": "",
+    "ticker": "IVE"
+  },
+  {
+    "activo": "EEM",
+    "tipo": "CEDEAR",
+    "moneda": "ARS",
+    "cantidad": 24.0,
+    "ars": 404640,
+    "costo": 266682,
+    "rend": 0.5173,
+    "pos": "24 acciones",
+    "nota": "iShares MSCI Emerging Market",
+    "fechaEntrada": "",
+    "ticker": "EEM"
+  },
+  {
+    "activo": "SPY",
+    "tipo": "CEDEAR",
+    "moneda": "ARS",
+    "cantidad": 15.0,
+    "ars": 702600,
+    "costo": 531320,
+    "rend": 0.3224,
+    "pos": "15 acciones",
+    "nota": "SPDR S&P 500",
+    "fechaEntrada": "",
+    "ticker": "SPY"
+  },
+  {
+    "activo": "VZ",
+    "tipo": "CEDEAR",
+    "moneda": "ARS",
+    "cantidad": 4.0,
+    "ars": 74120,
+    "costo": 66600,
+    "rend": 0.1129,
+    "pos": "4 acciones",
+    "nota": "Verizon Communications Inc",
+    "fechaEntrada": "",
+    "ticker": "VZ"
+  },
+  {
+    "activo": "ILF",
+    "tipo": "CEDEAR",
+    "moneda": "ARS",
+    "cantidad": 100.0,
+    "ars": 835500,
+    "costo": 896242,
+    "rend": -0.0678,
+    "pos": "100 acciones",
+    "nota": "CEDEAR ISHARES LATIN AMERICA 4",
+    "fechaEntrada": "",
+    "ticker": "ILF"
+  },
+  {
+    "activo": "XLK",
+    "tipo": "CEDEAR",
+    "moneda": "ARS",
+    "cantidad": 68.0,
+    "ars": 284580,
+    "costo": 262413,
+    "rend": 0.0845,
+    "pos": "68 acciones",
+    "nota": "The Technology Select Sector S",
+    "fechaEntrada": "",
+    "ticker": "XLK"
+  },
+  {
+    "activo": "XLE",
+    "tipo": "CEDEAR",
+    "moneda": "ARS",
+    "cantidad": 7,
+    "ars": 312480,
+    "costo": 312480,
+    "rend": 0,
+    "pos": "7 acciones",
+    "nota": "Entrada 07/04/2026",
+    "fechaEntrada": "2026-04-07",
+    "ticker": "XLE"
+  },
+  {
+    "activo": "XLU",
+    "tipo": "CEDEAR",
+    "moneda": "ARS",
+    "cantidad": 86,
+    "ars": 396030,
+    "costo": 396030,
+    "rend": 0,
+    "pos": "86 acciones",
+    "nota": "Entrada 07/04/2026",
+    "fechaEntrada": "2026-04-07",
+    "ticker": "XLU"
+  }
+];
+
+// ══════════════════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════════════════
+const P = { green:'#22d3a0',red:'#f43f5e',yellow:'#fbbf24',blue:'#38bdf8',purple:'#a78bfa',orange:'#fb923c' };
+const fmt  = n => n == null ? '—' : '$' + Math.abs(Math.round(n)).toLocaleString('es-AR');
+const fmtp = p => (p > 0 ? '+' : '') + (p * 100).toFixed(1) + '%';
+let TC = parseInt(DB.get('tc','1250')) || 1250;
+
+function showToast(msg, color) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.background = color ? 'rgba(167,139,250,.12)' : 'rgba(34,211,160,.12)';
+  t.style.color = color || P.green;
+  t.style.borderColor = color ? 'rgba(167,139,250,.3)' : 'rgba(34,211,160,.3)';
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ══════════════════════════════════════════════════════
+// NAVIGATION
+// ══════════════════════════════════════════════════════
+function go(id, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nb').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + id).classList.add('active');
+  btn.classList.add('active');
+  // Show sticky save only on presupuesto
+  const stickySave = document.getElementById('sticky-save');
+  if (stickySave) stickySave.style.display = id === 'presupuesto' ? 'flex' : 'none';
+  // Auto-refresh data when switching to key pages
+  if (id === 'overview') {
+    updateOverview();
+    setTimeout(() => buildEvolChart(overviewYear || '2026'), 100);
+  }
+  if (id === 'flujo')       renderFlujo();
+  if (id === 'patrimonio')  updatePatrimonio();
+}
+
+// ══════════════════════════════════════════════════════
+// PLAN — presupuesto mensual
+// ══════════════════════════════════════════════════════
+let curMes = '2026-03';
+let curPlan = null;
+
+function getPlan(mes) {
+  const saved = DB.get('plans', {});
+  if (saved[mes]) return JSON.parse(JSON.stringify(saved[mes]));
+  if (PLAN_PRELOADED[mes]) return JSON.parse(JSON.stringify(PLAN_PRELOADED[mes]));
+  return JSON.parse(JSON.stringify(PLAN_DEFAULT));
+}
+
+function planTotals(plan) {
+  const sum = arr => arr.reduce((s, r) => s + (parseFloat(r.v) || 0), 0);
+  const ing = sum(plan.ing), fijos = sum(plan.fijos), vars_ = sum(plan.vars), inv = sum(plan.inv);
+  return { ing, fijos, vars_, inv, gastos: fijos + vars_, neto: ing - fijos - vars_ - inv };
+}
+
+function syncPlanSel(source) {
+  const topSel  = document.getElementById('plan-sel-top');
+  const mainSel = document.getElementById('plan-sel');
+  if (source === 'top' && topSel && mainSel)  mainSel.value = topSel.value;
+  if (source === 'main' && topSel && mainSel) topSel.value  = mainSel.value;
+  loadPlanUI();
+}
+
+function loadPlanUI() {
+  const sel = document.getElementById('plan-sel') || document.getElementById('plan-sel-top');
+  if (!sel) return;
+  curMes = sel.value;
+  curPlan = getPlan(curMes);
+  // Sync both selectors
+  const topSel  = document.getElementById('plan-sel-top');
+  const mainSel = document.getElementById('plan-sel');
+  if (topSel)  topSel.value  = curMes;
+  if (mainSel) mainSel.value = curMes;
+  renderPlanSections();
+  updateHeaderMes();
+}
+
+function renderPlanSections() {
+  renderSection('ing',   'plan-ing-rows',  'var(--green)');
+  renderSection('fijos', 'plan-fijos-rows','var(--blue)');
+  renderSection('vars',  'plan-vars-rows', 'var(--orange)');
+  renderSection('inv',   'plan-inv-rows',  'var(--purple)');
+  recalcPlanKPIs();
+}
+
+function renderSection(sec, containerId, color) {
+  const el = document.getElementById(containerId);
+  if (!el || !curPlan) return;
+  el.innerHTML = curPlan[sec].map((item, i) => `
+    <div class="plan-row" id="pr-${sec}-${i}">
+      <input class="plan-label" type="text" value="${item.l}" placeholder="Concepto"
+        oninput="curPlan['${sec}'][${i}].l=this.value">
+      <input class="plan-val" type="number" value="${item.v||''}" placeholder="0" style="color:${color}"
+        oninput="curPlan['${sec}'][${i}].v=parseFloat(this.value)||0;recalcPlanKPIs()">
+      <button class="plan-del" onclick="delPlanRow('${sec}',${i})">✕</button>
+    </div>`).join('');
+}
+
+function delPlanRow(sec, i) {
+  curPlan[sec].splice(i, 1);
+  renderPlanSections();
+}
+
+function addPlanRow(sec) {
+  const labelId = {ing:'ni-label',inv:'nv-label',fijos:'nf-label',vars:'nva-label'}[sec];
+  const valId   = {ing:'ni-val',  inv:'nv-val',  fijos:'nf-val',  vars:'nva-val'}[sec];
+  const label   = document.getElementById(labelId)?.value?.trim() || 'Nuevo';
+  const val     = parseFloat(document.getElementById(valId)?.value) || 0;
+  if (!curPlan) return;
+  curPlan[sec].push({l: label, v: val});
+  if (document.getElementById(labelId)) document.getElementById(labelId).value = '';
+  if (document.getElementById(valId))   document.getElementById(valId).value   = '';
+  renderSection(sec, {ing:'plan-ing-rows',inv:'plan-inv-rows',fijos:'plan-fijos-rows',vars:'plan-vars-rows'}[sec], {ing:'var(--green)',inv:'var(--purple)',fijos:'var(--blue)',vars:'var(--orange)'}[sec]);
+  recalcPlanKPIs();
+}
+
+function recalcPlanKPIs() {
+  if (!curPlan) return;
+  const t = planTotals(curPlan);
+  const set = (id, v, cls) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = fmt(v);
+    if (cls) el.className = 'kv ' + (v >= 0 ? 'pos' : 'neg');
+  };
+  set('pk-ing',  t.ing);
+  set('pk-gas',  t.gastos);
+  set('pk-inv',  t.inv);
+  set('pk-neto', t.neto, true);
+}
+
+function copyPrevMonth() {
+  // Get previous month key from current
+  const [yr, mo] = curMes.split('-').map(Number);
+  const prevDate = new Date(yr, mo - 2, 1); // mo-2 because months are 0-indexed and we want previous
+  const prevMes = prevDate.getFullYear() + '-' + String(prevDate.getMonth()+1).padStart(2,'0');
+  
+  const prevPlan = getPlan(prevMes);
+  if (!prevPlan) { showToast('No hay presupuesto guardado para ' + prevMes, P.yellow); return; }
+  
+  // Copy vars, fijos and inv from previous month — keep current ing (salaries may differ)
+  const curIng = curPlan ? [...curPlan.ing] : prevPlan.ing;
+  curPlan = {
+    ing:   curIng,
+    fijos: JSON.parse(JSON.stringify(prevPlan.fijos)),
+    vars:  JSON.parse(JSON.stringify(prevPlan.vars)),
+    inv:   JSON.parse(JSON.stringify(prevPlan.inv)),
+  };
+  renderPlanSections();
+  showToast('✓ Gastos copiados de ' + MESES[prevDate.getMonth()] + ' ' + prevDate.getFullYear() + ' — revisá y guardá');
+}
+
+function savePlan() {
+  if (!curPlan) return;
+  const plans = DB.get('plans', {});
+  plans[curMes] = curPlan;
+  DB.set('plans', plans);
+  updateOverview();
+  renderFlujo();
+  showToast(`✓ Planificación ${curMes} guardada`);
+}
+
+// ══════════════════════════════════════════════════════
+// TRANSACTIONS
+// ══════════════════════════════════════════════════════
+function getTxs(mes) {
+  return (DB.get('txs', {})[mes] || []);
+}
+
+function txTotals(mes) {
+  const txs = getTxs(mes);
+  const totals = {};
+  txs.forEach(tx => {
+    if (tx.tipo === 'ingreso') return;
+    const cat = normalizeCat(tx.cat || 'Otros'); // always normalize on read
+    totals[cat] = (totals[cat] || 0) + (parseFloat(tx.monto) || 0);
+  });
+  const total = Object.values(totals).reduce((s, v) => s + v, 0);
+  return { totals, total };
+}
+
+let curTipo = 'gasto';
+
+function setTipo(tipo, btn) {
+  curTipo = tipo;
+  document.querySelectorAll('.tipo-btn').forEach(b => {
+    b.style.borderColor = 'var(--border)';
+    b.style.background = 'var(--s2)';
+    b.style.color = 'var(--muted)';
+  });
+  const colors = {gasto:'var(--green)',tc:'var(--orange)',ingreso:'var(--blue)'};
+  btn.style.borderColor = colors[tipo];
+  btn.style.background = colors[tipo].replace('var(--','rgba(').replace(')',',.08)').replace('--green','34,211,160').replace('--orange','251,146,60').replace('--blue','56,189,248');
+  btn.style.color = colors[tipo];
+
+  // Update submit button
+  const submitBtn = document.getElementById('tx-submit');
+  const labels = {gasto:'＋ Registrar gasto',tc:'＋ Registrar pago TC',ingreso:'＋ Registrar ingreso'};
+  submitBtn.textContent = labels[tipo];
+  submitBtn.style.background = {gasto:'var(--green)',tc:'var(--orange)',ingreso:'var(--blue)'}[tipo];
+}
+
+function populateCatDropdown() {
+  const sel = document.getElementById('tx-cat');
+  if (!sel) return;
+  
+  // Get plan for the selected date's month
+  const fechaEl = document.getElementById('tx-fecha');
+  const fecha = fechaEl?.value || new Date().toISOString().split('T')[0];
+  const mes = fecha.slice(0,7); // YYYY-MM
+  const plan = getPlan(mes);
+  
+  sel.innerHTML = '<option value="">— elegir —</option>';
+  
+  // Fijos from plan
+  if (plan.fijos.length) {
+    const g1 = document.createElement('optgroup');
+    g1.label = '📌 Gastos fijos del mes';
+    plan.fijos.forEach(r => {
+      const o = document.createElement('option');
+      o.value = r.l; o.text = r.l; g1.appendChild(o);
+    });
+    sel.appendChild(g1);
+  }
+  
+  // Variables from plan
+  if (plan.vars.length) {
+    const g2 = document.createElement('optgroup');
+    g2.label = '💸 Variables del mes';
+    plan.vars.forEach(r => {
+      const o = document.createElement('option');
+      o.value = r.l; o.text = r.l; g2.appendChild(o);
+    });
+    sel.appendChild(g2);
+  }
+  
+  // Single fallback
+  const g3 = document.createElement('optgroup');
+  g3.label = '➕ Sin categoría';
+  const oOtros = document.createElement('option');
+  oOtros.value = 'Otros'; oOtros.text = 'Otros';
+  g3.appendChild(oOtros);
+  sel.appendChild(g3);
+}
+
+function submitTx() {
+  const fecha = document.getElementById('tx-fecha').value;
+  const monto = parseFloat(document.getElementById('tx-monto').value);
+  const desc  = document.getElementById('tx-desc').value.trim();
+  const cat   = document.getElementById('tx-cat').value;
+  const medio = document.getElementById('tx-medio').value;
+  const notas = document.getElementById('tx-notas').value.trim();
+
+  if (!fecha || !monto || !desc) { showToast('Completá fecha, monto y descripción', P.red); return; }
+
+  // Determine month from date
+  const parts = fecha.split('-');
+  const txMes = parts[0] + '-' + parts[1];
+
+  const tx = { fecha, monto, desc, cat, medio, notas, tipo: curTipo, ts: Date.now() };
+  const txsAll = DB.get('txs', {});
+  if (!txsAll[txMes]) txsAll[txMes] = [];
+  txsAll[txMes].unshift(tx);
+  DB.set('txs', txsAll);
+
+  // Clear form
+  document.getElementById('tx-monto').value = '';
+  document.getElementById('tx-desc').value  = '';
+  document.getElementById('tx-notas').value = '';
+
+  renderRecentTxs();
+  updateOverview();
+  
+  // Auto-refresh Flujo if visible
+  const flujoSel = document.getElementById('flujo-sel');
+  if (flujoSel) {
+    const txMes2 = document.getElementById('tx-fecha')?.value?.slice(0,7) || curMes;
+    // If flujo is showing the same month as the tx just added, refresh it
+    if (flujoSel.value === txMes2) renderFlujo();
+  }
+
+  showToast(`✓ ${curTipo === 'ingreso' ? 'Ingreso' : 'Gasto'} registrado — datos actualizados`);
+}
+
+function renderRecentTxs() {
+  const el = document.getElementById('recent-txs');
+  const allTxs = DB.get('txs', {});
+  const recent = Object.values(allTxs).flat().sort((a,b) => b.ts - a.ts).slice(0, 8);
+  if (!recent.length) { el.innerHTML = '<div style="color:var(--muted);font-size:.75rem;text-align:center;padding:20px 0">Sin registros aún</div>'; return; }
+  el.innerHTML = recent.map(tx => {
+    const isIng = tx.tipo === 'ingreso';
+    const color = isIng ? P.green : P.red;
+    const icon  = isIng ? '💰' : tx.tipo === 'tc' ? '💳' : '💸';
+    return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)">
+      <div style="width:28px;height:28px;border-radius:7px;background:${color}15;display:flex;align-items:center;justify-content:center;font-size:.85rem;flex-shrink:0">${icon}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:.78rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${tx.desc}</div>
+        <div style="font-size:.65rem;color:var(--muted);margin-top:1px">${tx.fecha}${tx.cat ? ' · '+tx.cat : ''}</div>
+      </div>
+      <div style="font-family:var(--fh);font-size:.9rem;font-weight:700;color:${color};flex-shrink:0">${isIng?'+':'-'}${fmt(tx.monto)}</div>
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════════
+// FLUJO
+// ══════════════════════════════════════════════════════
+function renderFlujo() {
+  const sel   = document.getElementById('flujo-sel');
+  const mes   = sel ? sel.value : '2026-03';
+  const label = sel ? sel.options[sel.selectedIndex].text : 'Mar 2026';
+
+  document.getElementById('flujo-mes-label').textContent = label;
+
+  const plan  = getPlan(mes);
+  const pt    = planTotals(plan);
+  const { totals: realTotals, total: realTotal } = txTotals(mes);
+
+  const neto  = pt.ing - realTotal - pt.inv;
+  const dif   = realTotal - pt.gastos;
+
+  // KPIs
+  const setK = (id, v, cls) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = fmt(v);
+    if (cls) el.className = 'kv ' + (v >= 0 ? 'pos' : 'neg');
+  };
+  setK('fk-ing',  pt.ing);
+  setK('fk-gas',  realTotal);
+  setK('fk-dif',  -dif, true);
+  setK('fk-neto', neto, true);
+
+  // Barras presupuestado vs real
+  const maxVal = Math.max(pt.ing, realTotal, 1);
+  // For bars: fijos assumed = presupuesto if not entered manually
+  const realFijosTotal = plan.fijos.reduce((s,r) => s + (realTotals[r.l] != null ? realTotals[r.l] : r.v), 0);
+  const realVarsTotal  = plan.vars.reduce((s,r)  => s + (realTotals[r.l] || 0), 0);
+  const realGrandTotal = realFijosTotal + realVarsTotal;
+  
+  const bars = [
+    { label:'Ingresos',    presup: pt.ing,    real: pt.ing,          color: P.green  },
+    { label:'Gastos fijos',presup: pt.fijos,  real: realFijosTotal,  color: P.blue   },
+    { label:'Variables',   presup: pt.vars_,  real: realVarsTotal,   color: P.orange },
+    { label:'Inversiones', presup: pt.inv,    real: pt.inv,          color: P.purple },
+    { label:'Neto libre',  presup: null,       real: neto,            color: neto >= 0 ? P.green : P.red },
+  ];
+
+  document.getElementById('flujo-bars').innerHTML = bars.map(b => {
+    const pPct = b.presup != null ? (b.presup / maxVal * 100).toFixed(1) : 0;
+    const rPct = Math.abs(b.real) / maxVal * 100;
+    const rColor = b.label === 'Neto libre' ? (b.real >= 0 ? P.green : P.red) : b.color;
+    return `<div class="pvr-row">
+      <div class="pvr-label">${b.label}</div>
+      <div class="pvr-bars">
+        ${b.presup != null ? `<div class="pvr-bar-wrap"><div class="pvr-bar" style="width:${pPct}%;background:${b.color}33;border-right:2px solid ${b.color}"></div></div>` : ''}
+        <div class="pvr-bar-wrap"><div class="pvr-bar" style="width:${Math.min(100,rPct)}%;background:${rColor}55;border-right:2px solid ${rColor}"></div></div>
+      </div>
+      <div class="pvr-vals">${fmt(b.real)}</div>
+      <div class="pvr-pct" style="color:${b.presup > 0 && b.real > b.presup ? P.red : P.green}">
+        ${b.presup > 0 ? Math.round(b.real/b.presup*100)+'%' : '—'}
+      </div>
+    </div>`;
+  }).join('');
+
+  // Tabla detalle por categoría
+  const fijoSet = new Set(plan.fijos.map(r => r.l));
+  const allCats = [...new Set([...plan.fijos.map(r=>r.l), ...plan.vars.map(r=>r.l), ...Object.keys(realTotals)])];
+  const planMap = {};
+  [...plan.fijos, ...plan.vars].forEach(r => planMap[r.l] = (planMap[r.l]||0) + r.v);
+
+  // Separate: plan cats (show presup vs real) + unmatched tx cats (show only real, mark as sin presup)
+  const planCats     = [...plan.fijos.map(r=>r.l), ...plan.vars.map(r=>r.l)];
+  const unmatchedCats = Object.keys(realTotals).filter(c => !planMap[c]);
+
+  const renderRow = (cat, pv, rv, isAuto, isUnmatched) => {
+    const df  = rv - pv;
+    const pct = pv > 0 ? (rv/pv*100).toFixed(0) : '—';
+    const isFijo = fijoSet.has(cat);
+    const color = isUnmatched ? P.yellow :
+                  pv > 0 && rv > pv * 1.05 ? P.red :
+                  rv > 0 ? P.green : 'var(--muted)';
+    const badge = isAuto      ? ' <span style="font-size:.6rem;color:var(--muted);background:var(--s3);padding:1px 5px;border-radius:3px">auto</span>' :
+                  isUnmatched ? ' <span style="font-size:.6rem;color:var(--yellow);background:rgba(251,191,36,.1);padding:1px 5px;border-radius:3px" title="Suma al total de gastos pero no tiene categoría en el presupuesto">⚠ sin presup</span>' : '';
+    return `<tr>
+      <td>${cat}${badge}</td>
+      <td style="text-align:right;color:var(--muted)">${pv > 0 ? fmt(pv) : '—'}</td>
+      <td style="text-align:right;color:${color}">${fmt(rv)}</td>
+      <td style="text-align:right;color:${color}">${pv > 0 ? (df>0?'+':'')+fmt(df) : '—'}</td>
+      <td style="text-align:right;color:${pct==='—'?'var(--muted)':parseInt(pct)>100?P.red:P.green}">${pct}${pct!=='—'?'%':''}</td>
+    </tr>`;
+  };
+
+  document.getElementById('flujo-tbody').innerHTML = [
+    // Plan categories first
+    ...planCats.map(cat => {
+      const pv = planMap[cat] || 0;
+      const isFijo = fijoSet.has(cat);
+      const rv = realTotals[cat] != null ? realTotals[cat] : (isFijo ? pv : 0);
+      const isAuto = isFijo && realTotals[cat] == null;
+      return renderRow(cat, pv, rv, isAuto, false);
+    }),
+    // Unmatched tx categories (cargados sin presupuesto)
+    ...unmatchedCats.map(cat => {
+      const rv = realTotals[cat] || 0;
+      return renderRow(cat, 0, rv, false, true);
+    }),
+  ].join('') + 
+  `<tr style="border-top:2px solid var(--border2);background:var(--s2)">
+    <td style="font-family:var(--fh);font-weight:700;font-size:.8rem;color:var(--text)">TOTAL GASTOS</td>
+    <td style="text-align:right;font-weight:700;color:var(--muted2)">${fmt(pt.gastos)}</td>
+    <td style="text-align:right;font-weight:700;color:var(--red)">${fmt(Object.values(realTotals).reduce((s,v)=>s+v,0) + plan.fijos.filter(r=>realTotals[r.l]==null).reduce((s,r)=>s+r.v,0))}</td>
+    <td></td><td></td>
+  </tr>` || '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:16px">Sin gastos registrados — usá ＋ Cargar</td></tr>';
+
+  // Transacciones del mes
+  const txs = getTxs(mes);
+  const flujoMes2 = mes;
+  document.getElementById('flujo-tx-tbody').innerHTML = txs.map((tx, i) => {
+    const isIng = tx.tipo === 'ingreso';
+    return `<tr>
+      <td>${tx.fecha}</td>
+      <td style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${tx.desc}</td>
+      <td><span class="tag">${normalizeCat(tx.cat)||'—'}</span></td>
+      <td class="${isIng?'pos':'neg'}">${isIng?'+':'-'}${fmt(tx.monto)}</td>
+      <td><button onclick="openEditModal('${flujoMes2}',${i})" style="background:none;border:1px solid var(--border);border-radius:5px;color:var(--muted2);cursor:pointer;padding:3px 8px;font-size:.65rem">✏</button></td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:16px">Sin transacciones en este mes</td></tr>';
+}
+
+// ══════════════════════════════════════════════════════
+// OVERVIEW
+// ══════════════════════════════════════════════════════
+let overviewYear = '2026';
+
+function setOverviewYear(yr, btn) {
+  overviewYear = yr;
+  document.querySelectorAll('.yr-btn').forEach(b => {
+    b.style.borderColor = 'var(--border)';
+    b.style.background  = 'var(--s2)';
+    b.style.color       = 'var(--muted)';
+    b.classList.remove('active-yr');
+  });
+  btn.style.borderColor = 'var(--green)';
+  btn.style.background  = 'rgba(34,211,160,.1)';
+  btn.style.color       = 'var(--green)';
+  btn.classList.add('active-yr');
+  updateOverview();
+  buildEvolChart(yr);
+}
+
+function updateOverview() {
+  const yr = overviewYear;
+  const now = new Date();
+  const curMesKey = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+
+  // Determine which months to accumulate for this year
+  // For historical years: use HIST data
+  // For current year (2026): accumulate from saved plans + txs
+  const allMonths = MESES.map((_, i) => {
+    const m = String(i+1).padStart(2,'0');
+    return yr + '-' + m;
+  });
+
+  // Only include months up to current month
+  const closedMonths = allMonths.filter(mes => mes <= curMesKey);
+
+  let totalIng = 0, totalGas = 0, totalInv = 0;
+
+  if (yr === '2026') {
+    // Use saved plans + real transactions
+    closedMonths.forEach(mes => {
+      const plan = getPlan(mes);
+      const pt   = planTotals(plan);
+      const { total: txTotal, totals: realTotals } = txTotals(mes);
+      const hasTxs = txTotal > 0;
+
+      totalIng += pt.ing;
+      totalInv += pt.inv;
+
+      if (hasTxs) {
+        // Month has real data: sum ALL txs + auto-complete fijos not entered
+        const txGastos  = txTotal;
+        const fijosAuto = plan.fijos
+          .filter(r => realTotals[r.l] == null)
+          .reduce((s, r) => s + r.v, 0);
+        totalGas += txGastos + fijosAuto;
+      } else {
+        // Month has no txs yet: use full presupuesto as estimate
+        totalGas += pt.gastos;
+      }
+    });
+  } else {
+    // Use historical HIST data
+    const gArr = HIST.gastos[yr]  || [];
+    const iArr = HIST.ingresos[yr]|| [];
+    const n = closedMonths.length;
+    totalGas = gArr.slice(0,n).reduce((s,v)=>s+(v||0),0);
+    totalIng = iArr.slice(0,n).reduce((s,v)=>s+(v||0),0);
+    totalInv = 0;
+  }
+
+  const neto = totalIng - totalGas - totalInv;
+  const nMeses = closedMonths.length;
+  const label = nMeses === 1 ? closedMonths[0].replace('-','/') :
+    MESES[0] + '–' + MESES[nMeses-1] + ' ' + yr;
+
+  // Update KPIs
+  document.getElementById('ov-ing').textContent = fmt(totalIng);
+  document.getElementById('ov-gas').textContent = fmt(totalGas);
+  document.getElementById('ov-gas-sub').textContent = nMeses > 1 ? `acumulado ${nMeses} meses` : 'del mes';
+  const netoEl = document.getElementById('ov-neto');
+  netoEl.textContent = fmt(neto);
+  netoEl.className = 'kv ' + (neto >= 0 ? 'pos' : 'neg');
+  document.getElementById('ov-mes-label').textContent = label;
+
+  // Summary bar
+  const yrSummary = document.getElementById('yr-summary');
+  if (yrSummary) yrSummary.textContent = `${nMeses} ${nMeses===1?'mes':'meses'} acumulado${nMeses===1?'':'s'}`;
+
+  // Patrimonio
+  const invs = DB.get('inversiones', INV_DEFAULT);
+  const totalPat = invs.reduce((s, i) => s + (i.ars||0), 0);
+  document.getElementById('ov-pat').textContent = fmt(totalPat);
+
+  // Alerts — based on current month only
+  const alerts = [];
+  const curPlanNow = getPlan(getCurMes());
+  const curPt = planTotals(curPlanNow);
+  const { totals: curRealTotals } = txTotals(curMesKey);
+  const planMap = {};
+  [...curPlanNow.fijos,...curPlanNow.vars].forEach(r => planMap[r.l]=(planMap[r.l]||0)+r.v);
+  Object.entries(curRealTotals).forEach(([cat, rv]) => {
+    const pv = planMap[cat] || 0;
+    if (pv > 0 && rv > pv * 1.1) alerts.push({type:'danger', msg:`⚠ ${cat}: ${fmt(rv)} vs ${fmt(pv)} presupuestado (${Math.round(rv/pv*100)}%)`});
+  });
+  const netoMes = curPt.ing - totalGas/nMeses - curPt.inv;
+  if (neto < 0 && yr === '2026') alerts.push({type:'danger', msg:`⬇ Acumulado negativo en ${yr}: ${fmt(neto)}`});
+  else if (neto >= 0 && yr === '2026') alerts.push({type:'ok', msg:`✓ Acumulado ${yr}: ${fmt(neto)} neto positivo en ${nMeses} ${nMeses===1?'mes':'meses'}`});
+
+  document.getElementById('overview-alerts').innerHTML = alerts.map(a =>
+    `<div class="alert ${a.type}">${a.msg}</div>`).join('');
+
+  // Rebuild donut with current month data
+  buildDonut();
+}
+
+// ══════════════════════════════════════════════════════
+// CHARTS
+// ══════════════════════════════════════════════════════
+Chart.defaults.color = '#64748b';
+Chart.defaults.borderColor = 'rgba(255,255,255,0.06)';
+Chart.defaults.font.family = "'JetBrains Mono',monospace";
+Chart.defaults.font.size = 10;
+
+let chartEvol;
+function buildEvolChart(year='2026') {
+  const canvasEl = document.getElementById('c-evol');
+  if (!canvasEl) return;
+  
+  let g, i, labels;
+  if (year === '2026') {
+    const now = new Date();
+    const curMonthIdx = now.getFullYear() === 2026 ? now.getMonth() : 11;
+    const months = [];
+    for (let idx = 0; idx <= curMonthIdx; idx++) {
+      const mes = '2026-' + String(idx+1).padStart(2,'0');
+      const plan = getPlan(mes);
+      const pt   = planTotals(plan);
+      const { total: txTotal, totals: realTotals } = txTotals(mes);
+      const hasTxs = txTotal > 0;
+      const fijosAuto = plan.fijos.filter(r => realTotals[r.l] == null).reduce((s,r) => s+r.v, 0);
+      const gastosMes = hasTxs ? txTotal + fijosAuto : pt.gastos;
+      months.push({ label: MESES[idx], ing: Math.round(pt.ing), gas: Math.round(gastosMes) });
+    }
+    labels = months.map(m => m.label);
+    i = months.map(m => m.ing);
+    g = months.map(m => m.gas);
+  } else {
+    g = (HIST.gastos[year] || []).filter(v => v != null);
+    i = (HIST.ingresos[year] || []).filter(v => v != null);
+    const len = Math.min(g.length, i.length);
+    g = g.slice(0, len);
+    i = i.slice(0, len);
+    labels = MESES.slice(0, len);
+  }
+
+  // Destroy existing chart properly
+  if (chartEvol) { chartEvol.destroy(); chartEvol = null; }
+  
+  // Replace canvas to avoid stale context issues
+  const parent = canvasEl.parentNode;
+  const newCanvas = document.createElement('canvas');
+  newCanvas.id = 'c-evol';
+  newCanvas.height = 65;
+  parent.replaceChild(newCanvas, canvasEl);
+  chartEvol = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets: [
+      { label:'Gastos',   data:g, borderColor:P.red,   backgroundColor:'rgba(244,63,94,.06)',   borderWidth:2, pointRadius:3, tension:.35, fill:true },
+      { label:'Ingresos', data:i, borderColor:P.green, backgroundColor:'rgba(34,211,160,.06)',  borderWidth:2, pointRadius:3, tension:.35, fill:true },
+    ]},
+    options: { responsive:true, interaction:{mode:'index',intersect:false},
+      plugins:{ legend:{position:'bottom',labels:{boxWidth:8,padding:14}},
+        tooltip:{backgroundColor:'#0e1117',borderColor:'rgba(255,255,255,.1)',borderWidth:1,callbacks:{label:c=>` ${c.dataset.label}: ${fmt(c.parsed.y)}`}}},
+      scales:{ y:{ticks:{callback:v=>'$'+(v/1000).toFixed(0)+'k'},grid:{color:'rgba(255,255,255,.04)'}}, x:{grid:{display:false}} }
+    }
+  });
+}
+
+function setEvolYear(yr, btn) {
+  document.querySelectorAll('#page-overview .chip').forEach(c => { c.classList.remove('dn'); c.classList.add('neu'); });
+  btn.classList.remove('neu'); btn.classList.add('dn');
+  buildEvolChart(yr);
+}
+
+new Chart(document.getElementById('c-anual').getContext('2d'), {
+  type:'bar',
+  data:{ labels:['2024','2025','2026*'],
+    datasets:[
+      {label:'Gastos',   data:[54054,151482,26048], backgroundColor:'rgba(244,63,94,.7)',  borderColor:P.red,   borderWidth:1},
+      {label:'Ingresos', data:[76428,157466,34482], backgroundColor:'rgba(34,211,160,.6)', borderColor:P.green, borderWidth:1},
+    ]},
+  options:{responsive:true,plugins:{legend:{position:'bottom',labels:{boxWidth:8}},tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${fmt(c.parsed.y)}`}}},
+    scales:{y:{ticks:{callback:v=>'$'+(v/1000).toFixed(0)+'k'},grid:{color:'rgba(255,255,255,.04)'}},x:{grid:{display:false}}}}
+});
+
+// Overview donut — composition of current month
+function buildDonut() {
+  const plan = getPlan(getCurMes());
+  const pt   = planTotals(plan);
+  new Chart(document.getElementById('c-donut').getContext('2d'), {
+    type:'doughnut',
+    data:{ labels:['Fijos','Variables','Inversiones'],
+      datasets:[{data:[pt.fijos, pt.vars_, pt.inv], backgroundColor:[P.blue,P.orange,P.purple], borderColor:'#080a0f', borderWidth:3}]},
+    options:{responsive:true, cutout:'58%',
+      plugins:{legend:{position:'right',labels:{boxWidth:8,padding:10,font:{size:9}}},
+        tooltip:{callbacks:{label:c=>{const t=c.dataset.data.reduce((a,b)=>a+b,0);return ` ${fmt(c.parsed)} (${(c.parsed/t*100).toFixed(1)}%)`}}}}}
+  });
+}
+
+// ══════════════════════════════════════════════════════
+// COTIZACIONES EN TIEMPO REAL
+// ══════════════════════════════════════════════════════
+let cotizCache = {};
+let cotizTs = null;
+
+async function fetchCotizaciones() {
+  const now = Date.now();
+  // Cache for 10 minutes
+  if (cotizTs && (now - cotizTs) < 600000) return cotizCache;
+
+  const results = {};
+  
+  try {
+    // BTC price in USD (CoinGecko)
+    const btcRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd', {cache:'no-cache'});
+    if (btcRes.ok) {
+      const btcData = await btcRes.json();
+      results.BTC  = btcData.bitcoin?.usd;
+      results.ETH  = btcData.ethereum?.usd;
+    }
+  } catch(e) { console.log('CoinGecko error:', e.message); }
+
+  try {
+    // Dólar MEP y CCL (DolarApi)
+    const mepRes = await fetch('https://dolarapi.com/v1/dolares/bolsa', {cache:'no-cache'});
+    if (mepRes.ok) {
+      const mep = await mepRes.json();
+      results.MEP = mep.venta;
+    }
+    const cclRes = await fetch('https://dolarapi.com/v1/dolares/contadoconliqui', {cache:'no-cache'});
+    if (cclRes.ok) {
+      const ccl = await cclRes.json();
+      results.CCL = ccl.venta;
+    }
+  } catch(e) { console.log('DolarApi error:', e.message); }
+
+  try {
+    // Letras del Tesoro (ArgentinaDatos)
+    const letRes = await fetch('https://api.argentinadatos.com/v1/finanzas/rendimientos/letras', {cache:'no-cache'});
+    if (letRes.ok) {
+      const letras = await letRes.json();
+      if (Array.isArray(letras)) {
+        letras.forEach(l => { if (l.ticker) results['LETRA_' + l.ticker] = l; });
+      }
+    }
+  } catch(e) { console.log('Letras error:', e.message); }
+
+  try {
+    // CEDEARs via Yahoo Finance (tickers with .BA suffix = Bolsa Argentina)
+    const invs = getInv();
+    const cedearTickers = invs
+      .filter(i => i.tipo === 'CEDEAR' && i.cantidad > 0)
+      .map(i => i.activo + '.BA');
+    
+    if (cedearTickers.length > 0) {
+      // Fetch in batches to avoid rate limiting
+      for (const ticker of cedearTickers) {
+        try {
+          const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d`;
+          const proxy = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+          const res = await fetch(proxy, {cache:'no-cache'});
+          if (res.ok) {
+            const data = await res.json();
+            const parsed = JSON.parse(data.contents);
+            const price = parsed?.chart?.result?.[0]?.meta?.regularMarketPrice;
+            if (price) {
+              results['CEDEAR_' + ticker.replace('.BA','')] = price;
+            }
+          }
+        } catch(e) { /* skip failed ticker */ }
+      }
+    }
+  } catch(e) { console.log('CEDEAR fetch error:', e.message); }
+
+  cotizCache = results;
+  cotizTs    = now;
+  return results;
+}
+
+function getArsFromCotiz(inv, cotiz) {
+  if (!cotiz || !inv) return inv.ars || 0;
+  const tipo = inv.tipo;
+  const tc   = cotiz.MEP || TC;
+
+  if (tipo === 'CEDEAR') {
+    const key = 'CEDEAR_' + inv.activo.toUpperCase();
+    const price = cotiz[key];
+    if (price && inv.cantidad > 0) return Math.round(inv.cantidad * price);
+    return inv.ars || 0; // fallback to manual if no live price
+  }
+  if (tipo === 'Cripto') {
+    const sym = inv.activo.toUpperCase();
+    const usdPrice = cotiz[sym];
+    if (usdPrice && inv.cantidad > 0) return Math.round(inv.cantidad * usdPrice * tc);
+    return inv.ars || 0;
+  }
+  if (tipo === 'CEDEAR') {
+    const key = 'CEDEAR_' + inv.activo.toUpperCase();
+    const price = cotiz[key];
+    if (price) return `<span style="font-size:.65rem;color:var(--blue);background:rgba(56,189,248,.1);padding:1px 6px;border-radius:4px;margin-left:6px">$${Math.round(price).toLocaleString('es-AR')}</span>`;
+  }
+  if (tipo === 'Stablecoin' || tipo === 'Dólar') {
+    const cantUSD = parseFloat(inv.cantidadUSD || (inv.ars / tc));
+    return Math.round(cantUSD * tc);
+  }
+  if (tipo === 'Letra') {
+    const key = 'LETRA_' + (inv.ticker || inv.activo);
+    const letra = cotiz[key];
+    if (letra) return Math.round((inv.vn || inv.ars) * (1 + (letra.tna||0)/100/365*30));
+    return inv.ars || 0;
+  }
+  return inv.ars || 0; // FCI, manual
+}
+
+function buildCotizBadge(inv, cotiz) {
+  if (!cotiz) return '';
+  const tipo = inv.tipo;
+  
+  if (tipo === 'Cripto') {
+    const sym = inv.activo.toUpperCase();
+    const price = cotiz[sym];
+    if (price) return `<span style="font-size:.65rem;color:var(--blue);background:rgba(56,189,248,.1);padding:1px 6px;border-radius:4px;margin-left:6px">u$s ${price.toLocaleString('es-AR')}</span>`;
+  }
+  if (tipo === 'Stablecoin' || tipo === 'Dólar') {
+    const tc = cotiz.MEP;
+    if (tc) return `<span style="font-size:.65rem;color:var(--green);background:rgba(34,211,160,.1);padding:1px 6px;border-radius:4px;margin-left:6px">MEP $${Math.round(tc).toLocaleString('es-AR')}</span>`;
+  }
+  if (tipo === 'Letra') {
+    const key = 'LETRA_' + (inv.ticker || inv.activo);
+    const letra = cotiz[key];
+    if (letra) return `<span style="font-size:.65rem;color:var(--yellow);background:rgba(251,191,36,.1);padding:1px 6px;border-radius:4px;margin-left:6px">TNA ${((letra.tna||0)*100).toFixed(1)}%</span>`;
+  }
+  return '';
+}
+
+// ══════════════════════════════════════════════════════
+// INVERSIONES
+// ══════════════════════════════════════════════════════
+function getInv() {
+  return DB.get('inversiones', INV_DEFAULT);
+}
+
+async function renderInvList() {
+  const invs = getInv();
+
+  // Show loading state
+  const listEl = document.getElementById('inv-list');
+  if (listEl) listEl.innerHTML = '<div style="color:var(--muted);font-size:.75rem;padding:16px;text-align:center">⟳ Actualizando cotizaciones...</div>';
+
+  // Fetch live prices
+  const cotiz = await fetchCotizaciones().catch(() => ({}));
+
+  // Update ARS values from live prices for auto-priced types
+  invs.forEach(inv => {
+    const live = getArsFromCotiz(inv, cotiz);
+    if (live > 0 && (inv.tipo === 'CEDEAR' || inv.tipo === 'Cripto' || inv.tipo === 'Stablecoin' || inv.tipo === 'Dólar')) {
+      inv.ars = live;
+    }
+  });
+
+  // Update TC from MEP if available
+  if (cotiz.MEP) {
+    TC = Math.round(cotiz.MEP);
+    DB.set('tc', TC);
+    const tcEl = document.getElementById('inv-tc-kpi');
+    if (tcEl) tcEl.textContent = fmt(TC);
+    const cfgTc = document.getElementById('cfg-tc');
+    if (cfgTc) cfgTc.value = TC;
+  }
+
+  const total = invs.reduce((s, i) => s + (i.ars||0), 0);
+  const fci   = invs.filter(i=>i.tipo==='FCI').reduce((s,i)=>s+(i.ars||0),0);
+  const usdVal= invs.filter(i=>i.moneda==='USD').reduce((s,i)=>s+(i.ars||0)/TC,0);
+
+  document.getElementById('inv-total-kpi').textContent = fmt(total);
+  document.getElementById('inv-usd-kpi').textContent   = 'u$s ' + Math.round(usdVal).toLocaleString('es-AR');
+  document.getElementById('inv-fci-kpi').textContent   = fmt(fci);
+  document.getElementById('inv-tc-kpi').textContent    = fmt(TC);
+  document.getElementById('ov-pat').textContent        = fmt(total);
+
+  const icons = {FCI:'📊',Cripto:'₿',Stablecoin:'💲',Dólar:'💵',Bono:'📋',Acciones:'📈'};
+  const colors = {FCI:P.purple,Cripto:P.yellow,Stablecoin:P.blue,Dólar:P.green,Bono:P.orange};
+
+  const tsLabel = cotizTs ? new Date(cotizTs).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : '—';
+  // Calculate P&L totals
+  const totalValor  = invs.reduce((s, inv) => s + (inv.ars||0), 0);
+  const totalCosto  = invs.reduce((s, inv) => s + (inv.costo||0), 0);
+  const totalPnL    = totalValor - totalCosto;
+  const totalPnLPct = totalCosto > 0 ? (totalPnL / totalCosto) * 100 : 0;
+  const pnlColor    = totalPnL >= 0 ? P.green : P.red;
+  const pnlSign     = totalPnL >= 0 ? '+' : '';
+
+  // P&L summary banner
+  const pnlBanner = totalCosto > 0 ? `
+    <div style="background:${totalPnL>=0?'rgba(34,211,160,.08)':'rgba(244,63,94,.08)'};border:1px solid ${totalPnL>=0?'rgba(34,211,160,.2)':'rgba(244,63,94,.2)'};border-radius:8px;padding:12px 16px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">Resultado total de la cartera</div>
+        <div style="font-family:var(--fh);font-size:1.3rem;font-weight:700;color:${pnlColor}">${pnlSign}$${Math.abs(Math.round(totalPnL)).toLocaleString('es-AR')}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:.65rem;color:var(--muted);margin-bottom:3px">Invertido: $${Math.round(totalCosto).toLocaleString('es-AR')}</div>
+        <div style="font-family:var(--fh);font-size:1.1rem;font-weight:700;color:${pnlColor}">${pnlSign}${totalPnLPct.toFixed(1)}%</div>
+      </div>
+    </div>` : '';
+
+  document.getElementById('inv-list').innerHTML = pnlBanner +
+    `<div style="font-size:.62rem;color:var(--muted);margin-bottom:10px;text-align:right">Cotizaciones: ${tsLabel}</div>` +
+    invs.map((inv, i) => {
+      const color   = colors[inv.tipo] || P.blue;
+      const hasVal  = inv.ars > 0;
+      const ganLoss = (hasVal && inv.costo > 0) ? inv.ars - inv.costo : 0;
+      const rendPct = (hasVal && inv.costo > 0) ? ((inv.ars - inv.costo) / inv.costo) : (hasVal ? (inv.rend || 0) : null);
+      const rc      = rendPct === null ? P.yellow : rendPct > 0 ? P.green : rendPct < 0 ? P.red : P.yellow;
+      const rendLabel = rendPct === null 
+        ? '<span style="font-size:.65rem;color:var(--muted)">— actualizar valor</span>'
+        : `<span style="color:${rc};font-size:.7rem;font-weight:600">${rendPct>=0?'+':''}${(rendPct*100).toFixed(1)}%${ganLoss!==0?' ('+fmt(Math.abs(ganLoss))+')':''}</span>`;
+      const badge   = buildCotizBadge(inv, cotiz);
+      return `<div class="inv-row">
+        <div class="inv-icon" style="background:${color}15">${icons[inv.tipo]||'📈'}</div>
+        <div class="inv-body">
+          <div class="inv-name">${inv.activo} <span style="font-size:.62rem;color:${color};background:${color}15;padding:1px 6px;border-radius:4px">${inv.tipo}</span>${badge}</div>
+          <div class="inv-meta">${inv.nota||''}${inv.fechaEntrada?' · Entrada: '+inv.fechaEntrada:''}</div>
+        </div>
+        <div style="text-align:right">
+          <div class="inv-val" style="color:${hasVal?color:'var(--muted)'}">${hasVal?fmt(inv.ars):'— completar'}</div>
+          ${rendLabel}
+        </div>
+      </div>`;
+    }).join('');
+
+  // Donut
+  if (total > 0) {
+    new Chart(document.getElementById('c-inv-donut').getContext('2d'), {
+      type:'doughnut',
+      data:{labels:invs.map(i=>i.activo), datasets:[{data:invs.map(i=>i.ars),
+        backgroundColor:[P.purple,'rgba(167,139,250,.6)',P.yellow,'rgba(251,191,36,.6)',P.blue,P.green],
+        borderColor:'#080a0f',borderWidth:3}]},
+      options:{responsive:true,cutout:'58%',
+        plugins:{legend:{position:'right',labels:{boxWidth:8,padding:8,font:{size:9}}},
+          tooltip:{callbacks:{label:c=>`${fmt(c.parsed)} (${(c.parsed/total*100).toFixed(1)}%)`}}}}
+    });
+  }
+
+  // Movimientos recientes (from transactions)
+  const allTxs = Object.values(DB.get('txs',{})).flat()
+    .filter(t => t.tipo === 'inversion' || (t.cat||'').toLowerCase().includes('invers') || (t.cat||'').toLowerCase().includes('fci') || (t.cat||'').toLowerCase().includes('cripto'))
+    .sort((a,b) => b.ts - a.ts).slice(0,5);
+
+  document.getElementById('inv-movs').innerHTML = allTxs.length
+    ? allTxs.map(tx => `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:.78rem">
+        <div><div style="color:var(--text)">${tx.desc}</div><div style="font-size:.65rem;color:var(--muted)">${tx.fecha}</div></div>
+        <div style="color:var(--purple);font-weight:700">-${fmt(tx.monto)}</div>
+      </div>`).join('')
+    : '<div style="color:var(--muted);font-size:.75rem;padding:16px 0;text-align:center">Sin movimientos registrados</div>';
+}
+
+function toggleInvEditor() {
+  const ed  = document.getElementById('inv-editor');
+  const btn = document.getElementById('inv-edit-btn');
+  const open = ed.style.display !== 'none';
+  if (!open) {
+    renderInvEditor();
+    ed.style.display = 'block';
+    btn.textContent  = '✕ Cerrar';
+    btn.style.color  = P.red;
+  } else {
+    ed.style.display = 'none';
+    btn.textContent  = '✏ Editar posiciones';
+    btn.style.color  = '';
+  }
+}
+
+function renderInvEditor() {
+  const invs = getInv();
+  document.getElementById('inv-editor-rows').innerHTML = invs.map((inv, i) => `
+    <div style="background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="font-size:.78rem;font-weight:600;color:var(--text)">${inv.activo}</div>
+        <button onclick="delInvRow(${i})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:.85rem;padding:2px 6px">✕ Eliminar</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+        <div><div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">Nombre</div>
+          <input type="text" value="${inv.activo}" id="ie-n-${i}" class="fi" style="font-size:.75rem;padding:7px 10px"></div>
+        <div><div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">Tipo</div>
+          <select id="ie-t-${i}" class="fi" style="font-size:.72rem;padding:7px 6px">
+            ${['FCI','Cripto','Stablecoin','Dólar','Bono','CEDEAR','Acciones'].map(t=>`<option ${t===inv.tipo?'selected':''}>${t}</option>`).join('')}
+          </select></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+        <div><div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">Valor actual ARS $</div>
+          <input type="number" value="${inv.ars}" id="ie-a-${i}" class="fi" style="font-size:.82rem;padding:8px 10px;color:var(--green);text-align:right;font-weight:600"></div>
+        <div><div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">Costo de entrada ARS $</div>
+          <input type="number" value="${inv.costo||inv.ars}" id="ie-c-${i}" class="fi" style="font-size:.82rem;padding:8px 10px;color:var(--blue);text-align:right"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+        <div><div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">Cantidad <span style="color:var(--muted)">(cripto/USD)</span></div>
+          <input type="number" value="${inv.cantidad||''}" id="ie-qty-${i}" class="fi" placeholder="ej: 0.001" step="any" style="font-size:.75rem;padding:7px 10px;text-align:right"></div>
+        <div><div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">Ticker <span style="color:var(--muted)">(letras)</span></div>
+          <input type="text" value="${inv.ticker||''}" id="ie-tk-${i}" class="fi" placeholder="ej: S31M5" style="font-size:.72rem;padding:7px 10px;text-transform:uppercase"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div><div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">Fecha entrada</div>
+          <input type="date" value="${inv.fechaEntrada||''}" id="ie-fe-${i}" class="fi" style="font-size:.72rem;padding:7px 8px"></div>
+        <div><div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">Notas</div>
+          <input type="text" value="${inv.nota||''}" id="ie-no-${i}" class="fi" style="font-size:.72rem;padding:7px 10px"></div>
+      </div>
+    </div>`).join('');
+}
+
+function addInvRow() {
+  const invs = getInv();
+  invs.push({activo:'Nuevo activo',tipo:'FCI',moneda:'ARS',pos:'0',ars:0,rend:0,nota:''});
+  DB.set('inversiones', invs);
+  renderInvEditor();
+}
+
+function delInvRow(i) {
+  const invs = getInv();
+  invs.splice(i, 1);
+  DB.set('inversiones', invs);
+  renderInvEditor();
+}
+
+function saveInv() {
+  const invs = getInv();
+  invs.forEach((inv, i) => {
+    const ars   = parseFloat(document.getElementById(`ie-a-${i}`)?.value) || 0;
+    const costo = parseFloat(document.getElementById(`ie-c-${i}`)?.value) || ars;
+    inv.activo      = document.getElementById(`ie-n-${i}`)?.value  || inv.activo;
+    inv.tipo        = document.getElementById(`ie-t-${i}`)?.value  || inv.tipo;
+    inv.ars         = ars;
+    inv.costo       = costo;
+    inv.rend        = costo > 0 ? (ars - costo) / costo : 0; // auto-calc from values
+    inv.fechaEntrada= document.getElementById(`ie-fe-${i}`)?.value || '';
+    inv.nota        = document.getElementById(`ie-no-${i}`)?.value || '';
+    inv.cantidad    = parseFloat(document.getElementById(`ie-qty-${i}`)?.value) || inv.cantidad || 0;
+    inv.ticker      = (document.getElementById(`ie-tk-${i}`)?.value || '').toUpperCase() || inv.ticker || '';
+    inv.moneda      = inv.moneda || 'ARS';
+    inv.pos         = inv.pos    || '';
+  });
+  DB.set('inversiones', invs);
+  toggleInvEditor();
+  renderInvList();
+  updatePatrimonio();
+  showToast(`✓ Portafolio actualizado`);
+}
+
+// ══════════════════════════════════════════════════════
+// PATRIMONIO
+// ══════════════════════════════════════════════════════
+function updatePatrimonio() {
+  const invs  = getInv();
+  const total = invs.reduce((s, i) => s + (i.ars||0), 0);
+  const items = [
+    {label:'FCI/Bonos', val:invs.filter(i=>i.tipo==='FCI'||i.tipo==='Bono').reduce((s,i)=>s+(i.ars||0),0), color:P.purple},
+    {label:'Cripto USD', val:invs.filter(i=>i.tipo==='Cripto').reduce((s,i)=>s+(i.ars||0),0), color:P.yellow},
+    {label:'Stablecoin', val:invs.filter(i=>i.tipo==='Stablecoin').reduce((s,i)=>s+(i.ars||0),0), color:P.blue},
+    {label:'Dólar/MEP',  val:invs.filter(i=>i.tipo==='Dólar').reduce((s,i)=>s+(i.ars||0),0), color:P.green},
+  ].filter(i => i.val > 0);
+
+  document.getElementById('pat-activos').textContent = fmt(total);
+  document.getElementById('pat-pasivos').textContent = fmt(0);
+  document.getElementById('pat-neto').textContent    = fmt(total);
+  document.getElementById('ov-pat').textContent      = fmt(total);
+
+  // Bar
+  const barEl = document.getElementById('pat-bar-wrap');
+  barEl.innerHTML = items.map(i => `<div style="width:${(i.val/total*100).toFixed(1)}%;height:100%;background:${i.color};border-radius:3px"></div>`).join('');
+
+  const legEl = document.getElementById('pat-legend');
+  legEl.innerHTML = items.map(i => `<div style="display:flex;align-items:center;gap:6px;font-size:.7rem;color:var(--muted2)">
+    <div style="width:8px;height:8px;border-radius:2px;background:${i.color};flex-shrink:0"></div>
+    ${i.label}: ${fmt(i.val)} (${(i.val/total*100).toFixed(0)}%)
+  </div>`).join('');
+
+  // Charts
+  new Chart(document.getElementById('c-pat').getContext('2d'), {
+    type:'line',
+    data:{labels:['Ene','Feb','Mar'],datasets:[{label:'Patrimonio',data:[215000,238000,total||259760],borderColor:P.purple,backgroundColor:'rgba(167,139,250,.08)',fill:true,tension:.4,borderWidth:2.5}]},
+    options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${fmt(c.parsed.y)}`}}},
+      scales:{y:{ticks:{callback:v=>'$'+(v/1000).toFixed(0)+'k'},grid:{color:'rgba(255,255,255,.04)'}},x:{grid:{display:false}}}}
+  });
+
+  // Ahorro mensual
+  const ahorros = ['2026-01','2026-02','2026-03'].map(mes => {
+    const plan = getPlan(mes);
+    const pt   = planTotals(plan);
+    const { total: rt } = txTotals(mes);
+    return pt.ing - (rt || pt.gastos) - pt.inv;
+  });
+  new Chart(document.getElementById('c-ahorro').getContext('2d'), {
+    type:'bar',
+    data:{labels:['Ene','Feb','Mar'],datasets:[{label:'Ahorro neto',data:ahorros,
+      backgroundColor:ahorros.map(v=>v>=0?'rgba(34,211,160,.6)':'rgba(244,63,94,.6)'),
+      borderColor:ahorros.map(v=>v>=0?P.green:P.red),borderWidth:1}]},
+    options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${fmt(c.parsed.y)}`}}},
+      scales:{y:{ticks:{callback:v=>'$'+(v/1000).toFixed(0)+'k'},grid:{color:'rgba(255,255,255,.04)'}},x:{grid:{display:false}}}}
+  });
+}
+
+// ══════════════════════════════════════════════════════
+// CONFIG
+// ══════════════════════════════════════════════════════
+function saveTc() {
+  TC = parseFloat(document.getElementById('cfg-tc').value) || 1250;
+  DB.set('tc', TC);
+  document.getElementById('inv-tc-kpi').textContent = fmt(TC);
+  showToast(`✓ TC actualizado: $${TC}/USD`);
+}
+
+function openEditModal(mes, idx) {
+  const txsAll = DB.get('txs', {});
+  const tx = txsAll[mes]?.[idx];
+  if (!tx) return;
+  document.getElementById('edit-mes').value   = mes;
+  document.getElementById('edit-idx').value   = idx;
+  document.getElementById('edit-fecha').value = tx.fecha;
+  document.getElementById('edit-monto').value = tx.monto;
+  document.getElementById('edit-desc').value  = tx.desc;
+  document.getElementById('edit-cat').value   = tx.cat || '';
+  const modal = document.getElementById('edit-modal');
+  modal.style.display = 'flex';
+}
+
+function closeEditModal() {
+  document.getElementById('edit-modal').style.display = 'none';
+}
+
+function saveEditTx() {
+  const mes  = document.getElementById('edit-mes').value;
+  const idx  = parseInt(document.getElementById('edit-idx').value);
+  const txsAll = DB.get('txs', {});
+  if (!txsAll[mes]?.[idx]) return;
+  txsAll[mes][idx].fecha = document.getElementById('edit-fecha').value;
+  txsAll[mes][idx].monto = parseFloat(document.getElementById('edit-monto').value) || 0;
+  txsAll[mes][idx].desc  = document.getElementById('edit-desc').value;
+  txsAll[mes][idx].cat   = document.getElementById('edit-cat').value;
+  DB.set('txs', txsAll);
+  closeEditModal();
+  renderFlujo();
+  renderRecentTxs();
+  updateOverview();
+  showToast('✓ Transacción actualizada');
+}
+
+function deleteTx() {
+  if (!confirm('¿Borrar esta transacción?')) return;
+  const mes  = document.getElementById('edit-mes').value;
+  const idx  = parseInt(document.getElementById('edit-idx').value);
+  const txsAll = DB.get('txs', {});
+  if (!txsAll[mes]) return;
+  txsAll[mes].splice(idx, 1);
+  DB.set('txs', txsAll);
+  closeEditModal();
+  renderFlujo();
+  renderRecentTxs();
+  updateOverview();
+  showToast('✓ Transacción eliminada');
+}
+
+function clearAll() {
+  if (!confirm('¿Borrar todos los presupuestos y transacciones guardados?')) return;
+  ['plans','txs','inversiones','tc'].forEach(k => DB.del(k));
+  TC = 1250;
+  location.reload();
+}
+
+function updateHeaderMes() {
+  const sel = document.getElementById('plan-sel');
+  const label = sel ? sel.options[sel.selectedIndex].text : 'Mar 2026';
+  document.getElementById('header-mes').textContent = label;
+}
+
+// ══════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════
+// THEME TOGGLE
+// ══════════════════════════════════════════════════════
+function toggleTheme() {
+  const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+  const newTheme = isLight ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', newTheme);
+  localStorage.setItem('theme', newTheme);
+  document.getElementById('theme-btn').textContent = newTheme === 'light' ? '🌙' : '☀️';
+}
+
+function initTheme() {
+  const saved = localStorage.getItem('theme');
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const theme = saved || (prefersDark ? 'dark' : 'light');
+  if (theme === 'light') {
+    document.documentElement.setAttribute('data-theme', 'light');
+    const btn = document.getElementById('theme-btn');
+    if (btn) btn.textContent = '☀️';
+  }
+}
+initTheme();
+
+// ══════════════════════════════════════════════════════
+// NAME NORMALIZATION MAP
+// Maps old names → canonical plan names
+// ══════════════════════════════════════════════════════
+const NAME_MAP = {
+  // Tarjetas
+  'Tarjeta BSF':       'TC BSF',
+  'Tarjeta BBVA':      'TC BBVA',
+  'Tarjeta Municipal': 'TC Municipal',
+  'Tarjeta MP':        'TC MP',
+  // Tennis / Club
+  'Club / Tennis':     'Tennis',
+  'Club/Tennis':       'Tennis',
+  // Dpto Rosario
+  'Dpto Rosario — Alquiler':  'Alquiler',
+  'Dpto Rosario — Expensas':  'Expensas',
+  'Dpto Rosario — Servicios': 'EPE / Gas',
+  'Dpto Rosario — Otros':     'Gastos Dpto',
+  // Casa Roldán
+  'Casa Roldán — Limpieza':      'Limpieza',
+  'Casa Roldán — Servicios':     'Cable / Flow',
+  'Casa Roldán — Mantenimiento': 'Casa Roldán',
+  'Casa Roldán — Otros':         'Casa Roldán',
+  // Servicios
+  'EPE / Gas Dpto':    'EPE / Gas',
+  'EPE / Gas Roldán':  'EPE / Gas',
+  // Efectivo
+  'Efectivo':          'Efectivo',
+};
+
+function normalizeCat(cat) {
+  return NAME_MAP[cat] || cat;
+}
+
+function migrateOldTxNames() {
+  const txsAll = DB.get('txs', {});
+  let changed = false;
+  Object.keys(txsAll).forEach(mes => {
+    txsAll[mes].forEach(tx => {
+      const normalized = normalizeCat(tx.cat);
+      if (normalized !== tx.cat) {
+        tx.cat = normalized;
+        changed = true;
+      }
+    });
+  });
+  if (changed) {
+    DB.set('txs', txsAll);
+    console.log('Migrated tx category names');
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Migrate inversiones: replace if saved data has fewer CEDEARs than INV_DEFAULT
+  (function() {
+    const saved = DB.get('inversiones', null);
+    const defaultCedears = INV_DEFAULT.filter(i => i.tipo === 'CEDEAR').length;
+    const savedCedears   = saved ? saved.filter(i => i.tipo === 'CEDEAR').length : 0;
+    if (savedCedears < defaultCedears) {
+      DB.set('inversiones', JSON.parse(JSON.stringify(INV_DEFAULT)));
+      console.log('Migrated: loaded full INVIU portfolio (' + defaultCedears + ' CEDEARs)');
+    }
+  })();
+
+  // Migrate old tx category names to normalized names
+  migrateOldTxNames();
+
+  // Set today's date in cargar form
+  const fechaEl = document.getElementById('tx-fecha');
+  fechaEl.value = new Date().toISOString().split('T')[0];
+  fechaEl.addEventListener('change', populateCatDropdown);
+  populateCatDropdown();
+
+  // Load TC
+  document.getElementById('cfg-tc').value = TC;
+
+  // Init presupuesto
+  curMes  = getCurMes();
+  curPlan = getPlan(curMes);
+  renderPlanSections();
+
+  // Init charts — build AFTER plans are loaded
+  setTimeout(() => {
+    buildEvolChart('2026');
+    buildDonut();
+  }, 50);
+
+  // Init flujo
+  renderFlujo();
+
+  // Init inversiones
+  renderInvList();
+
+  // Init patrimonio
+  updatePatrimonio();
+
+  // Init overview
+  updateOverview();
+
+  // Init recent txs
+  renderRecentTxs();
+});
+</script>
+</body>
+</html>
