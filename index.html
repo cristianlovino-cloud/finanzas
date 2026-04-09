@@ -255,7 +255,7 @@ nav::-webkit-scrollbar{display:none}
       <div style="font-size:.68rem;color:var(--muted)">Cargá una vez al inicio del mes.</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center">
-      <select id="plan-sel-top" onchange="syncPlanSel('top')" class="fi" style="width:auto;padding:5px 10px;font-size:.7rem">
+      <select id="plan-sel-top" onchange="setGlobalMes(this.value)" class="fi" style="width:auto;padding:5px 10px;font-size:.7rem">
         <option value="2026-05">May 2026</option>
         <option value="2026-04">Abr 2026</option>
         <option value="2026-03">Mar 2026</option>
@@ -277,7 +277,7 @@ nav::-webkit-scrollbar{display:none}
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px" id="plan-header-hidden" style="display:none">
     <div></div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <select id="plan-sel" onchange="syncPlanSel('main')" class="fi" style="width:auto;padding:6px 12px">
+      <select id="plan-sel" onchange="setGlobalMes(this.value)" class="fi" style="width:auto;padding:6px 12px">
         <option value="2026-04">Abr 2026</option>
         <option value="2026-03" selected>Mar 2026</option>
         <option value="2026-02">Feb 2026</option>
@@ -356,9 +356,10 @@ nav::-webkit-scrollbar{display:none}
       <div style="font-family:var(--fh);font-size:1.1rem;font-weight:700">Flujo mensual</div>
       <div style="font-size:.72rem;color:var(--muted);margin-top:2px">Presupuestado vs Real — calculado desde tus gastos cargados</div>
     </div>
-    <select id="flujo-sel" onchange="renderFlujo()" class="fi" style="width:auto;padding:6px 12px">
+    <select id="flujo-sel" onchange="setGlobalMes(this.value)" class="fi" style="width:auto;padding:6px 12px">
+      <option value="2026-05">May 2026</option>
       <option value="2026-04">Abr 2026</option>
-      <option value="2026-03" selected>Mar 2026</option>
+      <option value="2026-03">Mar 2026</option>
       <option value="2026-02">Feb 2026</option>
       <option value="2026-01">Ene 2026</option>
       <option value="2025-12">Dic 2025</option>
@@ -415,8 +416,10 @@ nav::-webkit-scrollbar{display:none}
             <input type="number" id="edit-monto" class="fi" placeholder="0"></div>
           <div class="field" style="margin-bottom:10px"><label style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Descripción</label>
             <input type="text" id="edit-desc" class="fi"></div>
-          <div class="field" style="margin-bottom:16px"><label style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Categoría</label>
-            <input type="text" id="edit-cat" class="fi"></div>
+          <div class="field" style="margin-bottom:16px">
+            <label style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Categoría</label>
+            <select id="edit-cat" class="fi"></select>
+          </div>
           <div style="display:flex;gap:8px">
             <button onclick="saveEditTx()" class="btn btn-g" style="flex:1">Guardar</button>
             <button onclick="deleteTx()" class="btn" style="background:var(--red);color:white;padding:11px 18px;border-radius:7px;border:none;cursor:pointer">🗑 Borrar</button>
@@ -601,6 +604,30 @@ function getCurMes() {
 function getCurMesLabel() {
   const now = new Date();
   return MESES[now.getMonth()] + ' ' + now.getFullYear();
+}
+function mesLabel(mesKey) {
+  const [y, m] = mesKey.split('-');
+  return MESES[parseInt(m)-1] + ' ' + y;
+}
+
+// ── Global selected month — shared across all tabs ──
+let globalMes = getCurMes();
+
+function setGlobalMes(mesKey) {
+  globalMes = mesKey;
+  // Sync all selectors
+  ['plan-sel','plan-sel-top','flujo-sel'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = mesKey;
+  });
+  // Update header badge
+  document.getElementById('header-mes').textContent = mesLabel(mesKey);
+  // Refresh all views
+  curMes  = mesKey;
+  curPlan = getPlan(mesKey);
+  renderPlanSections();
+  renderFlujo();
+  updateOverview();
 }
 
 // ── Historical data pre-loaded from xlsx ──
@@ -954,6 +981,13 @@ const INV_DEFAULT = [
 // ══════════════════════════════════════════════════════
 const P = { green:'#22d3a0',red:'#f43f5e',yellow:'#fbbf24',blue:'#38bdf8',purple:'#a78bfa',orange:'#fb923c' };
 const fmt  = n => n == null ? '—' : '$' + Math.abs(Math.round(n)).toLocaleString('es-AR');
+const fmtK = n => {
+  if (n == null) return '—';
+  const abs = Math.abs(Math.round(n));
+  if (abs >= 1000000) return (n < 0 ? '-' : '') + '$' + (abs/1000000).toFixed(1) + 'M';
+  if (abs >= 1000)    return (n < 0 ? '-' : '') + '$' + (abs/1000).toFixed(0) + 'k';
+  return (n < 0 ? '-' : '') + '$' + abs.toLocaleString('es-AR');
+};
 const fmtp = p => (p > 0 ? '+' : '') + (p * 100).toFixed(1) + '%';
 let TC = parseInt(DB.get('tc','1250')) || 1250;
 
@@ -1015,15 +1049,8 @@ function syncPlanSel(source) {
 }
 
 function loadPlanUI() {
-  const sel = document.getElementById('plan-sel') || document.getElementById('plan-sel-top');
-  if (!sel) return;
-  curMes = sel.value;
+  // loadPlanUI now just reads curMes (set by setGlobalMes)
   curPlan = getPlan(curMes);
-  // Sync both selectors
-  const topSel  = document.getElementById('plan-sel-top');
-  const mainSel = document.getElementById('plan-sel');
-  if (topSel)  topSel.value  = curMes;
-  if (mainSel) mainSel.value = curMes;
   renderPlanSections();
   updateHeaderMes();
 }
@@ -1459,11 +1486,11 @@ function updateOverview() {
     MESES[0] + '–' + MESES[nMeses-1] + ' ' + yr;
 
   // Update KPIs
-  document.getElementById('ov-ing').textContent = fmt(totalIng);
-  document.getElementById('ov-gas').textContent = fmt(totalGas);
+  document.getElementById('ov-ing').textContent = fmtK(totalIng);
+  document.getElementById('ov-gas').textContent = fmtK(totalGas);
   document.getElementById('ov-gas-sub').textContent = nMeses > 1 ? `acumulado ${nMeses} meses` : 'del mes';
   const netoEl = document.getElementById('ov-neto');
-  netoEl.textContent = fmt(neto);
+  netoEl.textContent = fmtK(neto);
   netoEl.className = 'kv ' + (neto >= 0 ? 'pos' : 'neg');
   document.getElementById('ov-mes-label').textContent = label;
 
@@ -1474,7 +1501,7 @@ function updateOverview() {
   // Patrimonio
   const invs = DB.get('inversiones', INV_DEFAULT);
   const totalPat = invs.reduce((s, i) => s + (i.ars||0), 0);
-  document.getElementById('ov-pat').textContent = fmt(totalPat);
+  document.getElementById('ov-pat').textContent = fmtK(totalPat);
 
   // Alerts — based on current month only
   const alerts = [];
@@ -1767,9 +1794,9 @@ async function renderInvList() {
   const fci   = invs.filter(i=>i.tipo==='FCI').reduce((s,i)=>s+(i.ars||0),0);
   const usdVal= invs.filter(i=>i.moneda==='USD').reduce((s,i)=>s+(i.ars||0)/TC,0);
 
-  document.getElementById('inv-total-kpi').textContent = fmt(total);
+  document.getElementById('inv-total-kpi').textContent = fmtK(total);
   document.getElementById('inv-usd-kpi').textContent   = 'u$s ' + Math.round(usdVal).toLocaleString('es-AR');
-  document.getElementById('inv-fci-kpi').textContent   = fmt(fci);
+  document.getElementById('inv-fci-kpi').textContent   = fmtK(fci);
   document.getElementById('inv-tc-kpi').textContent    = fmt(TC);
   document.getElementById('ov-pat').textContent        = fmt(total);
 
@@ -1790,7 +1817,7 @@ async function renderInvList() {
     <div style="background:${totalPnL>=0?'rgba(34,211,160,.08)':'rgba(244,63,94,.08)'};border:1px solid ${totalPnL>=0?'rgba(34,211,160,.2)':'rgba(244,63,94,.2)'};border-radius:8px;padding:12px 16px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
       <div>
         <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">Resultado total de la cartera</div>
-        <div style="font-family:var(--fh);font-size:1.3rem;font-weight:700;color:${pnlColor}">${pnlSign}$${Math.abs(Math.round(totalPnL)).toLocaleString('es-AR')}</div>
+        <div style="font-family:var(--fh);font-size:1.3rem;font-weight:700;color:${pnlColor}">${pnlSign === '+' ? fmtK(totalPnL) : '-' + fmtK(Math.abs(totalPnL))}</div>
       </div>
       <div style="text-align:right">
         <div style="font-size:.65rem;color:var(--muted);margin-bottom:3px">Invertido: $${Math.round(totalCosto).toLocaleString('es-AR')}</div>
@@ -2012,7 +2039,36 @@ function openEditModal(mes, idx) {
   document.getElementById('edit-fecha').value = tx.fecha;
   document.getElementById('edit-monto').value = tx.monto;
   document.getElementById('edit-desc').value  = tx.desc;
-  document.getElementById('edit-cat').value   = tx.cat || '';
+
+  // Populate category dropdown from the plan of that month
+  const plan = getPlan(mes);
+  const catSel = document.getElementById('edit-cat');
+  catSel.innerHTML = '<option value="">— elegir —</option>';
+  const fijoGroup = document.createElement('optgroup');
+  fijoGroup.label = '📌 Gastos fijos';
+  plan.fijos.forEach(r => {
+    const o = document.createElement('option');
+    o.value = r.l; o.text = r.l; fijoGroup.appendChild(o);
+  });
+  catSel.appendChild(fijoGroup);
+  const varGroup = document.createElement('optgroup');
+  varGroup.label = '💸 Variables';
+  plan.vars.forEach(r => {
+    const o = document.createElement('option');
+    o.value = r.l; o.text = r.l; varGroup.appendChild(o);
+  });
+  catSel.appendChild(varGroup);
+  const extraGroup = document.createElement('optgroup');
+  extraGroup.label = '➕ Otros';
+  ['Otros'].forEach(c => {
+    const o = document.createElement('option');
+    o.value = c; o.text = c; extraGroup.appendChild(o);
+  });
+  catSel.appendChild(extraGroup);
+
+  // Set current value
+  catSel.value = normalizeCat(tx.cat || '');
+
   const modal = document.getElementById('edit-modal');
   modal.style.display = 'flex';
 }
