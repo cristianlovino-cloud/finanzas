@@ -1,5 +1,5 @@
 // CL Finanzas — Service Worker v1.0
-const CACHE = 'cl-finanzas-v1';
+const CACHE = 'cl-finanzas-v3';
 const OFFLINE_ASSETS = [
   '/finanzas/',
   '/finanzas/index.html',

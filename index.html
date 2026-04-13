@@ -578,6 +578,12 @@ nav::-webkit-scrollbar{display:none}
       <button class="btn btn-o" onclick="clearAll()" style="border-color:var(--red);color:var(--red)">Borrar datos del dispositivo</button>
     </div>
 
+    <div class="card" style="margin-bottom:14px">
+      <div class="ct">🔄 Actualizar app</div>
+      <p style="font-size:.75rem;color:var(--muted2);margin-bottom:12px">Si los cambios no aparecen, forzá la actualización completa.</p>
+      <button class="btn btn-o" onclick="forceUpdate()" style="border-color:var(--blue);color:var(--blue)">⟳ Forzar actualización</button>
+    </div>
+
     <div class="card">
       <div class="ct">ℹ️ Acerca de</div>
       <p style="font-size:.75rem;color:var(--muted2);line-height:1.7">
@@ -2154,6 +2160,22 @@ function deleteTx() {
   renderRecentTxs();
   updateOverview();
   showToast('✓ Transacción eliminada');
+}
+
+function forceUpdate() {
+  // Unregister all service workers and clear all caches
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(regs => {
+      regs.forEach(reg => reg.unregister());
+    });
+  }
+  if ('caches' in window) {
+    caches.keys().then(keys => {
+      keys.forEach(key => caches.delete(key));
+    });
+  }
+  // Force reload bypassing cache
+  setTimeout(() => window.location.reload(true), 300);
 }
 
 function clearAll() {
