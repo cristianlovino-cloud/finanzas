@@ -7,6 +7,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="CL Finanzas">
+<meta name="application-name" content="CL Finanzas">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
 <title>CL · Finanzas</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -1668,29 +1671,53 @@ async function fetchCotizaciones() {
   } catch(e) { console.log('Letras error:', e.message); }
 
   try {
-    // CEDEARs via Yahoo Finance (tickers with .BA suffix = Bolsa Argentina)
+    // CEDEARs via Yahoo Finance with multiple proxy fallbacks
     const invs = getInv();
     const cedearTickers = invs
       .filter(i => i.tipo === 'CEDEAR' && i.cantidad > 0)
       .map(i => i.activo + '.BA');
     
-    if (cedearTickers.length > 0) {
-      // Fetch in batches to avoid rate limiting
-      for (const ticker of cedearTickers) {
+    const PROXIES = [
+      url => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+      url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+      url => `https://thingproxy.freeboard.io/fetch/${url}`,
+    ];
+
+    async function fetchYahoo(ticker) {
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d`;
+      for (const makeProxy of PROXIES) {
         try {
-          const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d`;
-          const proxy = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-          const res = await fetch(proxy, {cache:'no-cache'});
-          if (res.ok) {
-            const data = await res.json();
-            const parsed = JSON.parse(data.contents);
-            const price = parsed?.chart?.result?.[0]?.meta?.regularMarketPrice;
-            if (price) {
-              results['CEDEAR_' + ticker.replace('.BA','')] = price;
-            }
-          }
-        } catch(e) { /* skip failed ticker */ }
+          const res = await fetch(makeProxy(url), {cache:'no-cache', signal: AbortSignal.timeout(5000)});
+          if (!res.ok) continue;
+          const data = await res.json();
+          // allorigins wraps in {contents}, others return directly
+          const raw = data.contents ? JSON.parse(data.contents) : data;
+          const price = raw?.chart?.result?.[0]?.meta?.regularMarketPrice;
+          if (price && price > 0) return price;
+        } catch(e) { continue; }
       }
+      return null;
+    }
+
+    if (cedearTickers.length > 0) {
+      // Show loading indicator
+      const listEl = document.getElementById('inv-list');
+      const tsEl = listEl?.querySelector('div[style*="text-align:right"]');
+      if (tsEl) tsEl.textContent = 'Actualizando precios...';
+
+      // Fetch all in parallel for speed
+      const prices = await Promise.all(
+        cedearTickers.map(async ticker => {
+          const price = await fetchYahoo(ticker);
+          return { ticker: ticker.replace('.BA',''), price };
+        })
+      );
+      
+      let fetched = 0;
+      prices.forEach(({ticker, price}) => {
+        if (price) { results['CEDEAR_' + ticker] = price; fetched++; }
+      });
+      console.log(`CEDEARs: ${fetched}/${cedearTickers.length} precios actualizados`);
     }
   } catch(e) { console.log('CEDEAR fetch error:', e.message); }
 
@@ -2199,6 +2226,15 @@ function migrateOldTxNames() {
     DB.set('txs', txsAll);
     console.log('Migrated tx category names');
   }
+}
+
+// Register Service Worker for PWA
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/finanzas/sw.js')
+      .then(reg => console.log('SW registered:', reg.scope))
+      .catch(err => console.log('SW failed:', err));
+  });
 }
 
 document.addEventListener('DOMContentLoaded', () => {
