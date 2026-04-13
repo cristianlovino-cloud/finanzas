@@ -1181,21 +1181,42 @@ function setTipo(tipo, btn) {
   const labels = {gasto:'＋ Registrar gasto',tc:'＋ Registrar pago TC',ingreso:'＋ Registrar ingreso'};
   submitBtn.textContent = labels[tipo];
   submitBtn.style.background = {gasto:'var(--green)',tc:'var(--orange)',ingreso:'var(--blue)'}[tipo];
+  // Refresh category dropdown for new tipo
+  populateCatDropdown();
 }
 
 function populateCatDropdown() {
   const sel = document.getElementById('tx-cat');
   if (!sel) return;
   
-  // Get plan for the selected date's month
   const fechaEl = document.getElementById('tx-fecha');
   const fecha = fechaEl?.value || new Date().toISOString().split('T')[0];
-  const mes = fecha.slice(0,7); // YYYY-MM
+  const mes = fecha.slice(0,7);
   const plan = getPlan(mes);
   
   sel.innerHTML = '<option value="">— elegir —</option>';
-  
-  // Fijos from plan
+
+  // If tipo = ingreso → show ingreso categories from plan
+  if (curTipo === 'ingreso') {
+    const g0 = document.createElement('optgroup');
+    g0.label = '💰 Ingresos del mes';
+    // From plan.ing
+    plan.ing.forEach(r => {
+      const o = document.createElement('option');
+      o.value = r.l; o.text = r.l; g0.appendChild(o);
+    });
+    // Extra ingreso options
+    ['Bono', 'Reintegro', 'Venta activos', 'Otros ingresos'].forEach(c => {
+      if (!plan.ing.find(r => r.l === c)) {
+        const o = document.createElement('option');
+        o.value = c; o.text = c; g0.appendChild(o);
+      }
+    });
+    sel.appendChild(g0);
+    return;
+  }
+
+  // Gastos fijos from plan
   if (plan.fijos.length) {
     const g1 = document.createElement('optgroup');
     g1.label = '📌 Gastos fijos del mes';
@@ -1217,7 +1238,6 @@ function populateCatDropdown() {
     sel.appendChild(g2);
   }
   
-  // Single fallback
   const g3 = document.createElement('optgroup');
   g3.label = '➕ Sin categoría';
   const oOtros = document.createElement('option');
