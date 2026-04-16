@@ -2089,7 +2089,18 @@ function openEditModal(mes, idx) {
   if (!tx) return;
   document.getElementById('edit-mes').value   = mes;
   document.getElementById('edit-idx').value   = idx;
-  document.getElementById('edit-fecha').value = tx.fecha;
+  // Normalize fecha to YYYY-MM-DD for date input
+  let fechaNorm = tx.fecha || '';
+  if (fechaNorm.includes('/')) {
+    // Convert DD/MM/YYYY to YYYY-MM-DD
+    const parts = fechaNorm.split('/');
+    if (parts.length === 3) {
+      fechaNorm = parts[2].length === 4
+        ? parts[2] + '-' + parts[1].padStart(2,'0') + '-' + parts[0].padStart(2,'0')
+        : parts[0] + '-' + parts[1].padStart(2,'0') + '-' + parts[2].padStart(2,'0');
+    }
+  }
+  document.getElementById('edit-fecha').value = fechaNorm;
   document.getElementById('edit-monto').value = tx.monto;
   document.getElementById('edit-desc').value  = tx.desc;
 
@@ -2135,10 +2146,27 @@ function saveEditTx() {
   const idx  = parseInt(document.getElementById('edit-idx').value);
   const txsAll = DB.get('txs', {});
   if (!txsAll[mes]?.[idx]) return;
-  txsAll[mes][idx].fecha = document.getElementById('edit-fecha').value;
-  txsAll[mes][idx].monto = parseFloat(document.getElementById('edit-monto').value) || 0;
-  txsAll[mes][idx].desc  = document.getElementById('edit-desc').value;
-  txsAll[mes][idx].cat   = document.getElementById('edit-cat').value;
+
+  const newFecha = document.getElementById('edit-fecha').value; // YYYY-MM-DD
+  const newMes   = newFecha.slice(0, 7); // YYYY-MM
+  const newCat   = normalizeCat(document.getElementById('edit-cat').value);
+
+  // Update the tx
+  const tx = { ...txsAll[mes][idx] };
+  tx.fecha = newFecha;
+  tx.monto = parseFloat(document.getElementById('edit-monto').value) || 0;
+  tx.desc  = document.getElementById('edit-desc').value;
+  tx.cat   = newCat;
+
+  // If month changed, move tx to correct bucket
+  if (newMes !== mes) {
+    txsAll[mes].splice(idx, 1);
+    if (!txsAll[newMes]) txsAll[newMes] = [];
+    txsAll[newMes].unshift(tx);
+  } else {
+    txsAll[mes][idx] = tx;
+  }
+
   DB.set('txs', txsAll);
   closeEditModal();
   renderFlujo();
