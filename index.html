@@ -282,7 +282,7 @@ nav::-webkit-scrollbar{display:none}
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <select id="plan-sel" onchange="setGlobalMes(this.value)" class="fi" style="width:auto;padding:6px 12px">
         <option value="2026-04">Abr 2026</option>
-        <option value="2026-03" selected>Mar 2026</option>
+        <option value="2026-03">Mar 2026</option>
         <option value="2026-02">Feb 2026</option>
         <option value="2026-01">Ene 2026</option>
         <option value="2025-12">Dic 2025</option>
@@ -1033,7 +1033,7 @@ function go(id, btn) {
 // ══════════════════════════════════════════════════════
 // PLAN — presupuesto mensual
 // ══════════════════════════════════════════════════════
-let curMes = '2026-03';
+let curMes = getCurMes();
 let curPlan = null;
 
 function getPlan(mes) {
@@ -1316,7 +1316,7 @@ function renderRecentTxs() {
 // ══════════════════════════════════════════════════════
 function renderFlujo() {
   const sel   = document.getElementById('flujo-sel');
-  const mes   = sel ? sel.value : '2026-03';
+  const mes   = sel ? sel.value : getCurMes();
   const label = sel ? sel.options[sel.selectedIndex].text : 'Mar 2026';
 
   document.getElementById('flujo-mes-label').textContent = label;
@@ -2051,13 +2051,16 @@ function updatePatrimonio() {
   // Charts
   new Chart(document.getElementById('c-pat').getContext('2d'), {
     type:'line',
-    data:{labels:['Ene','Feb','Mar'],datasets:[{label:'Patrimonio',data:[215000,238000,total||259760],borderColor:P.purple,backgroundColor:'rgba(167,139,250,.08)',fill:true,tension:.4,borderWidth:2.5}]},
+    data:{labels:mesKeys.map(k=>MESES[parseInt(k.split('-')[1])-1]),datasets:[{label:'Patrimonio',data:mesKeys.map((_,i)=>[215000,238000,259760,total][i]||total),borderColor:P.purple,backgroundColor:'rgba(167,139,250,.08)',fill:true,tension:.4,borderWidth:2.5}]},
     options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${fmt(c.parsed.y)}`}}},
       scales:{y:{ticks:{callback:v=>'$'+(v/1000).toFixed(0)+'k'},grid:{color:'rgba(255,255,255,.04)'}},x:{grid:{display:false}}}}
   });
 
   // Ahorro mensual
-  const ahorros = ['2026-01','2026-02','2026-03'].map(mes => {
+  const now2 = new Date();
+  const curIdx = now2.getFullYear() === 2026 ? now2.getMonth() : 3;
+  const mesKeys = Array.from({length: curIdx+1}, (_,i) => '2026-'+String(i+1).padStart(2,'0'));
+  const ahorros = mesKeys.map(mes => {
     const plan = getPlan(mes);
     const pt   = planTotals(plan);
     const { total: rt } = txTotals(mes);
@@ -2065,7 +2068,7 @@ function updatePatrimonio() {
   });
   new Chart(document.getElementById('c-ahorro').getContext('2d'), {
     type:'bar',
-    data:{labels:['Ene','Feb','Mar'],datasets:[{label:'Ahorro neto',data:ahorros,
+    data:{labels:mesKeys.map(k=>MESES[parseInt(k.split('-')[1])-1]),datasets:[{label:'Ahorro neto',data:ahorros,
       backgroundColor:ahorros.map(v=>v>=0?'rgba(34,211,160,.6)':'rgba(244,63,94,.6)'),
       borderColor:ahorros.map(v=>v>=0?P.green:P.red),borderWidth:1}]},
     options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${fmt(c.parsed.y)}`}}},
@@ -2332,9 +2335,25 @@ document.addEventListener('DOMContentLoaded', () => {
   // Load TC
   document.getElementById('cfg-tc').value = TC;
 
-  // Init presupuesto
-  curMes  = getCurMes();
-  curPlan = getPlan(curMes);
+  // Init — set global month and sync all selectors
+  const initMes = getCurMes();
+  // Ensure all selectors have current month as option
+  ['plan-sel','plan-sel-top','flujo-sel'].forEach(selId => {
+    const el = document.getElementById(selId);
+    if (!el) return;
+    let found = Array.from(el.options).some(o => o.value === initMes);
+    if (!found) {
+      const opt = document.createElement('option');
+      opt.value = initMes;
+      opt.text  = mesLabel(initMes);
+      el.insertBefore(opt, el.options[0]);
+    }
+    el.value = initMes;
+  });
+  globalMes = initMes;
+  curMes    = initMes;
+  curPlan   = getPlan(initMes);
+  document.getElementById('header-mes').textContent = mesLabel(initMes);
   renderPlanSections();
 
   // Init charts — build AFTER plans are loaded
