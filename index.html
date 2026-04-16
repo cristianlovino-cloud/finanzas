@@ -1266,7 +1266,7 @@ function submitTx() {
   const parts = fecha.split('-');
   const txMes = parts[0] + '-' + parts[1];
 
-  const tx = { fecha, monto, desc, cat, medio, notas, tipo: curTipo, ts: Date.now() };
+  const tx = { fecha, monto, desc, cat: normalizeCat(cat), medio, notas, tipo: curTipo, ts: Date.now() };
   const txsAll = DB.get('txs', {});
   if (!txsAll[txMes]) txsAll[txMes] = [];
   txsAll[txMes].unshift(tx);
@@ -2256,9 +2256,9 @@ const NAME_MAP = {
   'Tarjeta BBVA':      'TC BBVA',
   'Tarjeta Municipal': 'TC Municipal',
   'Tarjeta MP':        'TC MP',
-  // Tennis / Club
-  'Club / Tennis':     'Tennis',
-  'Club/Tennis':       'Tennis',
+  // Tennis / Club — normalize TO plan name 'Club / Tennis'
+  'Tennis':            'Club / Tennis',
+  'Club/Tennis':       'Club / Tennis',
   // Dpto Rosario
   'Dpto Rosario — Alquiler':  'Alquiler',
   'Dpto Rosario — Expensas':  'Expensas',
@@ -2284,9 +2284,10 @@ function migrateOldTxNames() {
   const txsAll = DB.get('txs', {});
   let changed = false;
   Object.keys(txsAll).forEach(mes => {
-    txsAll[mes].forEach(tx => {
+    (txsAll[mes] || []).forEach(tx => {
       const normalized = normalizeCat(tx.cat);
       if (normalized !== tx.cat) {
+        console.log(`Migrating: "${tx.cat}" → "${normalized}"`);
         tx.cat = normalized;
         changed = true;
       }
@@ -2294,7 +2295,7 @@ function migrateOldTxNames() {
   });
   if (changed) {
     DB.set('txs', txsAll);
-    console.log('Migrated tx category names');
+    console.log('✓ Migrated tx category names');
   }
 }
 
