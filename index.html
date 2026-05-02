@@ -1325,14 +1325,26 @@ function populateCatDropdown() {
 }
 
 function submitTx() {
-  const fecha = document.getElementById('tx-fecha').value;
+  let fecha = document.getElementById('tx-fecha').value;
   const monto = parseFloat(document.getElementById('tx-monto').value);
   const desc  = document.getElementById('tx-desc').value.trim();
-  const cat   = document.getElementById('tx-cat').value;
+  const catEl = document.getElementById('tx-cat');
+  const cat   = catEl ? (catEl.value || catEl.tagName === 'SELECT' ? catEl.value : catEl.value) : '';
   const medio = document.getElementById('tx-medio').value;
   const notas = document.getElementById('tx-notas').value.trim();
 
-  if (!fecha || !monto || !desc) { showToast('Completá fecha, monto y descripción', P.red); return; }
+  // Normalize fecha: handle DD/MM/YYYY or any local format → YYYY-MM-DD
+  if (fecha && fecha.includes('/')) {
+    const p = fecha.split('/');
+    if (p.length === 3) {
+      if (p[2].length === 4) fecha = p[2] + '-' + p[1].padStart(2,'0') + '-' + p[0].padStart(2,'0');
+      else fecha = p[0] + '-' + p[1].padStart(2,'0') + '-' + p[2].padStart(2,'0');
+    }
+  }
+  // If still no valid date, use today
+  if (!fecha || fecha.length < 8) fecha = new Date().toISOString().split('T')[0];
+
+  if (!monto || !desc) { showToast('Completá monto y descripción', P.red); return; }
 
   // Determine month from date
   const parts = fecha.split('-');
