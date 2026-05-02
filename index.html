@@ -13,115 +13,70 @@
 <title>CL · Finanzas</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<!-- Firebase Compat SDK (works without bundler) -->
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<!-- Backup/Restore System -->
 <script>
-const firebaseConfig = {
-  apiKey: "AIzaSyBAYyPGrI_bYDyHb-5fa6V52o6UBJxaI_E",
-  authDomain: "cl-finanzas-1c775.firebaseapp.com",
-  projectId: "cl-finanzas-1c775",
-  storageBucket: "cl-finanzas-1c775.firebasestorage.app",
-  messagingSenderId: "827153520240",
-  appId: "1:827153520240:web:6ef2ab5961a73b0ab3c6b5",
-  measurementId: "G-G4HXEK2MCD"
-};
+function exportData() {
+  const data = {
+    txs:         JSON.parse(localStorage.getItem('txs')         || '{}'),
+    plans:       JSON.parse(localStorage.getItem('plans')       || '{}'),
+    inversiones: JSON.parse(localStorage.getItem('inversiones') || '[]'),
+    tc:          localStorage.getItem('tc') || '1250',
+    exportedAt:  new Date().toISOString(),
+    version:     'cl-finanzas-v1'
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = 'cl-finanzas-backup-' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('✓ Backup descargado');
+}
 
-firebase.initializeApp(firebaseConfig);
-const fbAuth = firebase.auth();
-const fbDb   = firebase.firestore();
-const fbProvider = new firebase.auth.GoogleAuthProvider();
+function importData() {
+  const input = document.createElement('input');
+  input.type  = 'file';
+  input.accept = '.json';
+  input.onchange = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (!data.version || !data.txs) { showToast('Archivo inválido', '#f43f5e'); return; }
+        if (!confirm(`¿Restaurar backup del ${new Date(data.exportedAt).toLocaleDateString('es-AR')}?\nEsto reemplaza los datos actuales.`)) return;
+        if (data.txs)         localStorage.setItem('txs',         JSON.stringify(data.txs));
+        if (data.plans)       localStorage.setItem('plans',       JSON.stringify(data.plans));
+        if (data.inversiones) localStorage.setItem('inversiones', JSON.stringify(data.inversiones));
+        if (data.tc)          localStorage.setItem('tc',          data.tc);
+        showToast('✓ Datos restaurados');
+        setTimeout(() => location.reload(), 1000);
+      } catch(e) { showToast('Error al leer el archivo', '#f43f5e'); }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
 
-let fbUser = null;
-
-// Auth state listener
-fbAuth.onAuthStateChanged(async user => {
-  fbUser = user;
-  const loginBtn = document.getElementById('firebase-login-btn');
-  const statusEl = document.getElementById('firebase-status');
-  if (user) {
-    if (loginBtn) {
-      loginBtn.textContent = '☁ ' + (user.displayName?.split(' ')[0] || 'Sync');
-      loginBtn.style.color = '#22d3a0';
-      loginBtn.style.borderColor = 'rgba(34,211,160,.4)';
-      loginBtn.onclick = fbLogout;
-    }
-    await fbSync();
-  } else {
-    if (loginBtn) {
-      loginBtn.textContent = '☁ Login';
-      loginBtn.style.color = '';
-      loginBtn.style.borderColor = '';
-      loginBtn.onclick = fbLogin;
-    }
-    if (statusEl) statusEl.textContent = '';
+// Auto-backup reminder: show badge if no backup in 7 days
+(function checkBackup() {
+  const last = localStorage.getItem('last-backup');
+  if (!last || (Date.now() - new Date(last).getTime()) > 7 * 86400000) {
+    setTimeout(() => {
+      const el = document.getElementById('backup-reminder');
+      if (el) el.style.display = 'flex';
+    }, 3000);
   }
-});
+})();
 
-// Handle redirect result
-fbAuth.getRedirectResult().then(result => {
-  if (result && result.user) {
-    console.log('✓ Redirect login:', result.user.email);
-  }
-}).catch(e => console.log('Redirect error:', e.message));
-
-function fbLogin() {
-  fbAuth.signInWithRedirect(fbProvider);
+function dismissBackup() {
+  localStorage.setItem('last-backup', new Date().toISOString());
+  const el = document.getElementById('backup-reminder');
+  if (el) el.style.display = 'none';
+  exportData();
 }
-
-function fbLogout() {
-  fbAuth.signOut().then(() => {
-    if (window.showToast) showToast('Sesión cerrada');
-  });
-}
-
-async function fbSave() {
-  if (!fbUser) return;
-  try {
-    await fbDb.collection('users').doc(fbUser.uid).set({
-      txs:         JSON.parse(localStorage.getItem('txs')          || '{}'),
-      plans:       JSON.parse(localStorage.getItem('plans')        || '{}'),
-      inversiones: JSON.parse(localStorage.getItem('inversiones')  || '[]'),
-      tc:          localStorage.getItem('tc') || '1250',
-      savedAt:     new Date().toISOString()
-    });
-    const el = document.getElementById('firebase-status');
-    if (el) el.textContent = '☁ ' + new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
-    console.log('✓ Saved to Firebase');
-  } catch(e) { console.log('Save error:', e.message); }
-}
-
-async function fbSync() {
-  if (!fbUser) return;
-  try {
-    const doc = await fbDb.collection('users').doc(fbUser.uid).get();
-    if (doc.exists) {
-      const d = doc.data();
-      if (d.txs)         localStorage.setItem('txs',         JSON.stringify(d.txs));
-      if (d.plans)       localStorage.setItem('plans',       JSON.stringify(d.plans));
-      if (d.inversiones) localStorage.setItem('inversiones', JSON.stringify(d.inversiones));
-      if (d.tc)          localStorage.setItem('tc',          d.tc);
-      console.log('✓ Synced from Firebase:', d.savedAt);
-      // Refresh UI
-      setTimeout(() => {
-        if (window.updateOverview)   updateOverview();
-        if (window.renderFlujo)      renderFlujo();
-        if (window.renderRecentTxs)  renderRecentTxs();
-        if (window.renderInvList)    renderInvList();
-        if (window.renderPlanSections) renderPlanSections();
-      }, 500);
-      const el = document.getElementById('firebase-status');
-      if (el && d.savedAt) el.textContent = '☁ ' + new Date(d.savedAt).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
-    }
-  } catch(e) { console.log('Sync error:', e.message); }
-}
-
-// Expose globally
-window.firebaseLogin   = fbLogin;
-window.firebaseLogout  = fbLogout;
-window.saveToFirebase  = fbSave;
-window.syncFromFirebase = fbSync;
 </script>
 <style>
 /* ── RESET & VARS ── */
@@ -281,9 +236,7 @@ nav::-webkit-scrollbar{display:none}
   <div style="display:flex;align-items:center;gap:10px">
     <button id="theme-btn" onclick="toggleTheme()" style="background:none;border:1px solid var(--border2);border-radius:20px;padding:4px 12px;color:var(--muted2);font-family:var(--fm);font-size:.7rem;cursor:pointer;transition:all .2s" title="Cambiar tema">🌙</button>
     <div style="display:flex;align-items:center;gap:8px">
-    <span id="firebase-user" style="font-size:.65rem;color:var(--green)"></span>
-    <button id="firebase-login-btn" onclick="window.firebaseLogin && firebaseLogin()" style="display:none;background:none;border:1px solid var(--border2);border-radius:16px;padding:3px 10px;color:var(--muted2);font-family:var(--fm);font-size:.65rem;cursor:pointer">☁ Login</button>
-    <span id="firebase-status" style="font-size:.6rem;color:var(--muted)"></span>
+    <button onclick="exportData()" style="background:none;border:1px solid var(--border2);border-radius:16px;padding:3px 10px;color:var(--muted2);font-family:var(--fm);font-size:.65rem;cursor:pointer" title="Descargar backup">💾</button>
     <div id="spend-badge" style="font-size:.65rem;color:var(--muted);background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:3px 10px;display:none">
       <span id="spend-pct">0%</span> gastado
     </div>
@@ -305,6 +258,12 @@ nav::-webkit-scrollbar{display:none}
 </nav>
 
 <!-- TOAST -->
+<!-- Backup reminder -->
+<div id="backup-reminder" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:9998;background:rgba(251,191,36,.12);border-top:1px solid rgba(251,191,36,.3);padding:12px 16px;align-items:center;justify-content:space-between;gap:12px">
+  <div style="font-size:.75rem;color:#fbbf24">⚠ No tenés backup reciente — hacé un backup para no perder datos</div>
+  <button onclick="dismissBackup()" style="background:#fbbf24;color:#080a0f;border:none;border-radius:16px;padding:5px 14px;font-family:var(--fm);font-size:.72rem;font-weight:700;cursor:pointer;white-space:nowrap">💾 Hacer backup</button>
+</div>
+
 <div class="toast-wrap"><div class="toast" id="toast"></div></div>
 
 <!-- ════════════ OVERVIEW ════════════ -->
@@ -682,12 +641,11 @@ nav::-webkit-scrollbar{display:none}
     </div>
 
     <div class="card" style="margin-bottom:14px">
-      <div class="ct">☁ Firebase — Backup en la nube</div>
-      <p style="font-size:.75rem;color:var(--muted2);margin-bottom:12px">Guardá tus datos en la nube con tu cuenta Google. Nunca más perdés nada.</p>
+      <div class="ct">💾 Backup de datos</div>
+      <p style="font-size:.75rem;color:var(--muted2);margin-bottom:12px">Guardá una copia de tus datos y restauralos cuando necesites. Hacé backup al menos una vez por semana.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn btn-g" onclick="window.firebaseLogin && firebaseLogin()" style="padding:8px 16px;font-size:.75rem">☁ Conectar Google</button>
-        <button class="btn btn-o" onclick="window.saveToFirebase && saveToFirebase()" style="padding:8px 16px;font-size:.75rem">💾 Guardar ahora</button>
-        <button class="btn btn-o" onclick="window.syncFromFirebase && syncFromFirebase()" style="padding:8px 16px;font-size:.75rem">⟳ Restaurar</button>
+        <button class="btn btn-g" onclick="exportData()" style="padding:8px 16px;font-size:.75rem">📥 Descargar backup</button>
+        <button class="btn btn-o" onclick="importData()" style="padding:8px 16px;font-size:.75rem">📤 Restaurar backup</button>
       </div>
     </div>
 
@@ -1263,7 +1221,6 @@ function savePlan() {
   updateOverview();
   renderFlujo();
   showToast(`✓ Planificación ${curMes} guardada`);
-  if (window.saveToFirebase) setTimeout(saveToFirebase, 2000);
 }
 
 // ══════════════════════════════════════════════════════
@@ -1407,7 +1364,6 @@ function submitTx() {
 
   showToast(`✓ ${curTipo === 'ingreso' ? 'Ingreso' : 'Gasto'} registrado — datos actualizados`);
   document.dispatchEvent(new CustomEvent('txSaved'));
-  if (window.saveToFirebase) setTimeout(saveToFirebase, 2000);
 }
 
 function renderRecentTxs() {
