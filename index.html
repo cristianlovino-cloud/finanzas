@@ -17,7 +17,7 @@
 <script type="module">
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
   import { getFirestore, doc, setDoc, getDoc, collection, getDocs } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
-  import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+  import { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 
   // ── FIREBASE CONFIG — reemplazá con tu proyecto ──
   const firebaseConfig = {
@@ -43,20 +43,51 @@
     const loginBtn = document.getElementById('firebase-login-btn');
     const userEl   = document.getElementById('firebase-user');
     if (user) {
-      if (loginBtn) loginBtn.style.display = 'none';
-      if (userEl)   userEl.textContent = '☁ ' + user.displayName?.split(' ')[0];
+      if (loginBtn) {
+        loginBtn.textContent = '☁ ' + (user.displayName?.split(' ')[0] || 'Salir');
+        loginBtn.style.display = 'inline-block';
+        loginBtn.onclick = () => window.firebaseLogout();
+        loginBtn.style.color = 'var(--green)';
+        loginBtn.style.borderColor = 'rgba(34,211,160,.3)';
+      }
       await syncFromFirebase();
     } else {
-      if (loginBtn) loginBtn.style.display = 'inline-block';
-      if (userEl)   userEl.textContent = '';
+      if (loginBtn) {
+        loginBtn.textContent = '☁ Login';
+        loginBtn.style.display = 'inline-block';
+        loginBtn.onclick = () => window.firebaseLogin && firebaseLogin();
+        loginBtn.style.color = '';
+        loginBtn.style.borderColor = '';
+      }
+      if (userEl) userEl.textContent = '';
     }
   });
 
-  // Login
+  // Handle redirect result on page load
+  getRedirectResult(auth).then(result => {
+    if (result?.user) console.log('✓ Logged in via redirect:', result.user.email);
+  }).catch(e => console.log('Redirect result error:', e));
+
+  // Login — use redirect on mobile (more reliable), popup on desktop
   window.firebaseLogin = async () => {
     try {
-      await signInWithPopup(auth, provider);
-    } catch(e) { console.log('Login error:', e); }
+      const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
+      if (isMobile) {
+        await signInWithRedirect(auth, provider);
+      } else {
+        await signInWithPopup(auth, provider);
+      }
+    } catch(e) {
+      console.log('Login error:', e);
+      // Fallback to redirect
+      try { await signInWithRedirect(auth, provider); } catch(e2) {}
+    }
+  };
+
+  // Logout
+  window.firebaseLogout = async () => {
+    await signOut(auth);
+    showToast('Sesión cerrada');
   };
 
   // Save all data to Firestore
