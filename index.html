@@ -1626,16 +1626,32 @@ function setEvolYear(yr, btn) {
   buildEvolChart(yr);
 }
 
-new Chart(document.getElementById('c-anual').getContext('2d'), {
-  type:'bar',
-  data:{ labels:['2024','2025','2026*'],
-    datasets:[
-      {label:'Gastos',   data:[54054,151482,26048], backgroundColor:'rgba(244,63,94,.7)',  borderColor:P.red,   borderWidth:1},
-      {label:'Ingresos', data:[76428,157466,34482], backgroundColor:'rgba(34,211,160,.6)', borderColor:P.green, borderWidth:1},
-    ]},
-  options:{responsive:true,plugins:{legend:{position:'bottom',labels:{boxWidth:8}},tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${fmt(c.parsed.y)}`}}},
-    scales:{y:{ticks:{callback:v=>'$'+(v/1000).toFixed(0)+'k'},grid:{color:'rgba(255,255,255,.04)'}},x:{grid:{display:false}}}}
-});
+// Annual chart — calc 2026 dynamically
+(function buildAnualChart() {
+  const now2026 = new Date();
+  const mesesHasta = now2026.getFullYear() === 2026 ? now2026.getMonth() + 1 : 12;
+  let gas2026 = 0, ing2026 = 0;
+  for (let m = 1; m <= mesesHasta; m++) {
+    const mes = '2026-' + String(m).padStart(2,'0');
+    const plan = getPlan(mes);
+    const pt   = planTotals(plan);
+    const { total: txTotal, totals: realTotals } = txTotals(mes);
+    const hasTxs = txTotal > 0;
+    const fijosAuto = plan.fijos.filter(r => realTotals[r.l] == null && hasTxs).reduce((s,r)=>s+r.v,0);
+    gas2026 += hasTxs ? txTotal + fijosAuto : pt.gastos;
+    ing2026 += pt.ing;
+  }
+  new Chart(document.getElementById('c-anual').getContext('2d'), {
+    type:'bar',
+    data:{ labels:['2024','2025','2026*'],
+      datasets:[
+        {label:'Gastos',   data:[54054,151482,Math.round(gas2026)], backgroundColor:'rgba(244,63,94,.7)',  borderColor:P.red,   borderWidth:1},
+        {label:'Ingresos', data:[76428,157466,Math.round(ing2026)], backgroundColor:'rgba(34,211,160,.6)', borderColor:P.green, borderWidth:1},
+      ]},
+    options:{responsive:true,plugins:{legend:{position:'bottom',labels:{boxWidth:8}},tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${fmt(c.parsed.y)}`}}},
+      scales:{y:{ticks:{callback:v=>'$'+(v/1000).toFixed(0)+'k'},grid:{color:'rgba(255,255,255,.04)'}},x:{grid:{display:false}}}}
+  });
+})();
 
 // Overview donut — composition of current month
 function buildDonut() {
