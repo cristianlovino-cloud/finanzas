@@ -13,130 +13,115 @@
 <title>CL · Finanzas</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<!-- Firebase SDK -->
-<script type="module">
-  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-  import { getFirestore, doc, setDoc, getDoc, collection, getDocs } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
-  import { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+<!-- Firebase Compat SDK (works without bundler) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyBAYyPGrI_bYDyHb-5fa6V52o6UBJxaI_E",
+  authDomain: "cl-finanzas-1c775.firebaseapp.com",
+  projectId: "cl-finanzas-1c775",
+  storageBucket: "cl-finanzas-1c775.firebasestorage.app",
+  messagingSenderId: "827153520240",
+  appId: "1:827153520240:web:6ef2ab5961a73b0ab3c6b5",
+  measurementId: "G-G4HXEK2MCD"
+};
 
-  // ── FIREBASE CONFIG — reemplazá con tu proyecto ──
-  const firebaseConfig = {
-    apiKey: "AIzaSyBAYyPGrI_bYDyHb-5fa6V52o6UBJxaI_E",
-    authDomain: "cl-finanzas-1c775.firebaseapp.com",
-    projectId: "cl-finanzas-1c775",
-    storageBucket: "cl-finanzas-1c775.firebasestorage.app",
-    messagingSenderId: "827153520240",
-    appId: "1:827153520240:web:6ef2ab5961a73b0ab3c6b5",
-    measurementId: "G-G4HXEK2MCD"
-  };
+firebase.initializeApp(firebaseConfig);
+const fbAuth = firebase.auth();
+const fbDb   = firebase.firestore();
+const fbProvider = new firebase.auth.GoogleAuthProvider();
 
-  const app  = initializeApp(firebaseConfig);
-  const db   = getFirestore(app);
-  const auth = getAuth(app);
-  const provider = new GoogleAuthProvider();
+let fbUser = null;
 
-  let currentUser = null;
-
-  // Auth state
-  onAuthStateChanged(auth, async user => {
-    currentUser = user;
-    const loginBtn = document.getElementById('firebase-login-btn');
-    const userEl   = document.getElementById('firebase-user');
-    if (user) {
-      if (loginBtn) {
-        loginBtn.textContent = '☁ ' + (user.displayName?.split(' ')[0] || 'Salir');
-        loginBtn.style.display = 'inline-block';
-        loginBtn.onclick = () => window.firebaseLogout();
-        loginBtn.style.color = 'var(--green)';
-        loginBtn.style.borderColor = 'rgba(34,211,160,.3)';
-      }
-      await syncFromFirebase();
-    } else {
-      if (loginBtn) {
-        loginBtn.textContent = '☁ Login';
-        loginBtn.style.display = 'inline-block';
-        loginBtn.onclick = () => window.firebaseLogin && firebaseLogin();
-        loginBtn.style.color = '';
-        loginBtn.style.borderColor = '';
-      }
-      if (userEl) userEl.textContent = '';
+// Auth state listener
+fbAuth.onAuthStateChanged(async user => {
+  fbUser = user;
+  const loginBtn = document.getElementById('firebase-login-btn');
+  const statusEl = document.getElementById('firebase-status');
+  if (user) {
+    if (loginBtn) {
+      loginBtn.textContent = '☁ ' + (user.displayName?.split(' ')[0] || 'Sync');
+      loginBtn.style.color = '#22d3a0';
+      loginBtn.style.borderColor = 'rgba(34,211,160,.4)';
+      loginBtn.onclick = fbLogout;
     }
+    await fbSync();
+  } else {
+    if (loginBtn) {
+      loginBtn.textContent = '☁ Login';
+      loginBtn.style.color = '';
+      loginBtn.style.borderColor = '';
+      loginBtn.onclick = fbLogin;
+    }
+    if (statusEl) statusEl.textContent = '';
+  }
+});
+
+// Handle redirect result
+fbAuth.getRedirectResult().then(result => {
+  if (result && result.user) {
+    console.log('✓ Redirect login:', result.user.email);
+  }
+}).catch(e => console.log('Redirect error:', e.message));
+
+function fbLogin() {
+  fbAuth.signInWithRedirect(fbProvider);
+}
+
+function fbLogout() {
+  fbAuth.signOut().then(() => {
+    if (window.showToast) showToast('Sesión cerrada');
   });
+}
 
-  // Handle redirect result on page load
-  getRedirectResult(auth).then(result => {
-    if (result?.user) console.log('✓ Logged in via redirect:', result.user.email);
-  }).catch(e => console.log('Redirect result error:', e));
+async function fbSave() {
+  if (!fbUser) return;
+  try {
+    await fbDb.collection('users').doc(fbUser.uid).set({
+      txs:         JSON.parse(localStorage.getItem('txs')          || '{}'),
+      plans:       JSON.parse(localStorage.getItem('plans')        || '{}'),
+      inversiones: JSON.parse(localStorage.getItem('inversiones')  || '[]'),
+      tc:          localStorage.getItem('tc') || '1250',
+      savedAt:     new Date().toISOString()
+    });
+    const el = document.getElementById('firebase-status');
+    if (el) el.textContent = '☁ ' + new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+    console.log('✓ Saved to Firebase');
+  } catch(e) { console.log('Save error:', e.message); }
+}
 
-  // Login — use redirect on mobile (more reliable), popup on desktop
-  window.firebaseLogin = async () => {
-    try {
-      const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
-      if (isMobile) {
-        await signInWithRedirect(auth, provider);
-      } else {
-        await signInWithPopup(auth, provider);
-      }
-    } catch(e) {
-      console.log('Login error:', e);
-      // Fallback to redirect
-      try { await signInWithRedirect(auth, provider); } catch(e2) {}
-    }
-  };
-
-  // Logout
-  window.firebaseLogout = async () => {
-    await signOut(auth);
-    showToast('Sesión cerrada');
-  };
-
-  // Save all data to Firestore
-  window.saveToFirebase = async () => {
-    if (!currentUser) return;
-    const uid = currentUser.uid;
-    try {
-      const data = {
-        txs:   JSON.parse(localStorage.getItem('txs')   || '{}'),
-        plans: JSON.parse(localStorage.getItem('plans') || '{}'),
-        inversiones: JSON.parse(localStorage.getItem('inversiones') || '[]'),
-        tc:    localStorage.getItem('tc') || '1250',
-        updatedAt: new Date().toISOString(),
-      };
-      await setDoc(doc(db, 'users', uid), data);
+async function fbSync() {
+  if (!fbUser) return;
+  try {
+    const doc = await fbDb.collection('users').doc(fbUser.uid).get();
+    if (doc.exists) {
+      const d = doc.data();
+      if (d.txs)         localStorage.setItem('txs',         JSON.stringify(d.txs));
+      if (d.plans)       localStorage.setItem('plans',       JSON.stringify(d.plans));
+      if (d.inversiones) localStorage.setItem('inversiones', JSON.stringify(d.inversiones));
+      if (d.tc)          localStorage.setItem('tc',          d.tc);
+      console.log('✓ Synced from Firebase:', d.savedAt);
+      // Refresh UI
+      setTimeout(() => {
+        if (window.updateOverview)   updateOverview();
+        if (window.renderFlujo)      renderFlujo();
+        if (window.renderRecentTxs)  renderRecentTxs();
+        if (window.renderInvList)    renderInvList();
+        if (window.renderPlanSections) renderPlanSections();
+      }, 500);
       const el = document.getElementById('firebase-status');
-      if (el) { el.textContent = '☁ Guardado ' + new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}); }
-      console.log('✓ Saved to Firebase');
-    } catch(e) { console.log('Firebase save error:', e); }
-  };
+      if (el && d.savedAt) el.textContent = '☁ ' + new Date(d.savedAt).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+    }
+  } catch(e) { console.log('Sync error:', e.message); }
+}
 
-  // Load from Firestore
-  window.syncFromFirebase = async () => {
-    if (!currentUser) return;
-    const uid = currentUser.uid;
-    try {
-      const snap = await getDoc(doc(db, 'users', uid));
-      if (snap.exists()) {
-        const data = snap.data();
-        if (data.txs)         localStorage.setItem('txs',         JSON.stringify(data.txs));
-        if (data.plans)       localStorage.setItem('plans',       JSON.stringify(data.plans));
-        if (data.inversiones) localStorage.setItem('inversiones', JSON.stringify(data.inversiones));
-        if (data.tc)          localStorage.setItem('tc',          data.tc);
-        console.log('✓ Synced from Firebase:', data.updatedAt);
-        // Reload UI
-        if (window.updateOverview) { updateOverview(); renderFlujo(); renderRecentTxs(); }
-        const el = document.getElementById('firebase-status');
-        if (el) el.textContent = '☁ Sync ' + new Date(data.updatedAt).toLocaleDateString('es-AR');
-      }
-    } catch(e) { console.log('Firebase sync error:', e); }
-  };
-
-  // Auto-save after each transaction
-  const origSubmitTx = window.submitTx;
-  document.addEventListener('DOMContentLoaded', () => {
-    // Auto-save 3 seconds after any change
-    const autoSave = () => { if (currentUser) setTimeout(window.saveToFirebase, 3000); };
-    document.addEventListener('txSaved', autoSave);
-  });
+// Expose globally
+window.firebaseLogin   = fbLogin;
+window.firebaseLogout  = fbLogout;
+window.saveToFirebase  = fbSave;
+window.syncFromFirebase = fbSync;
 </script>
 <style>
 /* ── RESET & VARS ── */
