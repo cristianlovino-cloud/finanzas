@@ -103,7 +103,7 @@ function dismissBackup() {
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--text);font-family:var(--fm);font-size:13px;min-height:100vh;overflow-x:hidden;-webkit-tap-highlight-color:transparent}
 body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 60% 40% at 80% 10%,rgba(34,211,160,.04) 0%,transparent 60%),radial-gradient(ellipse 40% 30% at 10% 80%,rgba(56,189,248,.03) 0%,transparent 60%);pointer-events:none;z-index:0}
-button,select,input{touch-action:manipulation}
+button,select,input{touch-action:manipulation;-webkit-user-select:none;user-select:none}
 
 /* ── HEADER ── */
 header{position:sticky;top:0;z-index:200;background:rgba(8,10,15,.92);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);padding:0 20px;height:52px;display:flex;align-items:center;justify-content:space-between}
@@ -259,7 +259,7 @@ nav::-webkit-scrollbar{display:none}
 <!-- Backup reminder -->
 <div id="backup-reminder" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:9998;background:rgba(251,191,36,.12);border-top:1px solid rgba(251,191,36,.3);padding:12px 16px;align-items:center;justify-content:space-between;gap:12px">
   <div style="font-size:.75rem;color:#fbbf24">⚠ No tenés backup reciente — hacé un backup para no perder datos</div>
-  <button onclick="dismissBackup()" style="background:#fbbf24;color:#080a0f;border:none;border-radius:16px;padding:5px 14px;font-family:var(--fm);font-size:.72rem;font-weight:700;cursor:pointer;white-space:nowrap">💾 Hacer backup</button>
+  <button onclick="dismissBackup()" style="background:#fbbf24;color:#080a0f;border:none;border-radius:16px;padding:5px 14px;font-family:var(--fm);font-size:.72rem;font-weight:700;cursor:pointer;white-space:nowrap">Hacer backup</button>
 </div>
 
 <div class="toast-wrap"><div class="toast" id="toast"></div></div>
@@ -348,8 +348,8 @@ nav::-webkit-scrollbar{display:none}
       <button onclick="copyPrevMonth()" style="padding:8px 14px;background:none;border:1px solid var(--border2);color:var(--muted2);border-radius:20px;font-family:var(--fh);font-size:.72rem;cursor:pointer;white-space:nowrap" title="Copiar variables del mes anterior">
         ↩ Copiar anterior
       </button>
-      <button onclick="savePlan()" style="padding:8px 16px;background:var(--green);color:var(--bg);border:none;border-radius:20px;font-family:var(--fh);font-size:.78rem;font-weight:700;cursor:pointer;white-space:nowrap">
-        💾 Guardar
+      <button onclick="savePlan()" style="padding:8px 16px;background:var(--green);color:var(--bg);border:none;border-radius:20px;font-family:var(--fh);font-size:.78rem;font-weight:700;cursor:pointer;white-space:nowrap;-webkit-user-select:none;user-select:none;touch-action:manipulation">
+        Guardar
       </button>
     </div>
   </div>
@@ -642,8 +642,8 @@ nav::-webkit-scrollbar{display:none}
       <div class="ct">💾 Backup de datos</div>
       <p style="font-size:.75rem;color:var(--muted2);margin-bottom:12px">Guardá una copia de tus datos y restauralos cuando necesites. Hacé backup al menos una vez por semana.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn btn-g" onclick="exportData()" style="padding:8px 16px;font-size:.75rem">📥 Descargar backup</button>
-        <button class="btn btn-o" onclick="importData()" style="padding:8px 16px;font-size:.75rem">📤 Restaurar backup</button>
+        <button class="btn btn-g" onclick="exportData()" style="padding:8px 16px;font-size:.75rem">Descargar backup</button>
+        <button class="btn btn-o" onclick="importData()" style="padding:8px 16px;font-size:.75rem">Restaurar backup</button>
       </div>
     </div>
 
