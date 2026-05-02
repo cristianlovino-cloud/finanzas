@@ -13,6 +13,100 @@
 <title>CL · Finanzas</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<!-- Firebase SDK -->
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+  import { getFirestore, doc, setDoc, getDoc, collection, getDocs } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+  import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+
+  // ── FIREBASE CONFIG — reemplazá con tu proyecto ──
+  const firebaseConfig = {
+    apiKey: "AIzaSyBAYyPGrI_bYDyHb-5fa6V52o6UBJxaI_E",
+    authDomain: "cl-finanzas-1c775.firebaseapp.com",
+    projectId: "cl-finanzas-1c775",
+    storageBucket: "cl-finanzas-1c775.firebasestorage.app",
+    messagingSenderId: "827153520240",
+    appId: "1:827153520240:web:6ef2ab5961a73b0ab3c6b5",
+    measurementId: "G-G4HXEK2MCD"
+  };
+
+  const app  = initializeApp(firebaseConfig);
+  const db   = getFirestore(app);
+  const auth = getAuth(app);
+  const provider = new GoogleAuthProvider();
+
+  let currentUser = null;
+
+  // Auth state
+  onAuthStateChanged(auth, async user => {
+    currentUser = user;
+    const loginBtn = document.getElementById('firebase-login-btn');
+    const userEl   = document.getElementById('firebase-user');
+    if (user) {
+      if (loginBtn) loginBtn.style.display = 'none';
+      if (userEl)   userEl.textContent = '☁ ' + user.displayName?.split(' ')[0];
+      await syncFromFirebase();
+    } else {
+      if (loginBtn) loginBtn.style.display = 'inline-block';
+      if (userEl)   userEl.textContent = '';
+    }
+  });
+
+  // Login
+  window.firebaseLogin = async () => {
+    try {
+      await signInWithPopup(auth, provider);
+    } catch(e) { console.log('Login error:', e); }
+  };
+
+  // Save all data to Firestore
+  window.saveToFirebase = async () => {
+    if (!currentUser) return;
+    const uid = currentUser.uid;
+    try {
+      const data = {
+        txs:   JSON.parse(localStorage.getItem('txs')   || '{}'),
+        plans: JSON.parse(localStorage.getItem('plans') || '{}'),
+        inversiones: JSON.parse(localStorage.getItem('inversiones') || '[]'),
+        tc:    localStorage.getItem('tc') || '1250',
+        updatedAt: new Date().toISOString(),
+      };
+      await setDoc(doc(db, 'users', uid), data);
+      const el = document.getElementById('firebase-status');
+      if (el) { el.textContent = '☁ Guardado ' + new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}); }
+      console.log('✓ Saved to Firebase');
+    } catch(e) { console.log('Firebase save error:', e); }
+  };
+
+  // Load from Firestore
+  window.syncFromFirebase = async () => {
+    if (!currentUser) return;
+    const uid = currentUser.uid;
+    try {
+      const snap = await getDoc(doc(db, 'users', uid));
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data.txs)         localStorage.setItem('txs',         JSON.stringify(data.txs));
+        if (data.plans)       localStorage.setItem('plans',       JSON.stringify(data.plans));
+        if (data.inversiones) localStorage.setItem('inversiones', JSON.stringify(data.inversiones));
+        if (data.tc)          localStorage.setItem('tc',          data.tc);
+        console.log('✓ Synced from Firebase:', data.updatedAt);
+        // Reload UI
+        if (window.updateOverview) { updateOverview(); renderFlujo(); renderRecentTxs(); }
+        const el = document.getElementById('firebase-status');
+        if (el) el.textContent = '☁ Sync ' + new Date(data.updatedAt).toLocaleDateString('es-AR');
+      }
+    } catch(e) { console.log('Firebase sync error:', e); }
+  };
+
+  // Auto-save after each transaction
+  const origSubmitTx = window.submitTx;
+  document.addEventListener('DOMContentLoaded', () => {
+    // Auto-save 3 seconds after any change
+    const autoSave = () => { if (currentUser) setTimeout(window.saveToFirebase, 3000); };
+    document.addEventListener('txSaved', autoSave);
+  });
+</script>
 <style>
 /* ── RESET & VARS ── */
 :root {
@@ -171,6 +265,9 @@ nav::-webkit-scrollbar{display:none}
   <div style="display:flex;align-items:center;gap:10px">
     <button id="theme-btn" onclick="toggleTheme()" style="background:none;border:1px solid var(--border2);border-radius:20px;padding:4px 12px;color:var(--muted2);font-family:var(--fm);font-size:.7rem;cursor:pointer;transition:all .2s" title="Cambiar tema">🌙</button>
     <div style="display:flex;align-items:center;gap:8px">
+    <span id="firebase-user" style="font-size:.65rem;color:var(--green)"></span>
+    <button id="firebase-login-btn" onclick="window.firebaseLogin && firebaseLogin()" style="display:none;background:none;border:1px solid var(--border2);border-radius:16px;padding:3px 10px;color:var(--muted2);font-family:var(--fm);font-size:.65rem;cursor:pointer">☁ Login</button>
+    <span id="firebase-status" style="font-size:.6rem;color:var(--muted)"></span>
     <div id="spend-badge" style="font-size:.65rem;color:var(--muted);background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:3px 10px;display:none">
       <span id="spend-pct">0%</span> gastado
     </div>
@@ -569,6 +666,16 @@ nav::-webkit-scrollbar{display:none}
     </div>
 
     <div class="card" style="margin-bottom:14px">
+      <div class="ct">☁ Firebase — Backup en la nube</div>
+      <p style="font-size:.75rem;color:var(--muted2);margin-bottom:12px">Guardá tus datos en la nube con tu cuenta Google. Nunca más perdés nada.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-g" onclick="window.firebaseLogin && firebaseLogin()" style="padding:8px 16px;font-size:.75rem">☁ Conectar Google</button>
+        <button class="btn btn-o" onclick="window.saveToFirebase && saveToFirebase()" style="padding:8px 16px;font-size:.75rem">💾 Guardar ahora</button>
+        <button class="btn btn-o" onclick="window.syncFromFirebase && syncFromFirebase()" style="padding:8px 16px;font-size:.75rem">⟳ Restaurar</button>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:14px">
       <div class="ct">🔄 Actualizar app</div>
       <p style="font-size:.75rem;color:var(--muted2);margin-bottom:12px">Si los cambios no aparecen, forzá la actualización completa.</p>
       <button class="btn btn-o" onclick="forceUpdate()" style="border-color:var(--blue);color:var(--blue)">⟳ Forzar actualización</button>
@@ -589,6 +696,9 @@ nav::-webkit-scrollbar{display:none}
 // ══════════════════════════════════════════════════════
 // DATA STORE — everything in localStorage
 // ══════════════════════════════════════════════════════
+
+// ── Recovered transactions from screenshots ──
+const RECOVERED_TXS = {"2026-03": [{"fecha": "2026-03-05", "monto": 1167, "desc": "Alquiler marzo", "cat": "Alquiler", "medio": "Transferencia", "tipo": "gasto", "ts": 1741132800000}, {"fecha": "2026-03-05", "monto": 132, "desc": "Expensas marzo", "cat": "Expensas", "medio": "Transferencia", "tipo": "gasto", "ts": 1741132900000}, {"fecha": "2026-03-10", "monto": 3400, "desc": "TC BSF marzo", "cat": "TC BSF", "medio": "Débito BSF", "tipo": "tc", "ts": 1741564800000}, {"fecha": "2026-03-10", "monto": 900, "desc": "TC BBVA marzo", "cat": "TC BBVA", "medio": "Débito BBVA", "tipo": "tc", "ts": 1741564900000}, {"fecha": "2026-03-10", "monto": 400, "desc": "TC Municipal marzo", "cat": "TC Municipal", "medio": "Transferencia", "tipo": "tc", "ts": 1741565000000}, {"fecha": "2026-03-10", "monto": 200, "desc": "TC MP marzo", "cat": "TC MP", "medio": "Mercado Pago", "tipo": "tc", "ts": 1741565100000}, {"fecha": "2026-03-15", "monto": 135, "desc": "Limpieza", "cat": "Limpieza", "medio": "Efectivo", "tipo": "gasto", "ts": 1741996800000}, {"fecha": "2026-03-03", "monto": 96, "desc": "Tennis", "cat": "Club / Tennis", "medio": "Transferencia", "tipo": "gasto", "ts": 1740960000000}, {"fecha": "2026-03-15", "monto": 90, "desc": "Parque Roldan", "cat": "Parque Roldan", "medio": "Transferencia", "tipo": "gasto", "ts": 1741996900000}, {"fecha": "2026-03-20", "monto": 35, "desc": "Gastos Lara", "cat": "Lara", "medio": "Transferencia", "tipo": "gasto", "ts": 1742428800000}, {"fecha": "2026-03-20", "monto": 88, "desc": "Salidas recreacion", "cat": "Salidas / Recreación", "medio": "Efectivo", "tipo": "gasto", "ts": 1742428900000}, {"fecha": "2026-03-25", "monto": 14, "desc": "Almuerzo", "cat": "Almuerzo", "medio": "Efectivo", "tipo": "gasto", "ts": 1742860800000}, {"fecha": "2026-03-09", "monto": 9422, "desc": "Sueldo marzo", "cat": "Sueldo", "medio": "Transferencia", "tipo": "ingreso", "ts": 1741478400000}], "2026-04": [{"fecha": "2026-04-06", "monto": 1167, "desc": "Alquiler ab26", "cat": "Alquiler", "medio": "Transferencia", "tipo": "gasto", "ts": 1744934400000}, {"fecha": "2026-04-06", "monto": 62, "desc": "Epe roldan", "cat": "Luz Roldan", "medio": "Transferencia", "tipo": "gasto", "ts": 1744934500000}, {"fecha": "2026-04-01", "monto": 385, "desc": "Master", "cat": "TC BBVA", "medio": "Débito BBVA", "tipo": "tc", "ts": 1743465600000}, {"fecha": "2026-04-09", "monto": 706, "desc": "Visa BBVA", "cat": "TC BBVA", "medio": "Débito BBVA", "tipo": "tc", "ts": 1744156800000}, {"fecha": "2026-04-09", "monto": 45, "desc": "Lili", "cat": "Limpieza", "medio": "Efectivo", "tipo": "gasto", "ts": 1744156900000}, {"fecha": "2026-04-10", "monto": 27, "desc": "Tgi roldan", "cat": "TGI Roldán", "medio": "Transferencia", "tipo": "gasto", "ts": 1744243200000}, {"fecha": "2026-04-08", "monto": 25, "desc": "Inter", "cat": "Club / Tennis", "medio": "Transferencia", "tipo": "gasto", "ts": 1744070400000}, {"fecha": "2026-04-08", "monto": 48, "desc": "Almuerzo JI", "cat": "Almuerzo", "medio": "Efectivo", "tipo": "gasto", "ts": 1744070500000}, {"fecha": "2026-04-01", "monto": 48, "desc": "Escuela tenis", "cat": "Club / Tennis", "medio": "Transferencia", "tipo": "gasto", "ts": 1743465700000}, {"fecha": "2026-04-10", "monto": 277, "desc": "Abr26 educacion", "cat": "Educación", "medio": "Transferencia", "tipo": "gasto", "ts": 1744243300000}, {"fecha": "2026-04-13", "monto": 121, "desc": "Reintegro gastos", "cat": "Reintegro", "medio": "Transferencia", "tipo": "ingreso", "ts": 1744502400000}, {"fecha": "2026-04-15", "monto": 560, "desc": "Gastos Lara", "cat": "Gastos Lara", "medio": "Transferencia", "tipo": "gasto", "ts": 1744675200000}, {"fecha": "2026-04-10", "monto": 3300, "desc": "TC BSF abril", "cat": "TC BSF", "medio": "Débito BSF", "tipo": "tc", "ts": 1744243400000}, {"fecha": "2026-04-10", "monto": 395, "desc": "TC Municipal abril", "cat": "TC Municipal", "medio": "Transferencia", "tipo": "tc", "ts": 1744243500000}, {"fecha": "2026-04-15", "monto": 20, "desc": "Taxicaba", "cat": "Otros", "medio": "Mercado Pago", "tipo": "gasto", "ts": 1744675300000}]};
 const DB = {
   get: (k, def={}) => { try { return JSON.parse(localStorage.getItem(k)) ?? def; } catch { return def; } },
   set: (k, v)      => localStorage.setItem(k, JSON.stringify(v)),
@@ -1137,6 +1247,7 @@ function savePlan() {
   updateOverview();
   renderFlujo();
   showToast(`✓ Planificación ${curMes} guardada`);
+  if (window.saveToFirebase) setTimeout(saveToFirebase, 2000);
 }
 
 // ══════════════════════════════════════════════════════
@@ -1279,6 +1390,8 @@ function submitTx() {
   }
 
   showToast(`✓ ${curTipo === 'ingreso' ? 'Ingreso' : 'Gasto'} registrado — datos actualizados`);
+  document.dispatchEvent(new CustomEvent('txSaved'));
+  if (window.saveToFirebase) setTimeout(saveToFirebase, 2000);
 }
 
 function renderRecentTxs() {
@@ -2213,24 +2326,28 @@ function deleteTx() {
 }
 
 function forceUpdate() {
-  // Unregister all service workers and clear all caches
+  // SOLO limpia el Service Worker cache — NUNCA toca localStorage (datos del usuario)
+  const promises = [];
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.getRegistrations().then(regs => {
-      regs.forEach(reg => reg.unregister());
-    });
+    promises.push(navigator.serviceWorker.getRegistrations().then(regs =>
+      Promise.all(regs.map(r => r.unregister()))
+    ));
   }
   if ('caches' in window) {
-    caches.keys().then(keys => {
-      keys.forEach(key => caches.delete(key));
-    });
+    promises.push(caches.keys().then(keys =>
+      Promise.all(keys.map(k => caches.delete(k)))
+    ));
   }
-  // Force reload bypassing cache
-  setTimeout(() => window.location.reload(true), 300);
+  Promise.all(promises).then(() => {
+    showToast('✓ Caché limpiado — recargando...');
+    setTimeout(() => window.location.reload(true), 800);
+  });
 }
 
 function clearAll() {
-  if (!confirm('¿Borrar todos los presupuestos y transacciones guardados?')) return;
-  ['plans','txs','inversiones','tc'].forEach(k => DB.del(k));
+  if (!confirm('⚠️ ATENCIÓN: Esto borra TODOS tus datos (presupuestos, transacciones, inversiones). NO se puede deshacer.\n\n¿Estás seguro?')) return;
+  if (!confirm('¿Confirmar borrado total?')) return;
+  ['plans','txs','inversiones','tc','planificacion-all'].forEach(k => DB.del(k));
   TC = 1250;
   location.reload();
 }
@@ -2339,6 +2456,16 @@ document.addEventListener('DOMContentLoaded', () => {
     if (savedCedears < defaultCedears) {
       DB.set('inversiones', JSON.parse(JSON.stringify(INV_DEFAULT)));
       console.log('Migrated: loaded full INVIU portfolio (' + defaultCedears + ' CEDEARs)');
+    }
+  })();
+
+  // Restore recovered txs if localStorage is empty
+  (function restoreIfEmpty() {
+    const saved = DB.get('txs', {});
+    const hasData = Object.values(saved).some(arr => arr && arr.length > 0);
+    if (!hasData) {
+      DB.set('txs', RECOVERED_TXS);
+      console.log('✓ Restored recovered transactions');
     }
   })();
 
