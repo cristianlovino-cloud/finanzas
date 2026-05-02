@@ -170,7 +170,12 @@ nav::-webkit-scrollbar{display:none}
   <div class="logo"><em>CL</em> · Finanzas</div>
   <div style="display:flex;align-items:center;gap:10px">
     <button id="theme-btn" onclick="toggleTheme()" style="background:none;border:1px solid var(--border2);border-radius:20px;padding:4px 12px;color:var(--muted2);font-family:var(--fm);font-size:.7rem;cursor:pointer;transition:all .2s" title="Cambiar tema">🌙</button>
+    <div style="display:flex;align-items:center;gap:8px">
+    <div id="spend-badge" style="font-size:.65rem;color:var(--muted);background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:3px 10px;display:none">
+      <span id="spend-pct">0%</span> gastado
+    </div>
     <div class="mes-badge" id="header-mes">Mar 2026</div>
+  </div>
   </div>
 </header>
 
@@ -180,7 +185,9 @@ nav::-webkit-scrollbar{display:none}
   <button class="nb" onclick="go('flujo',this)">⇄ Flujo</button>
   <button class="nb" onclick="go('cargar',this)">＋ Cargar</button>
   <button class="nb" onclick="go('inversiones',this)">◈ Inversiones</button>
+  <!-- Patrimonio hidden from nav
   <button class="nb" onclick="go('patrimonio',this)">⬟ Patrimonio</button>
+  -->
   <button class="nb" onclick="go('config',this)">⚙ Config</button>
 </nav>
 
@@ -277,24 +284,7 @@ nav::-webkit-scrollbar{display:none}
     </div>
   </div>
 
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px" id="plan-header-hidden" style="display:none">
-    <div></div>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <select id="plan-sel" onchange="setGlobalMes(this.value)" class="fi" style="width:auto;padding:6px 12px">
-        <option value="2026-04">Abr 2026</option>
-        <option value="2026-03">Mar 2026</option>
-        <option value="2026-02">Feb 2026</option>
-        <option value="2026-01">Ene 2026</option>
-        <option value="2025-12">Dic 2025</option>
-        <option value="2025-11">Nov 2025</option>
-        <option value="2025-10">Oct 2025</option>
-        <option value="2025-09">Sep 2025</option>
-        <option value="2025-08">Ago 2025</option>
-        <option value="2025-07">Jul 2025</option>
-      </select>
-      <button class="btn btn-g" onclick="savePlan()">💾 Guardar mes</button>
-    </div>
-  </div>
+
 
   <!-- KPIs del plan -->
   <div class="kg" style="grid-template-columns:repeat(4,1fr)">
@@ -1546,6 +1536,19 @@ function updateOverview() {
   const netoMes = curPt.ing - totalGas/nMeses - curPt.inv;
   if (neto < 0 && yr === '2026') alerts.push({type:'danger', msg:`⬇ Acumulado negativo en ${yr}: ${fmt(neto)}`});
   else if (neto >= 0 && yr === '2026') alerts.push({type:'ok', msg:`✓ Acumulado ${yr}: ${fmt(neto)} neto positivo en ${nMeses} ${nMeses===1?'mes':'meses'}`});
+
+  // Update spend badge in header
+  if (yr === '2026') {
+    const badge = document.getElementById('spend-badge');
+    const pctEl = document.getElementById('spend-pct');
+    if (badge && pctEl && totalGas > 0 && totalIng > 0) {
+      const pct = Math.round(totalGas / totalIng * 100);
+      pctEl.textContent = pct + '%';
+      badge.style.display = 'inline-block';
+      badge.style.color = pct > 90 ? P.red : pct > 70 ? P.yellow : P.green;
+      badge.style.borderColor = pct > 90 ? 'rgba(244,63,94,.3)' : pct > 70 ? 'rgba(251,191,36,.3)' : 'rgba(34,211,160,.2)';
+    }
+  }
 
   document.getElementById('overview-alerts').innerHTML = alerts.map(a =>
     `<div class="alert ${a.type}">${a.msg}</div>`).join('');
