@@ -1283,13 +1283,11 @@ function populateCatDropdown() {
   // If tipo = ingreso → show ingreso categories from plan
   if (curTipo === 'ingreso') {
     const g0 = document.createElement('optgroup');
-    g0.label = '💰 Ingresos del mes';
-    // From plan.ing
+    g0.label = 'Ingresos del mes';
     plan.ing.forEach(r => {
       const o = document.createElement('option');
       o.value = r.l; o.text = r.l; g0.appendChild(o);
     });
-    // Extra ingreso options
     ['Bono', 'Reintegro', 'Venta activos', 'Otros ingresos'].forEach(c => {
       if (!plan.ing.find(r => r.l === c)) {
         const o = document.createElement('option');
@@ -1300,10 +1298,31 @@ function populateCatDropdown() {
     return;
   }
 
-  // Gastos fijos from plan
+  // If tipo = tc → only show TC categories from plan.vars + fixed TC list
+  if (curTipo === 'tc') {
+    const g1 = document.createElement('optgroup');
+    g1.label = 'Tarjetas';
+    // TC from plan vars
+    const tcFromPlan = plan.vars.filter(r => r.l.startsWith('TC '));
+    tcFromPlan.forEach(r => {
+      const o = document.createElement('option');
+      o.value = r.l; o.text = r.l; g1.appendChild(o);
+    });
+    // Fallback fixed list if none in plan
+    if (!tcFromPlan.length) {
+      ['TC BSF','TC BBVA','TC Municipal','TC MP'].forEach(c => {
+        const o = document.createElement('option');
+        o.value = c; o.text = c; g1.appendChild(o);
+      });
+    }
+    sel.appendChild(g1);
+    return;
+  }
+
+  // Gasto directo: fijos + variables (excluding TC)
   if (plan.fijos.length) {
     const g1 = document.createElement('optgroup');
-    g1.label = '📌 Gastos fijos del mes';
+    g1.label = 'Gastos fijos del mes';
     plan.fijos.forEach(r => {
       const o = document.createElement('option');
       o.value = r.l; o.text = r.l; g1.appendChild(o);
@@ -1311,19 +1330,18 @@ function populateCatDropdown() {
     sel.appendChild(g1);
   }
   
-  // Variables from plan
-  if (plan.vars.length) {
+  const varsNoTC = plan.vars.filter(r => !r.l.startsWith('TC '));
+  if (varsNoTC.length) {
     const g2 = document.createElement('optgroup');
-    g2.label = '💸 Variables del mes';
-    plan.vars.forEach(r => {
+    g2.label = 'Variables del mes';
+    varsNoTC.forEach(r => {
       const o = document.createElement('option');
       o.value = r.l; o.text = r.l; g2.appendChild(o);
     });
     sel.appendChild(g2);
   }
-  
   const g3 = document.createElement('optgroup');
-  g3.label = '➕ Sin categoría';
+  g3.label = 'Sin categoría';
   const oOtros = document.createElement('option');
   oOtros.value = 'Otros'; oOtros.text = 'Otros';
   g3.appendChild(oOtros);
@@ -1335,22 +1353,24 @@ function submitTx() {
   const monto = parseFloat(document.getElementById('tx-monto').value);
   const desc  = document.getElementById('tx-desc').value.trim();
   const catEl = document.getElementById('tx-cat');
-  const cat   = catEl ? (catEl.value || catEl.tagName === 'SELECT' ? catEl.value : catEl.value) : '';
+  const cat   = catEl ? catEl.value : '';
   const medio = document.getElementById('tx-medio').value;
   const notas = document.getElementById('tx-notas').value.trim();
 
-  // Normalize fecha: handle DD/MM/YYYY or any local format → YYYY-MM-DD
+  // Normalize fecha robustly: DD/MM/YYYY or DD/MM/YY → YYYY-MM-DD
   if (fecha && fecha.includes('/')) {
     const p = fecha.split('/');
     if (p.length === 3) {
-      if (p[2].length === 4) fecha = p[2] + '-' + p[1].padStart(2,'0') + '-' + p[0].padStart(2,'0');
-      else fecha = p[0] + '-' + p[1].padStart(2,'0') + '-' + p[2].padStart(2,'0');
+      let y = p[2], m = p[1], d = p[0];
+      if (y.length === 2) y = '20' + y;
+      if (y.length === 4) fecha = y + '-' + m.padStart(2,'0') + '-' + d.padStart(2,'0');
     }
   }
-  // If still no valid date, use today
-  if (!fecha || fecha.length < 8) fecha = new Date().toISOString().split('T')[0];
+  // If still not YYYY-MM-DD, use today
+  if (!fecha || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) fecha = new Date().toISOString().split('T')[0];
 
-  if (!monto || !desc) { showToast('Completá monto y descripción', P.red); return; }
+  if (!monto || monto <= 0) { showToast('Completá el monto', '#f43f5e'); return; }
+  if (!desc)                { showToast('Completá la descripción', '#f43f5e'); return; }
 
   // Determine month from date
   const parts = fecha.split('-');
@@ -1569,24 +1589,28 @@ function updateOverview() {
 
   if (yr === '2026') {
     // Use saved plans + real transactions
+    // Only include months that have real data (saved plan OR txs) — skip future months with only PLAN_DEFAULT
+    const savedPlans = DB.get('plans', {});
+    const savedTxs   = DB.get('txs', {});
     closedMonths.forEach(mes => {
+      const hasSavedPlan = !!savedPlans[mes];
+      const hasTxs = savedTxs[mes] && savedTxs[mes].length > 0;
+      // Skip months with no real data at all
+      if (!hasSavedPlan && !hasTxs) return;
+
       const plan = getPlan(mes);
       const pt   = planTotals(plan);
       const { total: txTotal, totals: realTotals } = txTotals(mes);
-      const hasTxs = txTotal > 0;
 
       totalIng += pt.ing;
       totalInv += pt.inv;
 
       if (hasTxs) {
-        // Month has real data: sum ALL txs + auto-complete fijos not entered
-        const txGastos  = txTotal;
         const fijosAuto = plan.fijos
           .filter(r => realTotals[r.l] == null)
           .reduce((s, r) => s + r.v, 0);
-        totalGas += txGastos + fijosAuto;
+        totalGas += txTotal + fijosAuto;
       } else {
-        // Month has no txs yet: use full presupuesto as estimate
         totalGas += pt.gastos;
       }
     });
@@ -1601,9 +1625,20 @@ function updateOverview() {
   }
 
   const neto = totalIng - totalGas - totalInv;
-  const nMeses = closedMonths.length;
-  const label = nMeses === 1 ? closedMonths[0].replace('-','/') :
-    MESES[0] + '–' + MESES[nMeses-1] + ' ' + yr;
+  // For 2026: count only months that actually contributed data
+  let nMeses, activeMeses;
+  if (yr === '2026') {
+    const savedPlans = DB.get('plans', {});
+    const savedTxs   = DB.get('txs', {});
+    activeMeses = closedMonths.filter(mes => !!savedPlans[mes] || (savedTxs[mes] && savedTxs[mes].length > 0));
+    nMeses = activeMeses.length || 1;
+  } else {
+    activeMeses = closedMonths;
+    nMeses = closedMonths.length;
+  }
+  const label = nMeses === 1
+    ? MESES[parseInt(activeMeses[0].split('-')[1])-1] + ' ' + yr
+    : MESES[parseInt(activeMeses[0].split('-')[1])-1] + '–' + MESES[parseInt(activeMeses[nMeses-1].split('-')[1])-1] + ' ' + yr;
 
   // Update KPIs
   document.getElementById('ov-ing').textContent = fmtK(totalIng);
@@ -1707,7 +1742,7 @@ function buildEvolChart(year='2026') {
   newCanvas.id = 'c-evol';
   newCanvas.height = 65;
   parent.replaceChild(newCanvas, canvasEl);
-  chartEvol = new Chart(ctx, {
+  chartEvol = new Chart(newCanvas.getContext('2d'), {
     type: 'line',
     data: { labels, datasets: [
       { label:'Gastos',   data:g, borderColor:P.red,   backgroundColor:'rgba(244,63,94,.06)',   borderWidth:2, pointRadius:3, tension:.35, fill:true },
