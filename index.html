@@ -180,7 +180,7 @@ nav::-webkit-scrollbar{display:none}
   <button class="nb" onclick="go('flujo',this)">⇄ Flujo</button>
   <button class="nb" onclick="go('cargar',this)">＋ Cargar</button>
   <button class="nb" onclick="go('inversiones',this)">◈ Inversiones</button>
-  <button class="nb" onclick="go('patrimonio',this)">⬟ Patrimonio</button>
+  <button class="nb" onclick="go('patrimonio',this)" style="display:none">⬟ Patrimonio</button>
   <button class="nb" onclick="go('config',this)">⚙ Config</button>
 </nav>
 
@@ -1140,13 +1140,21 @@ function copyPrevMonth() {
 }
 
 function savePlan() {
-  if (!curPlan) return;
+  if (!curPlan) { showToast('Sin datos para guardar', '#f43f5e'); return; }
   const plans = DB.get('plans', {});
-  plans[curMes] = curPlan;
+  plans[curMes] = JSON.parse(JSON.stringify(curPlan));
   DB.set('plans', plans);
   updateOverview();
   renderFlujo();
-  showToast(`✓ Planificación ${curMes} guardada`);
+  // Visual feedback en el botón
+  const btn = document.querySelector('button[onclick="savePlan()"]');
+  if (btn) {
+    const orig = btn.innerHTML;
+    btn.innerHTML = '✓ Guardado';
+    btn.style.background = 'var(--green)';
+    setTimeout(() => { btn.innerHTML = orig; btn.style.background = ''; }, 2000);
+  }
+  showToast('✓ Presupuesto de ' + mesLabel(curMes) + ' guardado correctamente');
 }
 
 // ══════════════════════════════════════════════════════
@@ -1202,54 +1210,46 @@ function populateCatDropdown() {
   
   sel.innerHTML = '<option value="">— elegir —</option>';
 
-  // If tipo = ingreso → show ingreso categories from plan
   if (curTipo === 'ingreso') {
     const g0 = document.createElement('optgroup');
-    g0.label = '💰 Ingresos del mes';
-    // From plan.ing
-    plan.ing.forEach(r => {
-      const o = document.createElement('option');
-      o.value = r.l; o.text = r.l; g0.appendChild(o);
-    });
-    // Extra ingreso options
-    ['Bono', 'Reintegro', 'Venta activos', 'Otros ingresos'].forEach(c => {
-      if (!plan.ing.find(r => r.l === c)) {
-        const o = document.createElement('option');
-        o.value = c; o.text = c; g0.appendChild(o);
-      }
+    g0.label = 'Ingresos del mes';
+    plan.ing.forEach(r => { const o=document.createElement('option'); o.value=r.l; o.text=r.l; g0.appendChild(o); });
+    ['Bono','Reintegro','Venta activos','Otros ingresos'].forEach(cat => {
+      if (!plan.ing.find(r=>r.l===cat)) { const o=document.createElement('option'); o.value=cat; o.text=cat; g0.appendChild(o); }
     });
     sel.appendChild(g0);
     return;
   }
 
-  // Gastos fijos from plan
+  if (curTipo === 'tc') {
+    // Solo tarjetas: vars que empiezan con TC
+    const g1 = document.createElement('optgroup');
+    g1.label = 'Tarjetas';
+    const tcVars = plan.vars.filter(r => r.l.toUpperCase().startsWith('TC '));
+    (tcVars.length ? tcVars : [{l:'TC BSF'},{l:'TC BBVA'},{l:'TC Municipal'},{l:'TC MP'}])
+      .forEach(r => { const o=document.createElement('option'); o.value=r.l; o.text=r.l; g1.appendChild(o); });
+    sel.appendChild(g1);
+    return;
+  }
+
+  // Gasto directo: fijos + variables SIN tarjetas
   if (plan.fijos.length) {
     const g1 = document.createElement('optgroup');
-    g1.label = '📌 Gastos fijos del mes';
-    plan.fijos.forEach(r => {
-      const o = document.createElement('option');
-      o.value = r.l; o.text = r.l; g1.appendChild(o);
-    });
+    g1.label = 'Gastos fijos';
+    plan.fijos.forEach(r => { const o=document.createElement('option'); o.value=r.l; o.text=r.l; g1.appendChild(o); });
     sel.appendChild(g1);
   }
-  
-  // Variables from plan
-  if (plan.vars.length) {
+  const noTC = plan.vars.filter(r => !r.l.toUpperCase().startsWith('TC '));
+  if (noTC.length) {
     const g2 = document.createElement('optgroup');
-    g2.label = '💸 Variables del mes';
-    plan.vars.forEach(r => {
-      const o = document.createElement('option');
-      o.value = r.l; o.text = r.l; g2.appendChild(o);
-    });
+    g2.label = 'Variables';
+    noTC.forEach(r => { const o=document.createElement('option'); o.value=r.l; o.text=r.l; g2.appendChild(o); });
     sel.appendChild(g2);
   }
-  
   const g3 = document.createElement('optgroup');
-  g3.label = '➕ Sin categoría';
-  const oOtros = document.createElement('option');
-  oOtros.value = 'Otros'; oOtros.text = 'Otros';
-  g3.appendChild(oOtros);
-  sel.appendChild(g3);
+  g3.label = 'Sin categoría';
+  const oOtros = document.createElement('option'); oOtros.value='Otros'; oOtros.text='Otros';
+  g3.appendChild(oOtros); sel.appendChild(g3);
 }
 
 function submitTx() {
@@ -1482,18 +1482,14 @@ function updateOverview() {
     closedMonths.forEach(mes => {
       const hasPlan = !!savedPlans[mes];
       const hasTxs  = Array.isArray(savedTxs[mes]) && savedTxs[mes].length > 0;
-      if (!hasPlan && !hasTxs) return; // sin datos reales, no inflar
-      const plan = getPlan(mes);
-      const pt   = planTotals(plan);
-      totalIng += pt.ing;
-      totalInv += pt.inv;
+      if (!hasPlan && !hasTxs) return;
+      const plan = getPlan(mes), pt = planTotals(plan);
+      totalIng += pt.ing; totalInv += pt.inv;
       if (hasTxs) {
         const { total: txTotal, totals: realTotals } = txTotals(mes);
         const fijosAuto = plan.fijos.filter(r => !realTotals[r.l]).reduce((s,r) => s+r.v, 0);
         totalGas += txTotal + fijosAuto;
-      } else {
-        totalGas += pt.gastos;
-      }
+      } else { totalGas += pt.gastos; }
     });
   } else {
     // Use historical HIST data
@@ -1546,8 +1542,9 @@ function updateOverview() {
   document.getElementById('overview-alerts').innerHTML = alerts.map(a =>
     `<div class="alert ${a.type}">${a.msg}</div>`).join('');
 
-  // Rebuild donut with current month data
   buildDonut();
+  // Actualizar chart anual con datos reales
+  if (typeof buildAnualChart === 'function') buildAnualChart();
 }
 
 // ══════════════════════════════════════════════════════
@@ -1567,14 +1564,17 @@ function buildEvolChart(year='2026') {
   if (year === '2026') {
     const now = new Date();
     const curMonthIdx = now.getFullYear() === 2026 ? now.getMonth() : 11;
+    const savedPlans = DB.get('plans', {});
+    const savedTxs   = DB.get('txs',   {});
     const months = [];
     for (let idx = 0; idx <= curMonthIdx; idx++) {
       const mes = '2026-' + String(idx+1).padStart(2,'0');
-      const plan = getPlan(mes);
-      const pt   = planTotals(plan);
+      const hasPlan = !!savedPlans[mes];
+      const hasTxs  = Array.isArray(savedTxs[mes]) && savedTxs[mes].length > 0;
+      if (!hasPlan && !hasTxs) continue; // skip meses sin datos
+      const plan = getPlan(mes), pt = planTotals(plan);
       const { total: txTotal, totals: realTotals } = txTotals(mes);
-      const hasTxs = txTotal > 0;
-      const fijosAuto = plan.fijos.filter(r => realTotals[r.l] == null).reduce((s,r) => s+r.v, 0);
+      const fijosAuto = plan.fijos.filter(r => !realTotals[r.l]).reduce((s,r) => s+r.v, 0);
       const gastosMes = hasTxs ? txTotal + fijosAuto : pt.gastos;
       months.push({ label: MESES[idx], ing: Math.round(pt.ing), gas: Math.round(gastosMes) });
     }
@@ -1619,16 +1619,36 @@ function setEvolYear(yr, btn) {
   buildEvolChart(yr);
 }
 
-new Chart(document.getElementById('c-anual').getContext('2d'), {
-  type:'bar',
-  data:{ labels:['2024','2025','2026*'],
-    datasets:[
-      {label:'Gastos',   data:[54054,151482,26048], backgroundColor:'rgba(244,63,94,.7)',  borderColor:P.red,   borderWidth:1},
-      {label:'Ingresos', data:[76428,157466,34482], backgroundColor:'rgba(34,211,160,.6)', borderColor:P.green, borderWidth:1},
-    ]},
-  options:{responsive:true,plugins:{legend:{position:'bottom',labels:{boxWidth:8}},tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${fmt(c.parsed.y)}`}}},
-    scales:{y:{ticks:{callback:v=>'$'+(v/1000).toFixed(0)+'k'},grid:{color:'rgba(255,255,255,.04)'}},x:{grid:{display:false}}}}
-});
+function buildAnualChart() {
+  // Calcular 2026 dinámicamente desde localStorage
+  const savedPlans = DB.get('plans', {});
+  const savedTxs   = DB.get('txs',   {});
+  let gas26=0, ing26=0;
+  for (let m=1; m<=12; m++) {
+    const mes='2026-'+String(m).padStart(2,'0');
+    const hasPlan=!!savedPlans[mes];
+    const hasTxs=Array.isArray(savedTxs[mes])&&savedTxs[mes].length>0;
+    if (!hasPlan && !hasTxs) continue;
+    const plan=getPlan(mes), pt=planTotals(plan);
+    ing26 += pt.ing;
+    if (hasTxs) {
+      const {total:txTotal,totals:realTotals}=txTotals(mes);
+      gas26 += txTotal + plan.fijos.filter(r=>!realTotals[r.l]).reduce((s,r)=>s+r.v,0);
+    } else { gas26 += pt.gastos; }
+  }
+  const canvasEl = document.getElementById('c-anual');
+  if (!canvasEl) return;
+  new Chart(canvasEl.getContext('2d'), {
+    type:'bar',
+    data:{ labels:['2024','2025','2026*'],
+      datasets:[
+        {label:'Gastos',   data:[54054,151482,Math.round(gas26)], backgroundColor:'rgba(244,63,94,.7)',  borderColor:P.red,   borderWidth:1},
+        {label:'Ingresos', data:[76428,157466,Math.round(ing26)], backgroundColor:'rgba(34,211,160,.6)', borderColor:P.green, borderWidth:1},
+      ]},
+    options:{responsive:true,plugins:{legend:{position:'bottom',labels:{boxWidth:8}},tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${fmt(c.parsed.y)}`}}},
+      scales:{y:{ticks:{callback:v=>'$'+(v/1000).toFixed(0)+'k'},grid:{color:'rgba(255,255,255,.04)'}},x:{grid:{display:false}}}}
+  });
+}
 
 // Overview donut — composition of current month
 function buildDonut() {
@@ -2355,6 +2375,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Init charts — build AFTER plans are loaded
   setTimeout(() => {
     buildEvolChart('2026');
+    buildAnualChart();
     buildDonut();
   }, 50);
 
