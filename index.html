@@ -259,6 +259,13 @@ nav::-webkit-scrollbar{display:none}
     </div>
     <div style="display:flex;gap:8px;align-items:center">
       <select id="plan-sel-top" onchange="setGlobalMes(this.value)" class="fi" style="width:auto;padding:5px 10px;font-size:.7rem">
+        <option value="2026-12">Dic 2026</option>
+        <option value="2026-11">Nov 2026</option>
+        <option value="2026-10">Oct 2026</option>
+        <option value="2026-09">Sep 2026</option>
+        <option value="2026-08">Ago 2026</option>
+        <option value="2026-07">Jul 2026</option>
+        <option value="2026-06">Jun 2026</option>
         <option value="2026-05">May 2026</option>
         <option value="2026-04">Abr 2026</option>
         <option value="2026-03">Mar 2026</option>
@@ -267,6 +274,7 @@ nav::-webkit-scrollbar{display:none}
         <option value="2025-12">Dic 2025</option>
         <option value="2025-11">Nov 2025</option>
         <option value="2025-10">Oct 2025</option>
+        <option value="2025-09">Sep 2025</option>
       </select>
       <button onclick="copyPrevMonth()" style="padding:8px 14px;background:none;border:1px solid var(--border2);color:var(--muted2);border-radius:20px;font-family:var(--fh);font-size:.72rem;cursor:pointer;white-space:nowrap" title="Copiar variables del mes anterior">
         ↩ Copiar anterior
@@ -2165,7 +2173,8 @@ function saveEditTx() {
 
   const newMonto = parseFloat(document.getElementById('edit-monto').value) || txsAll[mes][idx].monto;
   const newDesc  = document.getElementById('edit-desc').value.trim() || txsAll[mes][idx].desc;
-  const newCat   = normalizeCat(document.getElementById('edit-cat').value || txsAll[mes][idx].cat);
+  const rawCat = (document.getElementById('edit-cat').value || txsAll[mes][idx].cat || '');
+  const newCat = normalizeCat(rawCat);
 
   const tx = { ...txsAll[mes][idx], fecha: newFecha, monto: newMonto, desc: newDesc, cat: newCat };
 
@@ -2363,13 +2372,6 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('header-mes').textContent = mesLabel(initMes);
   renderPlanSections();
 
-  // Init charts — build AFTER plans are loaded
-  setTimeout(() => {
-    buildEvolChart('2026');
-    buildAnualChart();
-    buildDonut();
-  }, 50);
-
   // Init flujo
   renderFlujo();
 
@@ -2379,11 +2381,18 @@ document.addEventListener('DOMContentLoaded', () => {
   // Init patrimonio
   updatePatrimonio();
 
-  // Init overview
+  // Init overview (KPIs primero, antes que los charts)
   updateOverview();
 
   // Init recent txs
   renderRecentTxs();
+
+  // Charts al final — DOM ya pintado y datos listos
+  requestAnimationFrame(() => setTimeout(() => {
+    buildEvolChart('2026');
+    buildAnualChart();
+    buildDonut();
+  }, 100));
 });
 </script>
 </body>
