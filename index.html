@@ -588,7 +588,7 @@ nav::-webkit-scrollbar{display:none}
   </div>
 </div>
 
-<!-- ════════════ EDIT TX MODAL (body-level) ════════════ -->
+<!-- ════════════ EDIT TX MODAL ════════════ -->
 <div id="edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:900;align-items:center;justify-content:center;padding:20px">
   <div style="background:var(--s1);border:1px solid var(--border2);border-radius:12px;padding:24px;width:100%;max-width:400px">
     <div style="font-family:var(--fh);font-size:1rem;font-weight:700;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
@@ -1280,64 +1280,44 @@ function populateCatDropdown() {
   
   sel.innerHTML = '<option value="">— elegir —</option>';
 
-  // If tipo = ingreso → show ingreso categories from plan
   if (curTipo === 'ingreso') {
     const g0 = document.createElement('optgroup');
     g0.label = 'Ingresos del mes';
-    plan.ing.forEach(r => {
-      const o = document.createElement('option');
-      o.value = r.l; o.text = r.l; g0.appendChild(o);
-    });
-    ['Bono', 'Reintegro', 'Venta activos', 'Otros ingresos'].forEach(c => {
-      if (!plan.ing.find(r => r.l === c)) {
-        const o = document.createElement('option');
-        o.value = c; o.text = c; g0.appendChild(o);
-      }
+    plan.ing.forEach(r => { const o = document.createElement('option'); o.value=r.l; o.text=r.l; g0.appendChild(o); });
+    ['Bono','Reintegro','Venta activos','Otros ingresos'].forEach(c => {
+      if (!plan.ing.find(r => r.l===c)) { const o=document.createElement('option'); o.value=c; o.text=c; g0.appendChild(o); }
     });
     sel.appendChild(g0);
     return;
   }
 
-  // If tipo = tc → only show TC categories from plan.vars + fixed TC list
   if (curTipo === 'tc') {
     const g1 = document.createElement('optgroup');
     g1.label = 'Tarjetas';
-    // TC from plan vars
-    const tcFromPlan = plan.vars.filter(r => r.l.startsWith('TC '));
-    tcFromPlan.forEach(r => {
-      const o = document.createElement('option');
-      o.value = r.l; o.text = r.l; g1.appendChild(o);
-    });
-    // Fallback fixed list if none in plan
-    if (!tcFromPlan.length) {
+    const tcVars = plan.vars.filter(r => r.l.toUpperCase().startsWith('TC '));
+    if (tcVars.length) {
+      tcVars.forEach(r => { const o=document.createElement('option'); o.value=r.l; o.text=r.l; g1.appendChild(o); });
+    } else {
       ['TC BSF','TC BBVA','TC Municipal','TC MP'].forEach(c => {
-        const o = document.createElement('option');
-        o.value = c; o.text = c; g1.appendChild(o);
+        const o=document.createElement('option'); o.value=c; o.text=c; g1.appendChild(o);
       });
     }
     sel.appendChild(g1);
     return;
   }
 
-  // Gasto directo: fijos + variables (excluding TC)
+  // gasto directo
   if (plan.fijos.length) {
     const g1 = document.createElement('optgroup');
-    g1.label = 'Gastos fijos del mes';
-    plan.fijos.forEach(r => {
-      const o = document.createElement('option');
-      o.value = r.l; o.text = r.l; g1.appendChild(o);
-    });
+    g1.label = 'Gastos fijos';
+    plan.fijos.forEach(r => { const o=document.createElement('option'); o.value=r.l; o.text=r.l; g1.appendChild(o); });
     sel.appendChild(g1);
   }
-  
-  const varsNoTC = plan.vars.filter(r => !r.l.startsWith('TC '));
+  const varsNoTC = plan.vars.filter(r => !r.l.toUpperCase().startsWith('TC '));
   if (varsNoTC.length) {
     const g2 = document.createElement('optgroup');
-    g2.label = 'Variables del mes';
-    varsNoTC.forEach(r => {
-      const o = document.createElement('option');
-      o.value = r.l; o.text = r.l; g2.appendChild(o);
-    });
+    g2.label = 'Variables';
+    varsNoTC.forEach(r => { const o=document.createElement('option'); o.value=r.l; o.text=r.l; g2.appendChild(o); });
     sel.appendChild(g2);
   }
   const g3 = document.createElement('optgroup');
@@ -1349,56 +1329,56 @@ function populateCatDropdown() {
 }
 
 function submitTx() {
-  let fecha = document.getElementById('tx-fecha').value;
-  const monto = parseFloat(document.getElementById('tx-monto').value);
-  const desc  = document.getElementById('tx-desc').value.trim();
-  const catEl = document.getElementById('tx-cat');
-  const cat   = catEl ? catEl.value : '';
-  const medio = document.getElementById('tx-medio').value;
-  const notas = document.getElementById('tx-notas').value.trim();
+  // --- Read form ---
+  let fechaRaw = document.getElementById('tx-fecha').value || '';
+  const monto  = parseFloat(document.getElementById('tx-monto').value);
+  const desc   = document.getElementById('tx-desc').value.trim();
+  const cat    = (document.getElementById('tx-cat')?.value || '').trim();
+  const medio  = document.getElementById('tx-medio').value || '';
+  const notas  = document.getElementById('tx-notas').value.trim();
 
-  // Normalize fecha robustly: DD/MM/YYYY or DD/MM/YY → YYYY-MM-DD
-  if (fecha && fecha.includes('/')) {
-    const p = fecha.split('/');
-    if (p.length === 3) {
-      let y = p[2], m = p[1], d = p[0];
-      if (y.length === 2) y = '20' + y;
-      if (y.length === 4) fecha = y + '-' + m.padStart(2,'0') + '-' + d.padStart(2,'0');
-    }
-  }
-  // If still not YYYY-MM-DD, use today
-  if (!fecha || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) fecha = new Date().toISOString().split('T')[0];
-
+  // --- Validate ---
   if (!monto || monto <= 0) { showToast('Completá el monto', '#f43f5e'); return; }
   if (!desc)                { showToast('Completá la descripción', '#f43f5e'); return; }
 
-  // Determine month from date
-  const parts = fecha.split('-');
-  const txMes = parts[0] + '-' + parts[1];
+  // --- Normalize date to YYYY-MM-DD ---
+  let fecha = fechaRaw;
+  if (fecha.includes('/')) {
+    // DD/MM/YYYY or DD/MM/YY
+    const p = fecha.split('/');
+    if (p.length === 3) {
+      let [d, m, y] = p;
+      if (y.length === 2) y = '20' + y;
+      fecha = y + '-' + m.padStart(2,'0') + '-' + d.padStart(2,'0');
+    }
+  }
+  // Final fallback — always valid
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+    fecha = new Date().toISOString().split('T')[0];
+  }
 
+  // --- Derive month key ---
+  const txMes = fecha.slice(0, 7); // YYYY-MM
+
+  // --- Build and save tx ---
   const tx = { fecha, monto, desc, cat: normalizeCat(cat), medio, notas, tipo: curTipo, ts: Date.now() };
   const txsAll = DB.get('txs', {});
-  if (!txsAll[txMes]) txsAll[txMes] = [];
+  if (!Array.isArray(txsAll[txMes])) txsAll[txMes] = [];
   txsAll[txMes].unshift(tx);
   DB.set('txs', txsAll);
 
-  // Clear form
+  // --- Clear form fields ---
   document.getElementById('tx-monto').value = '';
   document.getElementById('tx-desc').value  = '';
   document.getElementById('tx-notas').value = '';
 
+  // --- Refresh UI ---
   renderRecentTxs();
   updateOverview();
-  
-  // Auto-refresh Flujo if visible
   const flujoSel = document.getElementById('flujo-sel');
-  if (flujoSel) {
-    const txMes2 = document.getElementById('tx-fecha')?.value?.slice(0,7) || curMes;
-    // If flujo is showing the same month as the tx just added, refresh it
-    if (flujoSel.value === txMes2) renderFlujo();
-  }
+  if (flujoSel && flujoSel.value === txMes) renderFlujo();
 
-  showToast(`✓ ${curTipo === 'ingreso' ? 'Ingreso' : 'Gasto'} registrado — datos actualizados`);
+  showToast(`✓ ${curTipo === 'ingreso' ? 'Ingreso' : 'Gasto'} registrado`);
   document.dispatchEvent(new CustomEvent('txSaved'));
 }
 
@@ -1570,126 +1550,105 @@ function setOverviewYear(yr, btn) {
 }
 
 function updateOverview() {
-  const yr = overviewYear;
+  const yr  = overviewYear;
   const now = new Date();
   const curMesKey = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
 
-  // Determine which months to accumulate for this year
-  // For historical years: use HIST data
-  // For current year (2026): accumulate from saved plans + txs
-  const allMonths = MESES.map((_, i) => {
-    const m = String(i+1).padStart(2,'0');
-    return yr + '-' + m;
-  });
-
-  // Only include months up to current month
-  const closedMonths = allMonths.filter(mes => mes <= curMesKey);
-
   let totalIng = 0, totalGas = 0, totalInv = 0;
+  let activeMeses = [];
 
   if (yr === '2026') {
-    // Use saved plans + real transactions
-    // Only include months that have real data (saved plan OR txs) — skip future months with only PLAN_DEFAULT
+    // Solo meses con datos reales (plan guardado o txs)
     const savedPlans = DB.get('plans', {});
     const savedTxs   = DB.get('txs', {});
-    closedMonths.forEach(mes => {
-      const hasSavedPlan = !!savedPlans[mes];
-      const hasTxs = savedTxs[mes] && savedTxs[mes].length > 0;
-      // Skip months with no real data at all
-      if (!hasSavedPlan && !hasTxs) return;
-
+    for (let m = 1; m <= 12; m++) {
+      const mes = '2026-' + String(m).padStart(2,'0');
+      if (mes > curMesKey) break; // no incluir meses futuros
+      const hasPlan = !!savedPlans[mes];
+      const hasTxs  = savedTxs[mes] && savedTxs[mes].length > 0;
+      if (!hasPlan && !hasTxs) continue; // saltar meses sin datos
+      activeMeses.push(mes);
       const plan = getPlan(mes);
       const pt   = planTotals(plan);
-      const { total: txTotal, totals: realTotals } = txTotals(mes);
-
       totalIng += pt.ing;
       totalInv += pt.inv;
-
       if (hasTxs) {
-        const fijosAuto = plan.fijos
-          .filter(r => realTotals[r.l] == null)
-          .reduce((s, r) => s + r.v, 0);
+        const { total: txTotal, totals: realTotals } = txTotals(mes);
+        const fijosAuto = plan.fijos.filter(r => !realTotals[r.l]).reduce((s,r) => s+r.v, 0);
         totalGas += txTotal + fijosAuto;
       } else {
         totalGas += pt.gastos;
       }
-    });
+    }
   } else {
-    // Use historical HIST data
-    const gArr = HIST.gastos[yr]  || [];
-    const iArr = HIST.ingresos[yr]|| [];
-    const n = closedMonths.length;
-    totalGas = gArr.slice(0,n).reduce((s,v)=>s+(v||0),0);
-    totalIng = iArr.slice(0,n).reduce((s,v)=>s+(v||0),0);
+    // Años históricos: usar HIST
+    const gArr = HIST.gastos[yr]   || [];
+    const iArr = HIST.ingresos[yr] || [];
+    // Para años completos usar todos; para año actual hasta el mes que corresponde
+    const nMesesHist = gArr.filter(v => v != null).length;
+    for (let m = 1; m <= nMesesHist; m++) {
+      activeMeses.push(yr + '-' + String(m).padStart(2,'0'));
+    }
+    totalGas = gArr.reduce((s,v) => s+(v||0), 0);
+    totalIng = iArr.reduce((s,v) => s+(v||0), 0);
     totalInv = 0;
   }
 
-  const neto = totalIng - totalGas - totalInv;
-  // For 2026: count only months that actually contributed data
-  let nMeses, activeMeses;
-  if (yr === '2026') {
-    const savedPlans = DB.get('plans', {});
-    const savedTxs   = DB.get('txs', {});
-    activeMeses = closedMonths.filter(mes => !!savedPlans[mes] || (savedTxs[mes] && savedTxs[mes].length > 0));
-    nMeses = activeMeses.length || 1;
-  } else {
-    activeMeses = closedMonths;
-    nMeses = closedMonths.length;
-  }
-  const label = nMeses === 1
-    ? MESES[parseInt(activeMeses[0].split('-')[1])-1] + ' ' + yr
-    : MESES[parseInt(activeMeses[0].split('-')[1])-1] + '–' + MESES[parseInt(activeMeses[nMeses-1].split('-')[1])-1] + ' ' + yr;
+  const nMeses = activeMeses.length;
+  const neto   = totalIng - totalGas - totalInv;
 
-  // Update KPIs
-  document.getElementById('ov-ing').textContent = fmtK(totalIng);
-  document.getElementById('ov-gas').textContent = fmtK(totalGas);
+  // Label
+  let label;
+  if (nMeses === 0) {
+    label = yr;
+  } else if (nMeses === 1) {
+    label = MESES[parseInt(activeMeses[0].split('-')[1])-1] + ' ' + yr;
+  } else {
+    const m0 = MESES[parseInt(activeMeses[0].split('-')[1])-1];
+    const m1 = MESES[parseInt(activeMeses[nMeses-1].split('-')[1])-1];
+    label = m0 + '–' + m1 + ' ' + yr;
+  }
+
+  // KPIs
+  document.getElementById('ov-ing').textContent     = fmtK(totalIng);
+  document.getElementById('ov-gas').textContent     = fmtK(totalGas);
   document.getElementById('ov-gas-sub').textContent = nMeses > 1 ? `acumulado ${nMeses} meses` : 'del mes';
   const netoEl = document.getElementById('ov-neto');
-  netoEl.textContent = fmtK(neto);
-  netoEl.className = 'kv ' + (neto >= 0 ? 'pos' : 'neg');
-  document.getElementById('ov-mes-label').textContent = label;
+  if (netoEl) { netoEl.textContent = fmtK(neto); netoEl.className = 'kv ' + (neto >= 0 ? 'pos' : 'neg'); }
+  const mesLabelEl = document.getElementById('ov-mes-label');
+  if (mesLabelEl) mesLabelEl.textContent = label;
 
   // Summary bar
   const yrSummary = document.getElementById('yr-summary');
-  if (yrSummary) yrSummary.textContent = `${nMeses} ${nMeses===1?'mes':'meses'} acumulado${nMeses===1?'':'s'}`;
+  if (yrSummary) yrSummary.textContent = nMeses > 0 ? `${nMeses} ${nMeses===1?'mes':'meses'} acumulado${nMeses===1?'':'s'}` : '';
 
   // Patrimonio
-  const invs = DB.get('inversiones', INV_DEFAULT);
+  const invs     = DB.get('inversiones', INV_DEFAULT);
   const totalPat = invs.reduce((s, i) => s + (i.ars||0), 0);
-  document.getElementById('ov-pat').textContent = fmtK(totalPat);
+  const patEl    = document.getElementById('ov-pat');
+  if (patEl) patEl.textContent = fmtK(totalPat);
 
-  // Alerts — based on current month only
+  // Alerts
   const alerts = [];
-  const curPlanNow = getPlan(getCurMes());
-  const curPt = planTotals(curPlanNow);
-  const { totals: curRealTotals } = txTotals(curMesKey);
-  const planMap = {};
-  [...curPlanNow.fijos,...curPlanNow.vars].forEach(r => planMap[r.l]=(planMap[r.l]||0)+r.v);
-  Object.entries(curRealTotals).forEach(([cat, rv]) => {
-    const pv = planMap[cat] || 0;
-    if (pv > 0 && rv > pv * 1.1) alerts.push({type:'danger', msg:`⚠ ${cat}: ${fmt(rv)} vs ${fmt(pv)} presupuestado (${Math.round(rv/pv*100)}%)`});
-  });
-  const netoMes = curPt.ing - totalGas/nMeses - curPt.inv;
-  if (neto < 0 && yr === '2026') alerts.push({type:'danger', msg:`⬇ Acumulado negativo en ${yr}: ${fmt(neto)}`});
-  else if (neto >= 0 && yr === '2026') alerts.push({type:'ok', msg:`✓ Acumulado ${yr}: ${fmt(neto)} neto positivo en ${nMeses} ${nMeses===1?'mes':'meses'}`});
-
-  // Update spend badge in header
   if (yr === '2026') {
+    if (neto < 0)  alerts.push({type:'danger', msg:`⬇ Acumulado negativo ${yr}: ${fmt(neto)}`});
+    else if (neto > 0) alerts.push({type:'ok',  msg:`✓ Acumulado ${yr}: ${fmt(neto)} neto positivo`});
+  }
+  const alertEl = document.getElementById('overview-alerts');
+  if (alertEl) alertEl.innerHTML = alerts.map(a => `<div class="alert ${a.type}">${a.msg}</div>`).join('');
+
+  // Spend badge
+  if (yr === '2026' && totalIng > 0) {
     const badge = document.getElementById('spend-badge');
     const pctEl = document.getElementById('spend-pct');
-    if (badge && pctEl && totalGas > 0 && totalIng > 0) {
+    if (badge && pctEl) {
       const pct = Math.round(totalGas / totalIng * 100);
       pctEl.textContent = pct + '%';
       badge.style.display = 'inline-block';
       badge.style.color = pct > 90 ? P.red : pct > 70 ? P.yellow : P.green;
-      badge.style.borderColor = pct > 90 ? 'rgba(244,63,94,.3)' : pct > 70 ? 'rgba(251,191,36,.3)' : 'rgba(34,211,160,.2)';
     }
   }
 
-  document.getElementById('overview-alerts').innerHTML = alerts.map(a =>
-    `<div class="alert ${a.type}">${a.msg}</div>`).join('');
-
-  // Rebuild donut with current month data
   buildDonut();
 }
 
