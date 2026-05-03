@@ -8,74 +8,11 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="CL Finanzas">
 <meta name="application-name" content="CL Finanzas">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
 <title>CL · Finanzas</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<!-- Backup/Restore System -->
-<script>
-function exportData() {
-  const data = {
-    txs:         JSON.parse(localStorage.getItem('txs')         || '{}'),
-    plans:       JSON.parse(localStorage.getItem('plans')       || '{}'),
-    inversiones: JSON.parse(localStorage.getItem('inversiones') || '[]'),
-    tc:          localStorage.getItem('tc') || '1250',
-    exportedAt:  new Date().toISOString(),
-    version:     'cl-finanzas-v1'
-  };
-  const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href     = url;
-  a.download = 'cl-finanzas-backup-' + new Date().toISOString().slice(0,10) + '.json';
-  a.click();
-  URL.revokeObjectURL(url);
-  showToast('✓ Backup descargado');
-}
-
-function importData() {
-  const input = document.createElement('input');
-  input.type  = 'file';
-  input.accept = '.json';
-  input.onchange = e => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      try {
-        const data = JSON.parse(ev.target.result);
-        if (!data.version || !data.txs) { showToast('Archivo inválido', '#f43f5e'); return; }
-        if (!confirm(`¿Restaurar backup del ${new Date(data.exportedAt).toLocaleDateString('es-AR')}?\nEsto reemplaza los datos actuales.`)) return;
-        if (data.txs)         localStorage.setItem('txs',         JSON.stringify(data.txs));
-        if (data.plans)       localStorage.setItem('plans',       JSON.stringify(data.plans));
-        if (data.inversiones) localStorage.setItem('inversiones', JSON.stringify(data.inversiones));
-        if (data.tc)          localStorage.setItem('tc',          data.tc);
-        showToast('✓ Datos restaurados');
-        setTimeout(() => location.reload(), 1000);
-      } catch(e) { showToast('Error al leer el archivo', '#f43f5e'); }
-    };
-    reader.readAsText(file);
-  };
-  input.click();
-}
-
-// Auto-backup reminder: show badge if no backup in 7 days
-(function checkBackup() {
-  const last = localStorage.getItem('last-backup');
-  if (!last || (Date.now() - new Date(last).getTime()) > 7 * 86400000) {
-    setTimeout(() => {
-      const el = document.getElementById('backup-reminder');
-      if (el) el.style.display = 'flex';
-    }, 3000);
-  }
-})();
-
-function dismissBackup() {
-  localStorage.setItem('last-backup', new Date().toISOString());
-  const el = document.getElementById('backup-reminder');
-  if (el) el.style.display = 'none';
-  exportData();
-}
-</script>
 <style>
 /* ── RESET & VARS ── */
 :root {
@@ -103,7 +40,7 @@ function dismissBackup() {
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--text);font-family:var(--fm);font-size:13px;min-height:100vh;overflow-x:hidden;-webkit-tap-highlight-color:transparent}
 body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 60% 40% at 80% 10%,rgba(34,211,160,.04) 0%,transparent 60%),radial-gradient(ellipse 40% 30% at 10% 80%,rgba(56,189,248,.03) 0%,transparent 60%);pointer-events:none;z-index:0}
-button,select,input{touch-action:manipulation;-webkit-user-select:none;user-select:none}
+button,select,input{touch-action:manipulation}
 
 /* ── HEADER ── */
 header{position:sticky;top:0;z-index:200;background:rgba(8,10,15,.92);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);padding:0 20px;height:52px;display:flex;align-items:center;justify-content:space-between}
@@ -233,13 +170,7 @@ nav::-webkit-scrollbar{display:none}
   <div class="logo"><em>CL</em> · Finanzas</div>
   <div style="display:flex;align-items:center;gap:10px">
     <button id="theme-btn" onclick="toggleTheme()" style="background:none;border:1px solid var(--border2);border-radius:20px;padding:4px 12px;color:var(--muted2);font-family:var(--fm);font-size:.7rem;cursor:pointer;transition:all .2s" title="Cambiar tema">🌙</button>
-    <div style="display:flex;align-items:center;gap:8px">
-    <button onclick="exportData()" style="background:none;border:1px solid var(--border2);border-radius:16px;padding:3px 10px;color:var(--muted2);font-family:var(--fm);font-size:.65rem;cursor:pointer" title="Descargar backup">💾</button>
-    <div id="spend-badge" style="font-size:.65rem;color:var(--muted);background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:3px 10px;display:none">
-      <span id="spend-pct">0%</span> gastado
-    </div>
     <div class="mes-badge" id="header-mes">Mar 2026</div>
-  </div>
   </div>
 </header>
 
@@ -249,19 +180,11 @@ nav::-webkit-scrollbar{display:none}
   <button class="nb" onclick="go('flujo',this)">⇄ Flujo</button>
   <button class="nb" onclick="go('cargar',this)">＋ Cargar</button>
   <button class="nb" onclick="go('inversiones',this)">◈ Inversiones</button>
-  <!-- Patrimonio hidden from nav
   <button class="nb" onclick="go('patrimonio',this)">⬟ Patrimonio</button>
-  -->
   <button class="nb" onclick="go('config',this)">⚙ Config</button>
 </nav>
 
 <!-- TOAST -->
-<!-- Backup reminder -->
-<div id="backup-reminder" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:9998;background:rgba(251,191,36,.12);border-top:1px solid rgba(251,191,36,.3);padding:12px 16px;align-items:center;justify-content:space-between;gap:12px">
-  <div style="font-size:.75rem;color:#fbbf24">⚠ No tenés backup reciente — hacé un backup para no perder datos</div>
-  <button onclick="dismissBackup()" style="background:#fbbf24;color:#080a0f;border:none;border-radius:16px;padding:5px 14px;font-family:var(--fm);font-size:.72rem;font-weight:700;cursor:pointer;white-space:nowrap">Hacer backup</button>
-</div>
-
 <div class="toast-wrap"><div class="toast" id="toast"></div></div>
 
 <!-- ════════════ OVERVIEW ════════════ -->
@@ -348,13 +271,30 @@ nav::-webkit-scrollbar{display:none}
       <button onclick="copyPrevMonth()" style="padding:8px 14px;background:none;border:1px solid var(--border2);color:var(--muted2);border-radius:20px;font-family:var(--fh);font-size:.72rem;cursor:pointer;white-space:nowrap" title="Copiar variables del mes anterior">
         ↩ Copiar anterior
       </button>
-      <button onclick="savePlan()" style="padding:8px 16px;background:var(--green);color:var(--bg);border:none;border-radius:20px;font-family:var(--fh);font-size:.78rem;font-weight:700;cursor:pointer;white-space:nowrap;-webkit-user-select:none;user-select:none;touch-action:manipulation">
-        Guardar
+      <button onclick="savePlan()" style="padding:8px 16px;background:var(--green);color:var(--bg);border:none;border-radius:20px;font-family:var(--fh);font-size:.78rem;font-weight:700;cursor:pointer;white-space:nowrap">
+        💾 Guardar
       </button>
     </div>
   </div>
 
-
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px" id="plan-header-hidden" style="display:none">
+    <div></div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <select id="plan-sel" onchange="setGlobalMes(this.value)" class="fi" style="width:auto;padding:6px 12px">
+        <option value="2026-04">Abr 2026</option>
+        <option value="2026-03">Mar 2026</option>
+        <option value="2026-02">Feb 2026</option>
+        <option value="2026-01">Ene 2026</option>
+        <option value="2025-12">Dic 2025</option>
+        <option value="2025-11">Nov 2025</option>
+        <option value="2025-10">Oct 2025</option>
+        <option value="2025-09">Sep 2025</option>
+        <option value="2025-08">Ago 2025</option>
+        <option value="2025-07">Jul 2025</option>
+      </select>
+      <button class="btn btn-g" onclick="savePlan()">💾 Guardar mes</button>
+    </div>
+  </div>
 
   <!-- KPIs del plan -->
   <div class="kg" style="grid-template-columns:repeat(4,1fr)">
@@ -639,15 +579,6 @@ nav::-webkit-scrollbar{display:none}
     </div>
 
     <div class="card" style="margin-bottom:14px">
-      <div class="ct">💾 Backup de datos</div>
-      <p style="font-size:.75rem;color:var(--muted2);margin-bottom:12px">Guardá una copia de tus datos y restauralos cuando necesites. Hacé backup al menos una vez por semana.</p>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn btn-g" onclick="exportData()" style="padding:8px 16px;font-size:.75rem">Descargar backup</button>
-        <button class="btn btn-o" onclick="importData()" style="padding:8px 16px;font-size:.75rem">Restaurar backup</button>
-      </div>
-    </div>
-
-    <div class="card" style="margin-bottom:14px">
       <div class="ct">🔄 Actualizar app</div>
       <p style="font-size:.75rem;color:var(--muted2);margin-bottom:12px">Si los cambios no aparecen, forzá la actualización completa.</p>
       <button class="btn btn-o" onclick="forceUpdate()" style="border-color:var(--blue);color:var(--blue)">⟳ Forzar actualización</button>
@@ -668,9 +599,6 @@ nav::-webkit-scrollbar{display:none}
 // ══════════════════════════════════════════════════════
 // DATA STORE — everything in localStorage
 // ══════════════════════════════════════════════════════
-
-// ── Recovered transactions from screenshots ──
-const RECOVERED_TXS = {"2026-03": [{"fecha": "2026-03-05", "monto": 1167, "desc": "Alquiler marzo", "cat": "Alquiler", "medio": "Transferencia", "tipo": "gasto", "ts": 1741132800000}, {"fecha": "2026-03-05", "monto": 132, "desc": "Expensas marzo", "cat": "Expensas", "medio": "Transferencia", "tipo": "gasto", "ts": 1741132900000}, {"fecha": "2026-03-10", "monto": 3400, "desc": "TC BSF marzo", "cat": "TC BSF", "medio": "Débito BSF", "tipo": "tc", "ts": 1741564800000}, {"fecha": "2026-03-10", "monto": 900, "desc": "TC BBVA marzo", "cat": "TC BBVA", "medio": "Débito BBVA", "tipo": "tc", "ts": 1741564900000}, {"fecha": "2026-03-10", "monto": 400, "desc": "TC Municipal marzo", "cat": "TC Municipal", "medio": "Transferencia", "tipo": "tc", "ts": 1741565000000}, {"fecha": "2026-03-10", "monto": 200, "desc": "TC MP marzo", "cat": "TC MP", "medio": "Mercado Pago", "tipo": "tc", "ts": 1741565100000}, {"fecha": "2026-03-15", "monto": 135, "desc": "Limpieza", "cat": "Limpieza", "medio": "Efectivo", "tipo": "gasto", "ts": 1741996800000}, {"fecha": "2026-03-03", "monto": 96, "desc": "Tennis", "cat": "Club / Tennis", "medio": "Transferencia", "tipo": "gasto", "ts": 1740960000000}, {"fecha": "2026-03-15", "monto": 90, "desc": "Parque Roldan", "cat": "Parque Roldan", "medio": "Transferencia", "tipo": "gasto", "ts": 1741996900000}, {"fecha": "2026-03-20", "monto": 35, "desc": "Gastos Lara", "cat": "Lara", "medio": "Transferencia", "tipo": "gasto", "ts": 1742428800000}, {"fecha": "2026-03-20", "monto": 88, "desc": "Salidas recreacion", "cat": "Salidas / Recreación", "medio": "Efectivo", "tipo": "gasto", "ts": 1742428900000}, {"fecha": "2026-03-25", "monto": 14, "desc": "Almuerzo", "cat": "Almuerzo", "medio": "Efectivo", "tipo": "gasto", "ts": 1742860800000}, {"fecha": "2026-03-09", "monto": 9422, "desc": "Sueldo marzo", "cat": "Sueldo", "medio": "Transferencia", "tipo": "ingreso", "ts": 1741478400000}], "2026-04": [{"fecha": "2026-04-06", "monto": 1167, "desc": "Alquiler ab26", "cat": "Alquiler", "medio": "Transferencia", "tipo": "gasto", "ts": 1744934400000}, {"fecha": "2026-04-06", "monto": 62, "desc": "Epe roldan", "cat": "Luz Roldan", "medio": "Transferencia", "tipo": "gasto", "ts": 1744934500000}, {"fecha": "2026-04-01", "monto": 385, "desc": "Master", "cat": "TC BBVA", "medio": "Débito BBVA", "tipo": "tc", "ts": 1743465600000}, {"fecha": "2026-04-09", "monto": 706, "desc": "Visa BBVA", "cat": "TC BBVA", "medio": "Débito BBVA", "tipo": "tc", "ts": 1744156800000}, {"fecha": "2026-04-09", "monto": 45, "desc": "Lili", "cat": "Limpieza", "medio": "Efectivo", "tipo": "gasto", "ts": 1744156900000}, {"fecha": "2026-04-10", "monto": 27, "desc": "Tgi roldan", "cat": "TGI Roldán", "medio": "Transferencia", "tipo": "gasto", "ts": 1744243200000}, {"fecha": "2026-04-08", "monto": 25, "desc": "Inter", "cat": "Club / Tennis", "medio": "Transferencia", "tipo": "gasto", "ts": 1744070400000}, {"fecha": "2026-04-08", "monto": 48, "desc": "Almuerzo JI", "cat": "Almuerzo", "medio": "Efectivo", "tipo": "gasto", "ts": 1744070500000}, {"fecha": "2026-04-01", "monto": 48, "desc": "Escuela tenis", "cat": "Club / Tennis", "medio": "Transferencia", "tipo": "gasto", "ts": 1743465700000}, {"fecha": "2026-04-10", "monto": 277, "desc": "Abr26 educacion", "cat": "Educación", "medio": "Transferencia", "tipo": "gasto", "ts": 1744243300000}, {"fecha": "2026-04-13", "monto": 121, "desc": "Reintegro gastos", "cat": "Reintegro", "medio": "Transferencia", "tipo": "ingreso", "ts": 1744502400000}, {"fecha": "2026-04-15", "monto": 560, "desc": "Gastos Lara", "cat": "Gastos Lara", "medio": "Transferencia", "tipo": "gasto", "ts": 1744675200000}, {"fecha": "2026-04-10", "monto": 3300, "desc": "TC BSF abril", "cat": "TC BSF", "medio": "Débito BSF", "tipo": "tc", "ts": 1744243400000}, {"fecha": "2026-04-10", "monto": 395, "desc": "TC Municipal abril", "cat": "TC Municipal", "medio": "Transferencia", "tipo": "tc", "ts": 1744243500000}, {"fecha": "2026-04-15", "monto": 20, "desc": "Taxicaba", "cat": "Otros", "medio": "Mercado Pago", "tipo": "gasto", "ts": 1744675300000}]};
 const DB = {
   get: (k, def={}) => { try { return JSON.parse(localStorage.getItem(k)) ?? def; } catch { return def; } },
   set: (k, v)      => localStorage.setItem(k, JSON.stringify(v)),
@@ -1268,13 +1196,8 @@ function populateCatDropdown() {
   if (!sel) return;
   
   const fechaEl = document.getElementById('tx-fecha');
-  let fechaRaw = fechaEl?.value || new Date().toISOString().split('T')[0];
-  // Normalize DD/MM/YYYY → YYYY-MM-DD
-  if (fechaRaw.includes('/')) {
-    const p = fechaRaw.split('/');
-    if (p.length === 3 && p[2].length === 4) fechaRaw = p[2] + '-' + p[1].padStart(2,'0') + '-' + p[0].padStart(2,'0');
-  }
-  const mes = fechaRaw.slice(0,7); // now always YYYY-MM
+  const fecha = fechaEl?.value || new Date().toISOString().split('T')[0];
+  const mes = fecha.slice(0,7);
   const plan = getPlan(mes);
   
   sel.innerHTML = '<option value="">— elegir —</option>';
@@ -1330,52 +1253,42 @@ function populateCatDropdown() {
 }
 
 function submitTx() {
-  // Leer y normalizar fecha → siempre YYYY-MM-DD
-  let raw = (document.getElementById('tx-fecha')?.value || '').trim();
-  let fecha;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-    fecha = raw; // ya está bien (Chrome desktop)
-  } else if (raw.includes('/')) {
-    // Android puede dar DD/MM/YYYY o DD/MM/YY
-    const p = raw.split('/');
-    if (p.length === 3) {
-      let [d,m,y] = p;
-      if (y.length === 2) y = '20' + y;
-      if (y.length === 4) fecha = y+'-'+m.padStart(2,'0')+'-'+d.padStart(2,'0');
-    }
-  }
-  // Fallback: usar fecha de hoy
-  if (!fecha || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
-    fecha = new Date().toISOString().split('T')[0];
-  }
-  const txMes = fecha.slice(0,7);
-
+  const fecha = document.getElementById('tx-fecha').value;
   const monto = parseFloat(document.getElementById('tx-monto').value);
-  const desc  = (document.getElementById('tx-desc').value || '').trim();
-  const cat   = document.getElementById('tx-cat')?.value   || '';
-  const medio = document.getElementById('tx-medio')?.value || '';
-  const notas = (document.getElementById('tx-notas')?.value || '').trim();
+  const desc  = document.getElementById('tx-desc').value.trim();
+  const cat   = document.getElementById('tx-cat').value;
+  const medio = document.getElementById('tx-medio').value;
+  const notas = document.getElementById('tx-notas').value.trim();
 
-  if (!monto || monto <= 0) { showToast('Completá el monto', '#f43f5e'); return; }
-  if (!desc)                { showToast('Completá la descripción', '#f43f5e'); return; }
+  if (!fecha || !monto || !desc) { showToast('Completá fecha, monto y descripción', P.red); return; }
+
+  // Determine month from date
+  const parts = fecha.split('-');
+  const txMes = parts[0] + '-' + parts[1];
 
   const tx = { fecha, monto, desc, cat: normalizeCat(cat), medio, notas, tipo: curTipo, ts: Date.now() };
   const txsAll = DB.get('txs', {});
-  if (!Array.isArray(txsAll[txMes])) txsAll[txMes] = [];
+  if (!txsAll[txMes]) txsAll[txMes] = [];
   txsAll[txMes].unshift(tx);
   DB.set('txs', txsAll);
 
+  // Clear form
   document.getElementById('tx-monto').value = '';
   document.getElementById('tx-desc').value  = '';
-  if (document.getElementById('tx-notas')) document.getElementById('tx-notas').value = '';
+  document.getElementById('tx-notas').value = '';
 
   renderRecentTxs();
   updateOverview();
+  
+  // Auto-refresh Flujo if visible
   const flujoSel = document.getElementById('flujo-sel');
-  if (flujoSel && flujoSel.value === txMes) renderFlujo();
+  if (flujoSel) {
+    const txMes2 = document.getElementById('tx-fecha')?.value?.slice(0,7) || curMes;
+    // If flujo is showing the same month as the tx just added, refresh it
+    if (flujoSel.value === txMes2) renderFlujo();
+  }
 
-  showToast('✓ ' + (curTipo==='ingreso'?'Ingreso':'Gasto') + ' registrado');
-  document.dispatchEvent(new CustomEvent('txSaved'));
+  showToast(`✓ ${curTipo === 'ingreso' ? 'Ingreso' : 'Gasto'} registrado — datos actualizados`);
 }
 
 function renderRecentTxs() {
@@ -1546,61 +1459,94 @@ function setOverviewYear(yr, btn) {
 }
 
 function updateOverview() {
-  const yr  = overviewYear;
+  const yr = overviewYear;
   const now = new Date();
-  const curMesKey = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
-  let totalIng=0, totalGas=0, totalInv=0, activeMeses=[];
+  const curMesKey = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+
+  // Determine which months to accumulate for this year
+  // For historical years: use HIST data
+  // For current year (2026): accumulate from saved plans + txs
+  const allMonths = MESES.map((_, i) => {
+    const m = String(i+1).padStart(2,'0');
+    return yr + '-' + m;
+  });
+
+  // Only include months up to current month
+  const closedMonths = allMonths.filter(mes => mes <= curMesKey);
+
+  let totalIng = 0, totalGas = 0, totalInv = 0;
 
   if (yr === '2026') {
-    const savedPlans = DB.get('plans',{});
-    const savedTxs   = DB.get('txs',  {});
-    for (let m=1; m<=12; m++) {
-      const mes = '2026-'+String(m).padStart(2,'0');
-      if (mes > curMesKey) break;
+    const savedPlans = DB.get('plans', {});
+    const savedTxs   = DB.get('txs',   {});
+    closedMonths.forEach(mes => {
       const hasPlan = !!savedPlans[mes];
-      const hasTxs  = Array.isArray(savedTxs[mes]) && savedTxs[mes].length>0;
-      if (!hasPlan && !hasTxs) continue;
-      activeMeses.push(mes);
-      const plan=getPlan(mes), pt=planTotals(plan);
-      totalIng += pt.ing; totalInv += pt.inv;
+      const hasTxs  = Array.isArray(savedTxs[mes]) && savedTxs[mes].length > 0;
+      if (!hasPlan && !hasTxs) return; // sin datos reales, no inflar
+      const plan = getPlan(mes);
+      const pt   = planTotals(plan);
+      totalIng += pt.ing;
+      totalInv += pt.inv;
       if (hasTxs) {
-        const {total:txTotal,totals:realTotals}=txTotals(mes);
-        totalGas += txTotal + plan.fijos.filter(r=>!realTotals[r.l]).reduce((s,r)=>s+r.v,0);
-      } else { totalGas += pt.gastos; }
-    }
+        const { total: txTotal, totals: realTotals } = txTotals(mes);
+        const fijosAuto = plan.fijos.filter(r => !realTotals[r.l]).reduce((s,r) => s+r.v, 0);
+        totalGas += txTotal + fijosAuto;
+      } else {
+        totalGas += pt.gastos;
+      }
+    });
   } else {
-    const gArr=HIST.gastos[yr]||[], iArr=HIST.ingresos[yr]||[];
-    gArr.forEach((v,i)=>{ if(v!=null) activeMeses.push(yr+'-'+String(i+1).padStart(2,'0')); });
-    totalGas=gArr.reduce((s,v)=>s+(v||0),0);
-    totalIng=iArr.reduce((s,v)=>s+(v||0),0);
+    // Use historical HIST data
+    const gArr = HIST.gastos[yr]  || [];
+    const iArr = HIST.ingresos[yr]|| [];
+    const n = closedMonths.length;
+    totalGas = gArr.slice(0,n).reduce((s,v)=>s+(v||0),0);
+    totalIng = iArr.slice(0,n).reduce((s,v)=>s+(v||0),0);
+    totalInv = 0;
   }
 
-  const nMeses=activeMeses.length, neto=totalIng-totalGas-totalInv;
-  let label;
-  if (nMeses===0) label=yr;
-  else if (nMeses===1) label=MESES[parseInt(activeMeses[0].split('-')[1])-1]+' '+yr;
-  else label=MESES[parseInt(activeMeses[0].split('-')[1])-1]+'–'+MESES[parseInt(activeMeses[nMeses-1].split('-')[1])-1]+' '+yr;
+  const neto = totalIng - totalGas - totalInv;
+  const nMeses = closedMonths.length;
+  const label = nMeses === 1 ? closedMonths[0].replace('-','/') :
+    MESES[0] + '–' + MESES[nMeses-1] + ' ' + yr;
 
-  const S=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
-  S('ov-ing', fmtK(totalIng));
-  S('ov-gas', fmtK(totalGas));
-  S('ov-gas-sub', nMeses>1?'acumulado '+nMeses+' meses':'del mes');
-  S('ov-mes-label', label);
-  S('yr-summary', nMeses>0?nMeses+' '+(nMeses===1?'mes':'meses')+' acumulado'+(nMeses===1?'':'s'):'');
-  const ne=document.getElementById('ov-neto');
-  if(ne){ne.textContent=fmtK(neto);ne.className='kv '+(neto>=0?'pos':'neg');}
-  S('ov-pat', fmtK(DB.get('inversiones',INV_DEFAULT).reduce((s,i)=>s+(i.ars||0),0)));
+  // Update KPIs
+  document.getElementById('ov-ing').textContent = fmtK(totalIng);
+  document.getElementById('ov-gas').textContent = fmtK(totalGas);
+  document.getElementById('ov-gas-sub').textContent = nMeses > 1 ? `acumulado ${nMeses} meses` : 'del mes';
+  const netoEl = document.getElementById('ov-neto');
+  netoEl.textContent = fmtK(neto);
+  netoEl.className = 'kv ' + (neto >= 0 ? 'pos' : 'neg');
+  document.getElementById('ov-mes-label').textContent = label;
 
-  const alerts=[];
-  if(yr==='2026'&&nMeses>0){
-    alerts.push(neto<0?{type:'danger',msg:'⬇ Acumulado negativo '+yr+': '+fmt(neto)}:{type:'ok',msg:'✓ Acumulado '+yr+': '+fmt(neto)+' positivo'});
-  }
-  const ae=document.getElementById('overview-alerts');
-  if(ae) ae.innerHTML=alerts.map(a=>`<div class="alert ${a.type}">${a.msg}</div>`).join('');
-  if(yr==='2026'&&totalIng>0){
-    const b=document.getElementById('spend-badge'),p=document.getElementById('spend-pct');
-    if(b&&p){const pct=Math.round(totalGas/totalIng*100);p.textContent=pct+'%';b.style.display='inline-block';b.style.color=pct>90?P.red:pct>70?P.yellow:P.green;}
-  }
+  // Summary bar
+  const yrSummary = document.getElementById('yr-summary');
+  if (yrSummary) yrSummary.textContent = `${nMeses} ${nMeses===1?'mes':'meses'} acumulado${nMeses===1?'':'s'}`;
+
+  // Patrimonio
+  const invs = DB.get('inversiones', INV_DEFAULT);
+  const totalPat = invs.reduce((s, i) => s + (i.ars||0), 0);
+  document.getElementById('ov-pat').textContent = fmtK(totalPat);
+
+  // Alerts — based on current month only
+  const alerts = [];
+  const curPlanNow = getPlan(getCurMes());
+  const curPt = planTotals(curPlanNow);
+  const { totals: curRealTotals } = txTotals(curMesKey);
+  const planMap = {};
+  [...curPlanNow.fijos,...curPlanNow.vars].forEach(r => planMap[r.l]=(planMap[r.l]||0)+r.v);
+  Object.entries(curRealTotals).forEach(([cat, rv]) => {
+    const pv = planMap[cat] || 0;
+    if (pv > 0 && rv > pv * 1.1) alerts.push({type:'danger', msg:`⚠ ${cat}: ${fmt(rv)} vs ${fmt(pv)} presupuestado (${Math.round(rv/pv*100)}%)`});
+  });
+  const netoMes = curPt.ing - totalGas/nMeses - curPt.inv;
+  if (neto < 0 && yr === '2026') alerts.push({type:'danger', msg:`⬇ Acumulado negativo en ${yr}: ${fmt(neto)}`});
+  else if (neto >= 0 && yr === '2026') alerts.push({type:'ok', msg:`✓ Acumulado ${yr}: ${fmt(neto)} neto positivo en ${nMeses} ${nMeses===1?'mes':'meses'}`});
+
+  document.getElementById('overview-alerts').innerHTML = alerts.map(a =>
+    `<div class="alert ${a.type}">${a.msg}</div>`).join('');
+
+  // Rebuild donut with current month data
   buildDonut();
 }
 
@@ -1673,32 +1619,16 @@ function setEvolYear(yr, btn) {
   buildEvolChart(yr);
 }
 
-// Annual chart — calc 2026 dynamically
-(function buildAnualChart() {
-  const now2026 = new Date();
-  const mesesHasta = now2026.getFullYear() === 2026 ? now2026.getMonth() + 1 : 12;
-  let gas2026 = 0, ing2026 = 0;
-  for (let m = 1; m <= mesesHasta; m++) {
-    const mes = '2026-' + String(m).padStart(2,'0');
-    const plan = getPlan(mes);
-    const pt   = planTotals(plan);
-    const { total: txTotal, totals: realTotals } = txTotals(mes);
-    const hasTxs = txTotal > 0;
-    const fijosAuto = plan.fijos.filter(r => realTotals[r.l] == null && hasTxs).reduce((s,r)=>s+r.v,0);
-    gas2026 += hasTxs ? txTotal + fijosAuto : pt.gastos;
-    ing2026 += pt.ing;
-  }
-  new Chart(document.getElementById('c-anual').getContext('2d'), {
-    type:'bar',
-    data:{ labels:['2024','2025','2026*'],
-      datasets:[
-        {label:'Gastos',   data:[54054,151482,Math.round(gas2026)], backgroundColor:'rgba(244,63,94,.7)',  borderColor:P.red,   borderWidth:1},
-        {label:'Ingresos', data:[76428,157466,Math.round(ing2026)], backgroundColor:'rgba(34,211,160,.6)', borderColor:P.green, borderWidth:1},
-      ]},
-    options:{responsive:true,plugins:{legend:{position:'bottom',labels:{boxWidth:8}},tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${fmt(c.parsed.y)}`}}},
-      scales:{y:{ticks:{callback:v=>'$'+(v/1000).toFixed(0)+'k'},grid:{color:'rgba(255,255,255,.04)'}},x:{grid:{display:false}}}}
-  });
-})();
+new Chart(document.getElementById('c-anual').getContext('2d'), {
+  type:'bar',
+  data:{ labels:['2024','2025','2026*'],
+    datasets:[
+      {label:'Gastos',   data:[54054,151482,26048], backgroundColor:'rgba(244,63,94,.7)',  borderColor:P.red,   borderWidth:1},
+      {label:'Ingresos', data:[76428,157466,34482], backgroundColor:'rgba(34,211,160,.6)', borderColor:P.green, borderWidth:1},
+    ]},
+  options:{responsive:true,plugins:{legend:{position:'bottom',labels:{boxWidth:8}},tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${fmt(c.parsed.y)}`}}},
+    scales:{y:{ticks:{callback:v=>'$'+(v/1000).toFixed(0)+'k'},grid:{color:'rgba(255,255,255,.04)'}},x:{grid:{display:false}}}}
+});
 
 // Overview donut — composition of current month
 function buildDonut() {
@@ -2260,28 +2190,24 @@ function deleteTx() {
 }
 
 function forceUpdate() {
-  // SOLO limpia el Service Worker cache — NUNCA toca localStorage (datos del usuario)
-  const promises = [];
+  // Unregister all service workers and clear all caches
   if ('serviceWorker' in navigator) {
-    promises.push(navigator.serviceWorker.getRegistrations().then(regs =>
-      Promise.all(regs.map(r => r.unregister()))
-    ));
+    navigator.serviceWorker.getRegistrations().then(regs => {
+      regs.forEach(reg => reg.unregister());
+    });
   }
   if ('caches' in window) {
-    promises.push(caches.keys().then(keys =>
-      Promise.all(keys.map(k => caches.delete(k)))
-    ));
+    caches.keys().then(keys => {
+      keys.forEach(key => caches.delete(key));
+    });
   }
-  Promise.all(promises).then(() => {
-    showToast('✓ Caché limpiado — recargando...');
-    setTimeout(() => window.location.reload(true), 800);
-  });
+  // Force reload bypassing cache
+  setTimeout(() => window.location.reload(true), 300);
 }
 
 function clearAll() {
-  if (!confirm('⚠️ ATENCIÓN: Esto borra TODOS tus datos (presupuestos, transacciones, inversiones). NO se puede deshacer.\n\n¿Estás seguro?')) return;
-  if (!confirm('¿Confirmar borrado total?')) return;
-  ['plans','txs','inversiones','tc','planificacion-all'].forEach(k => DB.del(k));
+  if (!confirm('¿Borrar todos los presupuestos y transacciones guardados?')) return;
+  ['plans','txs','inversiones','tc'].forEach(k => DB.del(k));
   TC = 1250;
   location.reload();
 }
@@ -2372,10 +2298,12 @@ function migrateOldTxNames() {
   }
 }
 
-// Unregister any existing Service Workers to prevent cache issues
+// Register Service Worker for PWA
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations().then(regs => {
-    regs.forEach(reg => reg.unregister());
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/finanzas/sw.js')
+      .then(reg => console.log('SW registered:', reg.scope))
+      .catch(err => console.log('SW failed:', err));
   });
 }
 
@@ -2391,23 +2319,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   })();
 
-  // Restore recovered txs if localStorage is empty
-  (function restoreIfEmpty() {
-    const saved = DB.get('txs', {});
-    const hasData = Object.values(saved).some(arr => arr && arr.length > 0);
-    if (!hasData) {
-      DB.set('txs', RECOVERED_TXS);
-      console.log('✓ Restored recovered transactions');
-    }
-  })();
-
   // Migrate old tx category names to normalized names
   migrateOldTxNames();
 
   // Set today's date in cargar form
   const fechaEl = document.getElementById('tx-fecha');
-  const todayISO = new Date().toISOString().split('T')[0]; // always YYYY-MM-DD
-  fechaEl.value = todayISO;
+  fechaEl.value = new Date().toISOString().split('T')[0];
   fechaEl.addEventListener('change', populateCatDropdown);
   populateCatDropdown();
 
