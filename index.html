@@ -335,7 +335,16 @@ nav::-webkit-scrollbar{display:none}
       <div style="font-size:.68rem;color:var(--muted)">Cargá una vez al inicio del mes.</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center">
-      <div id="plan-mes-badge" class="mes-badge" style="font-size:.78rem;padding:5px 14px">May 2026</div>
+      <select id="plan-sel-top" onchange="setGlobalMes(this.value)" class="fi" style="width:auto;padding:5px 10px;font-size:.7rem">
+        <option value="2026-05">May 2026</option>
+        <option value="2026-04">Abr 2026</option>
+        <option value="2026-03">Mar 2026</option>
+        <option value="2026-02">Feb 2026</option>
+        <option value="2026-01">Ene 2026</option>
+        <option value="2025-12">Dic 2025</option>
+        <option value="2025-11">Nov 2025</option>
+        <option value="2025-10">Oct 2025</option>
+      </select>
       <button onclick="copyPrevMonth()" style="padding:8px 14px;background:none;border:1px solid var(--border2);color:var(--muted2);border-radius:20px;font-family:var(--fh);font-size:.72rem;cursor:pointer;white-space:nowrap" title="Copiar variables del mes anterior">
         ↩ Copiar anterior
       </button>
@@ -579,7 +588,7 @@ nav::-webkit-scrollbar{display:none}
   </div>
 </div>
 
-<!-- ════════════ EDIT TX MODAL (body-level, fuera de cualquier page) ════════════ -->
+<!-- ════════════ EDIT TX MODAL (body-level) ════════════ -->
 <div id="edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:900;align-items:center;justify-content:center;padding:20px">
   <div style="background:var(--s1);border:1px solid var(--border2);border-radius:12px;padding:24px;width:100%;max-width:400px">
     <div style="font-family:var(--fh);font-size:1rem;font-weight:700;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
@@ -688,15 +697,13 @@ let globalMes = getCurMes();
 
 function setGlobalMes(mesKey) {
   globalMes = mesKey;
-  // Sync selectors (plan-sel-top removed)
-  ['plan-sel','flujo-sel'].forEach(id => {
+  // Sync all selectors
+  ['plan-sel','plan-sel-top','flujo-sel'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = mesKey;
   });
-  // Update header badge and presupuesto badge
+  // Update header badge
   document.getElementById('header-mes').textContent = mesLabel(mesKey);
-  const planBadge = document.getElementById('plan-mes-badge');
-  if (planBadge) planBadge.textContent = mesLabel(mesKey);
   // Refresh all views
   curMes  = mesKey;
   curPlan = getPlan(mesKey);
@@ -1116,10 +1123,15 @@ function planTotals(plan) {
 }
 
 function syncPlanSel(source) {
+  const topSel  = document.getElementById('plan-sel-top');
+  const mainSel = document.getElementById('plan-sel');
+  if (source === 'top' && topSel && mainSel)  mainSel.value = topSel.value;
+  if (source === 'main' && topSel && mainSel) topSel.value  = mainSel.value;
   loadPlanUI();
 }
 
 function loadPlanUI() {
+  // loadPlanUI now just reads curMes (set by setGlobalMes)
   curPlan = getPlan(curMes);
   renderPlanSections();
   updateHeaderMes();
@@ -2458,8 +2470,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Init — set global month and sync all selectors
   const initMes = getCurMes();
-  // Sync flujo selector
-  ['plan-sel','flujo-sel'].forEach(selId => {
+  // Ensure all selectors have current month as option
+  ['plan-sel','plan-sel-top','flujo-sel'].forEach(selId => {
     const el = document.getElementById(selId);
     if (!el) return;
     let found = Array.from(el.options).some(o => o.value === initMes);
@@ -2475,8 +2487,6 @@ document.addEventListener('DOMContentLoaded', () => {
   curMes    = initMes;
   curPlan   = getPlan(initMes);
   document.getElementById('header-mes').textContent = mesLabel(initMes);
-  const planBadge = document.getElementById('plan-mes-badge');
-  if (planBadge) planBadge.textContent = mesLabel(initMes);
   renderPlanSections();
 
   // Init charts — build AFTER plans are loaded
