@@ -595,18 +595,11 @@ nav::-webkit-scrollbar{display:none}
       ✏ Editar transacción
       <button onclick="closeEditModal()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.2rem">✕</button>
     </div>
-    <input type="hidden" id="edit-mes">
-    <input type="hidden" id="edit-idx">
-    <div class="field" style="margin-bottom:10px"><label style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Fecha</label>
-      <input type="date" id="edit-fecha" class="fi"></div>
-    <div class="field" style="margin-bottom:10px"><label style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Monto $</label>
-      <input type="number" id="edit-monto" class="fi" placeholder="0"></div>
-    <div class="field" style="margin-bottom:10px"><label style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Descripción</label>
-      <input type="text" id="edit-desc" class="fi"></div>
-    <div class="field" style="margin-bottom:16px">
-      <label style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Categoría</label>
-      <select id="edit-cat" class="fi"></select>
-    </div>
+    <input type="hidden" id="edit-mes"><input type="hidden" id="edit-idx">
+    <div class="field" style="margin-bottom:10px"><label style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Fecha</label><input type="date" id="edit-fecha" class="fi"></div>
+    <div class="field" style="margin-bottom:10px"><label style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Monto $</label><input type="number" id="edit-monto" class="fi" placeholder="0"></div>
+    <div class="field" style="margin-bottom:10px"><label style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Descripción</label><input type="text" id="edit-desc" class="fi"></div>
+    <div class="field" style="margin-bottom:16px"><label style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Categoría</label><select id="edit-cat" class="fi"></select></div>
     <div style="display:flex;gap:8px">
       <button onclick="saveEditTx()" class="btn btn-g" style="flex:1">Guardar</button>
       <button onclick="deleteTx()" class="btn" style="background:var(--red);color:white;padding:11px 18px;border-radius:7px;border:none;cursor:pointer">🗑 Borrar</button>
@@ -1283,9 +1276,9 @@ function populateCatDropdown() {
   if (curTipo === 'ingreso') {
     const g0 = document.createElement('optgroup');
     g0.label = 'Ingresos del mes';
-    plan.ing.forEach(r => { const o = document.createElement('option'); o.value=r.l; o.text=r.l; g0.appendChild(o); });
+    plan.ing.forEach(r => { const o=document.createElement('option'); o.value=r.l; o.text=r.l; g0.appendChild(o); });
     ['Bono','Reintegro','Venta activos','Otros ingresos'].forEach(c => {
-      if (!plan.ing.find(r => r.l===c)) { const o=document.createElement('option'); o.value=c; o.text=c; g0.appendChild(o); }
+      if (!plan.ing.find(r=>r.l===c)) { const o=document.createElement('option'); o.value=c; o.text=c; g0.appendChild(o); }
     });
     sel.appendChild(g0);
     return;
@@ -1298,15 +1291,13 @@ function populateCatDropdown() {
     if (tcVars.length) {
       tcVars.forEach(r => { const o=document.createElement('option'); o.value=r.l; o.text=r.l; g1.appendChild(o); });
     } else {
-      ['TC BSF','TC BBVA','TC Municipal','TC MP'].forEach(c => {
-        const o=document.createElement('option'); o.value=c; o.text=c; g1.appendChild(o);
-      });
+      ['TC BSF','TC BBVA','TC Municipal','TC MP'].forEach(c => { const o=document.createElement('option'); o.value=c; o.text=c; g1.appendChild(o); });
     }
     sel.appendChild(g1);
     return;
   }
 
-  // gasto directo
+  // gasto directo: fijos + vars sin TC
   if (plan.fijos.length) {
     const g1 = document.createElement('optgroup');
     g1.label = 'Gastos fijos';
@@ -1329,56 +1320,61 @@ function populateCatDropdown() {
 }
 
 function submitTx() {
-  // --- Read form ---
-  let fechaRaw = document.getElementById('tx-fecha').value || '';
-  const monto  = parseFloat(document.getElementById('tx-monto').value);
-  const desc   = document.getElementById('tx-desc').value.trim();
-  const cat    = (document.getElementById('tx-cat')?.value || '').trim();
-  const medio  = document.getElementById('tx-medio').value || '';
-  const notas  = document.getElementById('tx-notas').value.trim();
+  // Leer form
+  const fechaEl = document.getElementById('tx-fecha');
+  const montoEl = document.getElementById('tx-monto');
+  const descEl  = document.getElementById('tx-desc');
+  const catEl   = document.getElementById('tx-cat');
+  const medioEl = document.getElementById('tx-medio');
+  const notasEl = document.getElementById('tx-notas');
 
-  // --- Validate ---
+  const monto = parseFloat(montoEl.value);
+  const desc  = (descEl.value || '').trim();
+  const cat   = (catEl  ? catEl.value  : '') || '';
+  const medio = (medioEl? medioEl.value: '') || '';
+  const notas = (notasEl? notasEl.value: '').trim();
+
   if (!monto || monto <= 0) { showToast('Completá el monto', '#f43f5e'); return; }
   if (!desc)                { showToast('Completá la descripción', '#f43f5e'); return; }
 
-  // --- Normalize date to YYYY-MM-DD ---
-  let fecha = fechaRaw;
-  if (fecha.includes('/')) {
-    // DD/MM/YYYY or DD/MM/YY
-    const p = fecha.split('/');
+  // Normalizar fecha → siempre YYYY-MM-DD
+  let raw = (fechaEl ? fechaEl.value : '') || '';
+  let fecha;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    fecha = raw; // ya está bien
+  } else if (raw.includes('/')) {
+    const p = raw.split('/');
     if (p.length === 3) {
-      let [d, m, y] = p;
-      if (y.length === 2) y = '20' + y;
-      fecha = y + '-' + m.padStart(2,'0') + '-' + d.padStart(2,'0');
+      let [a, b, c] = p;
+      // DD/MM/YYYY
+      if (c.length === 4) fecha = c + '-' + b.padStart(2,'0') + '-' + a.padStart(2,'0');
+      // DD/MM/YY
+      else if (c.length === 2) fecha = '20'+c + '-' + b.padStart(2,'0') + '-' + a.padStart(2,'0');
     }
   }
-  // Final fallback — always valid
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+  if (!fecha || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
     fecha = new Date().toISOString().split('T')[0];
   }
 
-  // --- Derive month key ---
   const txMes = fecha.slice(0, 7); // YYYY-MM
 
-  // --- Build and save tx ---
   const tx = { fecha, monto, desc, cat: normalizeCat(cat), medio, notas, tipo: curTipo, ts: Date.now() };
   const txsAll = DB.get('txs', {});
   if (!Array.isArray(txsAll[txMes])) txsAll[txMes] = [];
   txsAll[txMes].unshift(tx);
   DB.set('txs', txsAll);
 
-  // --- Clear form fields ---
-  document.getElementById('tx-monto').value = '';
-  document.getElementById('tx-desc').value  = '';
-  document.getElementById('tx-notas').value = '';
+  // Limpiar form
+  montoEl.value = '';
+  descEl.value  = '';
+  if (notasEl) notasEl.value = '';
 
-  // --- Refresh UI ---
   renderRecentTxs();
   updateOverview();
   const flujoSel = document.getElementById('flujo-sel');
   if (flujoSel && flujoSel.value === txMes) renderFlujo();
 
-  showToast(`✓ ${curTipo === 'ingreso' ? 'Ingreso' : 'Gasto'} registrado`);
+  showToast('✓ ' + (curTipo === 'ingreso' ? 'Ingreso' : 'Gasto') + ' registrado');
   document.dispatchEvent(new CustomEvent('txSaved'));
 }
 
@@ -1558,15 +1554,14 @@ function updateOverview() {
   let activeMeses = [];
 
   if (yr === '2026') {
-    // Solo meses con datos reales (plan guardado o txs)
     const savedPlans = DB.get('plans', {});
-    const savedTxs   = DB.get('txs', {});
+    const savedTxs   = DB.get('txs',   {});
     for (let m = 1; m <= 12; m++) {
       const mes = '2026-' + String(m).padStart(2,'0');
-      if (mes > curMesKey) break; // no incluir meses futuros
+      if (mes > curMesKey) break;
       const hasPlan = !!savedPlans[mes];
-      const hasTxs  = savedTxs[mes] && savedTxs[mes].length > 0;
-      if (!hasPlan && !hasTxs) continue; // saltar meses sin datos
+      const hasTxs  = Array.isArray(savedTxs[mes]) && savedTxs[mes].length > 0;
+      if (!hasPlan && !hasTxs) continue;
       activeMeses.push(mes);
       const plan = getPlan(mes);
       const pt   = planTotals(plan);
@@ -1581,71 +1576,53 @@ function updateOverview() {
       }
     }
   } else {
-    // Años históricos: usar HIST
     const gArr = HIST.gastos[yr]   || [];
     const iArr = HIST.ingresos[yr] || [];
-    // Para años completos usar todos; para año actual hasta el mes que corresponde
-    const nMesesHist = gArr.filter(v => v != null).length;
-    for (let m = 1; m <= nMesesHist; m++) {
-      activeMeses.push(yr + '-' + String(m).padStart(2,'0'));
-    }
+    gArr.forEach((v,i) => { if (v != null) activeMeses.push(yr+'-'+String(i+1).padStart(2,'0')); });
     totalGas = gArr.reduce((s,v) => s+(v||0), 0);
     totalIng = iArr.reduce((s,v) => s+(v||0), 0);
-    totalInv = 0;
   }
 
   const nMeses = activeMeses.length;
   const neto   = totalIng - totalGas - totalInv;
 
-  // Label
   let label;
-  if (nMeses === 0) {
-    label = yr;
-  } else if (nMeses === 1) {
-    label = MESES[parseInt(activeMeses[0].split('-')[1])-1] + ' ' + yr;
-  } else {
-    const m0 = MESES[parseInt(activeMeses[0].split('-')[1])-1];
-    const m1 = MESES[parseInt(activeMeses[nMeses-1].split('-')[1])-1];
-    label = m0 + '–' + m1 + ' ' + yr;
-  }
+  if (nMeses === 0) label = yr;
+  else if (nMeses === 1) label = MESES[parseInt(activeMeses[0].split('-')[1])-1] + ' ' + yr;
+  else label = MESES[parseInt(activeMeses[0].split('-')[1])-1] + '–' + MESES[parseInt(activeMeses[nMeses-1].split('-')[1])-1] + ' ' + yr;
 
   // KPIs
-  document.getElementById('ov-ing').textContent     = fmtK(totalIng);
-  document.getElementById('ov-gas').textContent     = fmtK(totalGas);
-  document.getElementById('ov-gas-sub').textContent = nMeses > 1 ? `acumulado ${nMeses} meses` : 'del mes';
+  const set = (id, v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
+  set('ov-ing', fmtK(totalIng));
+  set('ov-gas', fmtK(totalGas));
+  set('ov-gas-sub', nMeses > 1 ? 'acumulado '+nMeses+' meses' : 'del mes');
+  set('ov-mes-label', label);
+  set('yr-summary', nMeses > 0 ? nMeses+' '+(nMeses===1?'mes':'meses')+' acumulado'+(nMeses===1?'':'s') : '');
   const netoEl = document.getElementById('ov-neto');
-  if (netoEl) { netoEl.textContent = fmtK(neto); netoEl.className = 'kv ' + (neto >= 0 ? 'pos' : 'neg'); }
-  const mesLabelEl = document.getElementById('ov-mes-label');
-  if (mesLabelEl) mesLabelEl.textContent = label;
-
-  // Summary bar
-  const yrSummary = document.getElementById('yr-summary');
-  if (yrSummary) yrSummary.textContent = nMeses > 0 ? `${nMeses} ${nMeses===1?'mes':'meses'} acumulado${nMeses===1?'':'s'}` : '';
+  if (netoEl) { netoEl.textContent = fmtK(neto); netoEl.className = 'kv '+(neto>=0?'pos':'neg'); }
 
   // Patrimonio
-  const invs     = DB.get('inversiones', INV_DEFAULT);
-  const totalPat = invs.reduce((s, i) => s + (i.ars||0), 0);
-  const patEl    = document.getElementById('ov-pat');
-  if (patEl) patEl.textContent = fmtK(totalPat);
+  const invs = DB.get('inversiones', INV_DEFAULT);
+  set('ov-pat', fmtK(invs.reduce((s,i) => s+(i.ars||0), 0)));
 
   // Alerts
   const alerts = [];
-  if (yr === '2026') {
-    if (neto < 0)  alerts.push({type:'danger', msg:`⬇ Acumulado negativo ${yr}: ${fmt(neto)}`});
-    else if (neto > 0) alerts.push({type:'ok',  msg:`✓ Acumulado ${yr}: ${fmt(neto)} neto positivo`});
+  if (yr === '2026' && nMeses > 0) {
+    if (neto < 0) alerts.push({type:'danger', msg:'⬇ Acumulado negativo '+yr+': '+fmt(neto)});
+    else          alerts.push({type:'ok',     msg:'✓ Acumulado '+yr+': '+fmt(neto)+' neto positivo'});
   }
   const alertEl = document.getElementById('overview-alerts');
-  if (alertEl) alertEl.innerHTML = alerts.map(a => `<div class="alert ${a.type}">${a.msg}</div>`).join('');
+  if (alertEl) alertEl.innerHTML = alerts.map(a=>`<div class="alert ${a.type}">${a.msg}</div>`).join('');
 
   // Spend badge
   if (yr === '2026' && totalIng > 0) {
     const badge = document.getElementById('spend-badge');
     const pctEl = document.getElementById('spend-pct');
     if (badge && pctEl) {
-      const pct = Math.round(totalGas / totalIng * 100);
-      pctEl.textContent = pct + '%';
+      const pct = Math.round(totalGas/totalIng*100);
+      pctEl.textContent = pct+'%';
       badge.style.display = 'inline-block';
-      badge.style.color = pct > 90 ? P.red : pct > 70 ? P.yellow : P.green;
+      badge.style.color = pct>90?P.red:pct>70?P.yellow:P.green;
     }
   }
 
