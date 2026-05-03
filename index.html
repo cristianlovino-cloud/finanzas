@@ -277,24 +277,7 @@ nav::-webkit-scrollbar{display:none}
     </div>
   </div>
 
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px" id="plan-header-hidden" style="display:none">
-    <div></div>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <select id="plan-sel" onchange="setGlobalMes(this.value)" class="fi" style="width:auto;padding:6px 12px">
-        <option value="2026-04">Abr 2026</option>
-        <option value="2026-03">Mar 2026</option>
-        <option value="2026-02">Feb 2026</option>
-        <option value="2026-01">Ene 2026</option>
-        <option value="2025-12">Dic 2025</option>
-        <option value="2025-11">Nov 2025</option>
-        <option value="2025-10">Oct 2025</option>
-        <option value="2025-09">Sep 2025</option>
-        <option value="2025-08">Ago 2025</option>
-        <option value="2025-07">Jul 2025</option>
-      </select>
-      <button class="btn btn-g" onclick="savePlan()">💾 Guardar mes</button>
-    </div>
-  </div>
+
 
   <!-- KPIs del plan -->
   <div class="kg" style="grid-template-columns:repeat(4,1fr)">
@@ -1343,7 +1326,7 @@ function renderFlujo() {
   // Barras presupuestado vs real
   const maxVal = Math.max(pt.ing, realTotal, 1);
   // For bars: fijos assumed = presupuesto if not entered manually
-  const realFijosTotal = plan.fijos.reduce((s,r) => s + (realTotals[r.l] != null ? realTotals[r.l] : r.v), 0);
+  const realFijosTotal = plan.fijos.reduce((s,r) => s + (realTotals[r.l] || 0), 0);
   const realVarsTotal  = plan.vars.reduce((s,r)  => s + (realTotals[r.l] || 0), 0);
   const realGrandTotal = realFijosTotal + realVarsTotal;
   
@@ -1405,7 +1388,7 @@ function renderFlujo() {
     ...planCats.map(cat => {
       const pv = planMap[cat] || 0;
       const isFijo = fijoSet.has(cat);
-      const rv = realTotals[cat] != null ? realTotals[cat] : (isFijo ? pv : 0);
+      const rv = realTotals[cat] != null ? realTotals[cat] : 0; // auto = $0 real, no usar presupuesto
       const isAuto = isFijo && realTotals[cat] == null;
       return renderRow(cat, pv, rv, isAuto, false);
     }),
@@ -1418,7 +1401,7 @@ function renderFlujo() {
   `<tr style="border-top:2px solid var(--border2);background:var(--s2)">
     <td style="font-family:var(--fh);font-weight:700;font-size:.8rem;color:var(--text)">TOTAL GASTOS</td>
     <td style="text-align:right;font-weight:700;color:var(--muted2)">${fmt(pt.gastos)}</td>
-    <td style="text-align:right;font-weight:700;color:var(--red)">${fmt(Object.values(realTotals).reduce((s,v)=>s+v,0) + plan.fijos.filter(r=>realTotals[r.l]==null).reduce((s,r)=>s+r.v,0))}</td>
+    <td style="text-align:right;font-weight:700;color:var(--red)">${fmt(Object.values(realTotals).reduce((s,v)=>s+v,0))}</td>
     <td></td><td></td>
   </tr>` || '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:16px">Sin gastos registrados — usá ＋ Cargar</td></tr>';
 
@@ -2149,8 +2132,14 @@ function openEditModal(mes, idx) {
   });
   catSel.appendChild(extraGroup);
 
-  // Set current value
-  catSel.value = normalizeCat(tx.cat || '');
+  // Set current value - si la cat no está en el select, agregarla
+  const normCat = normalizeCat(tx.cat || '');
+  if (normCat && !Array.from(catSel.options).some(o => o.value === normCat)) {
+    const o = document.createElement('option');
+    o.value = normCat; o.text = normCat + ' (actual)';
+    catSel.appendChild(o);
+  }
+  catSel.value = normCat;
 
   const modal = document.getElementById('edit-modal');
   modal.style.display = 'flex';
@@ -2164,23 +2153,25 @@ function saveEditTx() {
   const mes  = document.getElementById('edit-mes').value;
   const idx  = parseInt(document.getElementById('edit-idx').value);
   const txsAll = DB.get('txs', {});
-  if (!txsAll[mes]?.[idx]) return;
+  if (!txsAll[mes] || !txsAll[mes][idx]) { showToast('Error: transacción no encontrada', '#f43f5e'); return; }
 
-  const newFecha = document.getElementById('edit-fecha').value; // YYYY-MM-DD
-  const newMes   = newFecha.slice(0, 7); // YYYY-MM
-  const newCat   = normalizeCat(document.getElementById('edit-cat').value);
+  // Normalizar fecha — puede venir vacía en Android
+  let rawFecha = (document.getElementById('edit-fecha').value || '').trim();
+  if (!rawFecha || !/^\d{4}-\d{2}-\d{2}$/.test(rawFecha)) {
+    rawFecha = txsAll[mes][idx].fecha || mes + '-01'; // fallback a fecha original
+  }
+  const newFecha = rawFecha;
+  const newMes   = newFecha.slice(0, 7);
 
-  // Update the tx
-  const tx = { ...txsAll[mes][idx] };
-  tx.fecha = newFecha;
-  tx.monto = parseFloat(document.getElementById('edit-monto').value) || 0;
-  tx.desc  = document.getElementById('edit-desc').value;
-  tx.cat   = newCat;
+  const newMonto = parseFloat(document.getElementById('edit-monto').value) || txsAll[mes][idx].monto;
+  const newDesc  = document.getElementById('edit-desc').value.trim() || txsAll[mes][idx].desc;
+  const newCat   = normalizeCat(document.getElementById('edit-cat').value || txsAll[mes][idx].cat);
 
-  // If month changed, move tx to correct bucket
+  const tx = { ...txsAll[mes][idx], fecha: newFecha, monto: newMonto, desc: newDesc, cat: newCat };
+
   if (newMes !== mes) {
     txsAll[mes].splice(idx, 1);
-    if (!txsAll[newMes]) txsAll[newMes] = [];
+    if (!Array.isArray(txsAll[newMes])) txsAll[newMes] = [];
     txsAll[newMes].unshift(tx);
   } else {
     txsAll[mes][idx] = tx;
