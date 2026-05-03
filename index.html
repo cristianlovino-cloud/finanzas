@@ -335,16 +335,7 @@ nav::-webkit-scrollbar{display:none}
       <div style="font-size:.68rem;color:var(--muted)">Cargá una vez al inicio del mes.</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center">
-      <select id="plan-sel-top" onchange="setGlobalMes(this.value)" class="fi" style="width:auto;padding:5px 10px;font-size:.7rem">
-        <option value="2026-05">May 2026</option>
-        <option value="2026-04">Abr 2026</option>
-        <option value="2026-03">Mar 2026</option>
-        <option value="2026-02">Feb 2026</option>
-        <option value="2026-01">Ene 2026</option>
-        <option value="2025-12">Dic 2025</option>
-        <option value="2025-11">Nov 2025</option>
-        <option value="2025-10">Oct 2025</option>
-      </select>
+      <div id="plan-mes-badge" class="mes-badge" style="font-size:.78rem;padding:5px 14px">May 2026</div>
       <button onclick="copyPrevMonth()" style="padding:8px 14px;background:none;border:1px solid var(--border2);color:var(--muted2);border-radius:20px;font-family:var(--fh);font-size:.72rem;cursor:pointer;white-space:nowrap" title="Copiar variables del mes anterior">
         ↩ Copiar anterior
       </button>
@@ -367,7 +358,7 @@ nav::-webkit-scrollbar{display:none}
   <div class="g2">
     <!-- INGRESOS -->
     <div class="card">
-      <div class="ct">💰 Ingresos del mes</div>
+      <div class="ct">Ingresos del mes</div>
       <div id="plan-ing-rows"></div>
       <div class="add-row">
         <input type="text" id="ni-label" placeholder="Concepto (sueldo, bono...)">
@@ -378,7 +369,7 @@ nav::-webkit-scrollbar{display:none}
 
     <!-- INVERSIONES -->
     <div class="card">
-      <div class="ct">📈 Inversiones planificadas</div>
+      <div class="ct">Inversiones planificadas</div>
       <div id="plan-inv-rows"></div>
       <div class="add-row">
         <input type="text" id="nv-label" placeholder="Instrumento (FCI, cripto...)">
@@ -389,7 +380,7 @@ nav::-webkit-scrollbar{display:none}
 
     <!-- GASTOS FIJOS -->
     <div class="card">
-      <div class="ct">📌 Gastos fijos <span style="color:var(--muted);font-size:.63rem;font-weight:400">(se repiten cada mes)</span></div>
+      <div class="ct">Gastos fijos <span style="color:var(--muted);font-size:.63rem;font-weight:400">(se repiten cada mes)</span></div>
       <div id="plan-fijos-rows"></div>
       <div class="add-row">
         <input type="text" id="nf-label" placeholder="Concepto">
@@ -400,7 +391,7 @@ nav::-webkit-scrollbar{display:none}
 
     <!-- VARIABLES -->
     <div class="card">
-      <div class="ct">💸 Gastos variables estimados</div>
+      <div class="ct">Gastos variables estimados</div>
       <div id="plan-vars-rows"></div>
       <div class="add-row">
         <input type="text" id="nva-label" placeholder="Concepto (TC BSF, efectivo...)">
@@ -696,13 +687,16 @@ let globalMes = getCurMes();
 
 function setGlobalMes(mesKey) {
   globalMes = mesKey;
-  // Sync all selectors
-  ['plan-sel','plan-sel-top','flujo-sel'].forEach(id => {
+  // Sync selectors (plan-sel-top removed, only flujo-sel remains)
+  ['plan-sel','flujo-sel'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = mesKey;
   });
   // Update header badge
   document.getElementById('header-mes').textContent = mesLabel(mesKey);
+  // Update presupuesto month badge
+  const planBadge = document.getElementById('plan-mes-badge');
+  if (planBadge) planBadge.textContent = mesLabel(mesKey);
   // Refresh all views
   curMes  = mesKey;
   curPlan = getPlan(mesKey);
@@ -1122,10 +1116,7 @@ function planTotals(plan) {
 }
 
 function syncPlanSel(source) {
-  const topSel  = document.getElementById('plan-sel-top');
-  const mainSel = document.getElementById('plan-sel');
-  if (source === 'top' && topSel && mainSel)  mainSel.value = topSel.value;
-  if (source === 'main' && topSel && mainSel) topSel.value  = mainSel.value;
+  // plan-sel-top removed; nothing to sync between top/main selectors
   loadPlanUI();
 }
 
@@ -2469,8 +2460,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Init — set global month and sync all selectors
   const initMes = getCurMes();
-  // Ensure all selectors have current month as option
-  ['plan-sel','plan-sel-top','flujo-sel'].forEach(selId => {
+  // Ensure flujo selector has current month as option
+  ['plan-sel','flujo-sel'].forEach(selId => {
     const el = document.getElementById(selId);
     if (!el) return;
     let found = Array.from(el.options).some(o => o.value === initMes);
@@ -2486,6 +2477,8 @@ document.addEventListener('DOMContentLoaded', () => {
   curMes    = initMes;
   curPlan   = getPlan(initMes);
   document.getElementById('header-mes').textContent = mesLabel(initMes);
+  const planBadge = document.getElementById('plan-mes-badge');
+  if (planBadge) planBadge.textContent = mesLabel(initMes);
   renderPlanSections();
 
   // Init charts — build AFTER plans are loaded
