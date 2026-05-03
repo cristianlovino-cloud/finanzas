@@ -367,7 +367,7 @@ nav::-webkit-scrollbar{display:none}
   <div class="g2">
     <!-- INGRESOS -->
     <div class="card">
-      <div class="ct">Ingresos del mes</div>
+      <div class="ct">💰 Ingresos del mes</div>
       <div id="plan-ing-rows"></div>
       <div class="add-row">
         <input type="text" id="ni-label" placeholder="Concepto (sueldo, bono...)">
@@ -378,7 +378,7 @@ nav::-webkit-scrollbar{display:none}
 
     <!-- INVERSIONES -->
     <div class="card">
-      <div class="ct">Inversiones planificadas</div>
+      <div class="ct">📈 Inversiones planificadas</div>
       <div id="plan-inv-rows"></div>
       <div class="add-row">
         <input type="text" id="nv-label" placeholder="Instrumento (FCI, cripto...)">
@@ -389,7 +389,7 @@ nav::-webkit-scrollbar{display:none}
 
     <!-- GASTOS FIJOS -->
     <div class="card">
-      <div class="ct">Gastos fijos <span style="color:var(--muted);font-size:.63rem;font-weight:400">(se repiten cada mes)</span></div>
+      <div class="ct">📌 Gastos fijos <span style="color:var(--muted);font-size:.63rem;font-weight:400">(se repiten cada mes)</span></div>
       <div id="plan-fijos-rows"></div>
       <div class="add-row">
         <input type="text" id="nf-label" placeholder="Concepto">
@@ -400,7 +400,7 @@ nav::-webkit-scrollbar{display:none}
 
     <!-- VARIABLES -->
     <div class="card">
-      <div class="ct">Gastos variables estimados</div>
+      <div class="ct">💸 Gastos variables estimados</div>
       <div id="plan-vars-rows"></div>
       <div class="add-row">
         <input type="text" id="nva-label" placeholder="Concepto (TC BSF, efectivo...)">
@@ -464,7 +464,31 @@ nav::-webkit-scrollbar{display:none}
         <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Monto</th><th style="width:60px"></th></tr></thead>
         <tbody id="flujo-tx-tbody"></tbody>
       </table>
-      <!-- edit-modal moved to body level -->
+      <!-- Edit modal -->
+      <div id="edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:900;align-items:center;justify-content:center;padding:20px">
+        <div style="background:var(--s1);border:1px solid var(--border2);border-radius:12px;padding:24px;width:100%;max-width:400px">
+          <div style="font-family:var(--fh);font-size:1rem;font-weight:700;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
+            ✏ Editar transacción
+            <button onclick="closeEditModal()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.2rem">✕</button>
+          </div>
+          <input type="hidden" id="edit-mes">
+          <input type="hidden" id="edit-idx">
+          <div class="field" style="margin-bottom:10px"><label style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Fecha</label>
+            <input type="date" id="edit-fecha" class="fi"></div>
+          <div class="field" style="margin-bottom:10px"><label style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Monto $</label>
+            <input type="number" id="edit-monto" class="fi" placeholder="0"></div>
+          <div class="field" style="margin-bottom:10px"><label style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Descripción</label>
+            <input type="text" id="edit-desc" class="fi"></div>
+          <div class="field" style="margin-bottom:16px">
+            <label style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Categoría</label>
+            <select id="edit-cat" class="fi"></select>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button onclick="saveEditTx()" class="btn btn-g" style="flex:1">Guardar</button>
+            <button onclick="deleteTx()" class="btn" style="background:var(--red);color:white;padding:11px 18px;border-radius:7px;border:none;cursor:pointer">🗑 Borrar</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -488,22 +512,7 @@ nav::-webkit-scrollbar{display:none}
 
     <div class="card" style="margin-bottom:14px">
       <div class="r2">
-        <div class="field"><label>Fecha</label>
-<div style="display:flex;gap:4px">
-  <select id="tx-dia" class="fi" style="flex:1;min-width:0;padding:9px 6px">
-    <option value="">Día</option>
-  </select>
-  <select id="tx-mes-sel" class="fi" style="flex:2;min-width:0;padding:9px 6px" onchange="populateCatDropdown()">
-    <option value="01">Ene</option><option value="02">Feb</option><option value="03">Mar</option>
-    <option value="04">Abr</option><option value="05">May</option><option value="06">Jun</option>
-    <option value="07">Jul</option><option value="08">Ago</option><option value="09">Sep</option>
-    <option value="10">Oct</option><option value="11">Nov</option><option value="12">Dic</option>
-  </select>
-  <select id="tx-anio" class="fi" style="flex:1;min-width:0;padding:9px 6px">
-    <option value="2026">2026</option><option value="2025">2025</option><option value="2024">2024</option>
-  </select>
-</div>
-</div>
+        <div class="field"><label>Fecha</label><input type="date" id="tx-fecha" class="fi"></div>
         <div class="field"><label>Monto $</label><input type="number" id="tx-monto" class="fi" placeholder="0" step="0.01"></div>
       </div>
       <div class="field"><label>Descripción</label><input type="text" id="tx-desc" class="fi" placeholder="ej: supermercado, nafta..."></div>
@@ -605,25 +614,6 @@ nav::-webkit-scrollbar{display:none}
 </div>
 
 <!-- ════════════ CONFIG ════════════ -->
-<!-- ══ EDIT TX MODAL ══ -->
-<div id="edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:900;align-items:center;justify-content:center;padding:20px">
-  <div style="background:var(--s1);border:1px solid var(--border2);border-radius:12px;padding:24px;width:100%;max-width:400px">
-    <div style="font-family:var(--fh);font-size:1rem;font-weight:700;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
-      ✏ Editar transacción
-      <button onclick="closeEditModal()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.2rem">✕</button>
-    </div>
-    <input type="hidden" id="edit-mes"><input type="hidden" id="edit-idx">
-    <div class="field" style="margin-bottom:10px"><label style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Fecha</label><input type="date" id="edit-fecha" class="fi"></div>
-    <div class="field" style="margin-bottom:10px"><label style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Monto $</label><input type="number" id="edit-monto" class="fi" placeholder="0"></div>
-    <div class="field" style="margin-bottom:10px"><label style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Descripción</label><input type="text" id="edit-desc" class="fi"></div>
-    <div class="field" style="margin-bottom:16px"><label style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Categoría</label><select id="edit-cat" class="fi"></select></div>
-    <div style="display:flex;gap:8px">
-      <button onclick="saveEditTx()" class="btn btn-g" style="flex:1">Guardar</button>
-      <button onclick="deleteTx()" class="btn" style="background:var(--red);color:white;padding:11px 18px;border-radius:7px;border:none;cursor:pointer">🗑 Borrar</button>
-    </div>
-  </div>
-</div>
-
 <div class="page" id="page-config">
   <div style="max-width:600px">
 
@@ -1276,55 +1266,89 @@ function setTipo(tipo, btn) {
 function populateCatDropdown() {
   const sel = document.getElementById('tx-cat');
   if (!sel) return;
-  // Read from día/mes/año selects
-  const mm   = document.getElementById('tx-mes-sel')?.value || String(new Date().getMonth()+1).padStart(2,'0');
-  const yy   = document.getElementById('tx-anio')?.value   || String(new Date().getFullYear());
-  const mes  = yy + '-' + mm;
+  
+  const fechaEl = document.getElementById('tx-fecha');
+  let fechaRaw = fechaEl?.value || new Date().toISOString().split('T')[0];
+  // Normalize DD/MM/YYYY → YYYY-MM-DD
+  if (fechaRaw.includes('/')) {
+    const p = fechaRaw.split('/');
+    if (p.length === 3 && p[2].length === 4) fechaRaw = p[2] + '-' + p[1].padStart(2,'0') + '-' + p[0].padStart(2,'0');
+  }
+  const mes = fechaRaw.slice(0,7); // now always YYYY-MM
   const plan = getPlan(mes);
   
   sel.innerHTML = '<option value="">— elegir —</option>';
 
+  // If tipo = ingreso → show ingreso categories from plan
   if (curTipo === 'ingreso') {
-    const g0 = document.createElement('optgroup'); g0.label = 'Ingresos';
-    plan.ing.forEach(r => { const o=document.createElement('option'); o.value=r.l; o.text=r.l; g0.appendChild(o); });
-    ['Bono','Reintegro','Venta activos','Otros ingresos'].forEach(c => {
-      if (!plan.ing.find(r=>r.l===c)) { const o=document.createElement('option'); o.value=c; o.text=c; g0.appendChild(o); }
+    const g0 = document.createElement('optgroup');
+    g0.label = '💰 Ingresos del mes';
+    // From plan.ing
+    plan.ing.forEach(r => {
+      const o = document.createElement('option');
+      o.value = r.l; o.text = r.l; g0.appendChild(o);
     });
-    sel.appendChild(g0); return;
+    // Extra ingreso options
+    ['Bono', 'Reintegro', 'Venta activos', 'Otros ingresos'].forEach(c => {
+      if (!plan.ing.find(r => r.l === c)) {
+        const o = document.createElement('option');
+        o.value = c; o.text = c; g0.appendChild(o);
+      }
+    });
+    sel.appendChild(g0);
+    return;
   }
 
-  if (curTipo === 'tc') {
-    const g1 = document.createElement('optgroup'); g1.label = 'Tarjetas';
-    const tcVars = plan.vars.filter(r => r.l.toUpperCase().startsWith('TC '));
-    (tcVars.length ? tcVars : [{l:'TC BSF'},{l:'TC BBVA'},{l:'TC Municipal'},{l:'TC MP'}])
-      .forEach(r => { const o=document.createElement('option'); o.value=r.l; o.text=r.l; g1.appendChild(o); });
-    sel.appendChild(g1); return;
-  }
-
-  // gasto directo: fijos + vars sin TC
+  // Gastos fijos from plan
   if (plan.fijos.length) {
-    const g1 = document.createElement('optgroup'); g1.label = 'Gastos fijos';
-    plan.fijos.forEach(r => { const o=document.createElement('option'); o.value=r.l; o.text=r.l; g1.appendChild(o); });
+    const g1 = document.createElement('optgroup');
+    g1.label = '📌 Gastos fijos del mes';
+    plan.fijos.forEach(r => {
+      const o = document.createElement('option');
+      o.value = r.l; o.text = r.l; g1.appendChild(o);
+    });
     sel.appendChild(g1);
   }
-  const noTC = plan.vars.filter(r => !r.l.toUpperCase().startsWith('TC '));
-  if (noTC.length) {
-    const g2 = document.createElement('optgroup'); g2.label = 'Variables';
-    noTC.forEach(r => { const o=document.createElement('option'); o.value=r.l; o.text=r.l; g2.appendChild(o); });
+  
+  // Variables from plan
+  if (plan.vars.length) {
+    const g2 = document.createElement('optgroup');
+    g2.label = '💸 Variables del mes';
+    plan.vars.forEach(r => {
+      const o = document.createElement('option');
+      o.value = r.l; o.text = r.l; g2.appendChild(o);
+    });
     sel.appendChild(g2);
   }
-  const g3 = document.createElement('optgroup'); g3.label = 'Sin categoría';
-  const oOtros = document.createElement('option'); oOtros.value='Otros'; oOtros.text='Otros';
-  g3.appendChild(oOtros); sel.appendChild(g3);
+  
+  const g3 = document.createElement('optgroup');
+  g3.label = '➕ Sin categoría';
+  const oOtros = document.createElement('option');
+  oOtros.value = 'Otros'; oOtros.text = 'Otros';
+  g3.appendChild(oOtros);
+  sel.appendChild(g3);
 }
 
 function submitTx() {
-  // Leer fecha de los 3 selects — sin depender del picker nativo de Android
-  const dd   = document.getElementById('tx-dia')?.value     || String(new Date().getDate()).padStart(2,'0');
-  const mm   = document.getElementById('tx-mes-sel')?.value || String(new Date().getMonth()+1).padStart(2,'0');
-  const yy   = document.getElementById('tx-anio')?.value    || String(new Date().getFullYear());
-  const fecha = yy + '-' + mm + '-' + dd;   // siempre YYYY-MM-DD
-  const txMes = yy + '-' + mm;              // siempre YYYY-MM
+  // Leer y normalizar fecha → siempre YYYY-MM-DD
+  let raw = (document.getElementById('tx-fecha')?.value || '').trim();
+  let fecha;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    fecha = raw; // ya está bien (Chrome desktop)
+  } else if (raw.includes('/')) {
+    // Android puede dar DD/MM/YYYY o DD/MM/YY
+    const p = raw.split('/');
+    if (p.length === 3) {
+      let [d,m,y] = p;
+      if (y.length === 2) y = '20' + y;
+      if (y.length === 4) fecha = y+'-'+m.padStart(2,'0')+'-'+d.padStart(2,'0');
+    }
+  }
+  // Fallback: usar fecha de hoy
+  if (!fecha || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+    fecha = new Date().toISOString().split('T')[0];
+  }
+  const txMes = fecha.slice(0,7);
 
   const monto = parseFloat(document.getElementById('tx-monto').value);
   const desc  = (document.getElementById('tx-desc').value || '').trim();
@@ -1341,7 +1365,6 @@ function submitTx() {
   txsAll[txMes].unshift(tx);
   DB.set('txs', txsAll);
 
-  // Limpiar monto y descripción
   document.getElementById('tx-monto').value = '';
   document.getElementById('tx-desc').value  = '';
   if (document.getElementById('tx-notas')) document.getElementById('tx-notas').value = '';
@@ -1526,7 +1549,6 @@ function updateOverview() {
   const yr  = overviewYear;
   const now = new Date();
   const curMesKey = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
-
   let totalIng=0, totalGas=0, totalInv=0, activeMeses=[];
 
   if (yr === '2026') {
@@ -1559,15 +1581,15 @@ function updateOverview() {
   else if (nMeses===1) label=MESES[parseInt(activeMeses[0].split('-')[1])-1]+' '+yr;
   else label=MESES[parseInt(activeMeses[0].split('-')[1])-1]+'–'+MESES[parseInt(activeMeses[nMeses-1].split('-')[1])-1]+' '+yr;
 
-  const setEl=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
-  setEl('ov-ing', fmtK(totalIng));
-  setEl('ov-gas', fmtK(totalGas));
-  setEl('ov-gas-sub', nMeses>1?'acumulado '+nMeses+' meses':'del mes');
-  setEl('ov-mes-label', label);
-  setEl('yr-summary', nMeses>0?nMeses+' '+(nMeses===1?'mes':'meses')+' acumulado'+(nMeses===1?'':'s'):'');
+  const S=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
+  S('ov-ing', fmtK(totalIng));
+  S('ov-gas', fmtK(totalGas));
+  S('ov-gas-sub', nMeses>1?'acumulado '+nMeses+' meses':'del mes');
+  S('ov-mes-label', label);
+  S('yr-summary', nMeses>0?nMeses+' '+(nMeses===1?'mes':'meses')+' acumulado'+(nMeses===1?'':'s'):'');
   const ne=document.getElementById('ov-neto');
   if(ne){ne.textContent=fmtK(neto);ne.className='kv '+(neto>=0?'pos':'neg');}
-  setEl('ov-pat', fmtK(DB.get('inversiones',INV_DEFAULT).reduce((s,i)=>s+(i.ars||0),0)));
+  S('ov-pat', fmtK(DB.get('inversiones',INV_DEFAULT).reduce((s,i)=>s+(i.ars||0),0)));
 
   const alerts=[];
   if(yr==='2026'&&nMeses>0){
@@ -1575,7 +1597,6 @@ function updateOverview() {
   }
   const ae=document.getElementById('overview-alerts');
   if(ae) ae.innerHTML=alerts.map(a=>`<div class="alert ${a.type}">${a.msg}</div>`).join('');
-
   if(yr==='2026'&&totalIng>0){
     const b=document.getElementById('spend-badge'),p=document.getElementById('spend-pct');
     if(b&&p){const pct=Math.round(totalGas/totalIng*100);p.textContent=pct+'%';b.style.display='inline-block';b.style.color=pct>90?P.red:pct>70?P.yellow:P.green;}
@@ -2157,7 +2178,7 @@ function openEditModal(mes, idx) {
   const catSel = document.getElementById('edit-cat');
   catSel.innerHTML = '<option value="">— elegir —</option>';
   const fijoGroup = document.createElement('optgroup');
-  fijoGroup.label = 'Gastos fijos';
+  fijoGroup.label = '📌 Gastos fijos';
   plan.fijos.forEach(r => {
     const o = document.createElement('option');
     o.value = r.l; o.text = r.l; fijoGroup.appendChild(o);
@@ -2383,28 +2404,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // Migrate old tx category names to normalized names
   migrateOldTxNames();
 
-  // Set today's date in cargar form using día/mes/año selects
-  (function initFechaSelects() {
-    const now = new Date();
-    const dd = String(now.getDate()).padStart(2,'0');
-    const mm = String(now.getMonth()+1).padStart(2,'0');
-    const yy = String(now.getFullYear());
-    // Populate day select 1-31
-    const diaEl = document.getElementById('tx-dia');
-    if (diaEl) {
-      for (let d=1; d<=31; d++) {
-        const o = document.createElement('option');
-        o.value = String(d).padStart(2,'0');
-        o.text  = d;
-        if (String(d).padStart(2,'0') === dd) o.selected = true;
-        diaEl.appendChild(o);
-      }
-    }
-    const mesEl  = document.getElementById('tx-mes-sel');
-    const anioEl = document.getElementById('tx-anio');
-    if (mesEl)  mesEl.value  = mm;
-    if (anioEl) anioEl.value = yy;
-  })();
+  // Set today's date in cargar form
+  const fechaEl = document.getElementById('tx-fecha');
+  const todayISO = new Date().toISOString().split('T')[0]; // always YYYY-MM-DD
+  fechaEl.value = todayISO;
+  fechaEl.addEventListener('change', populateCatDropdown);
   populateCatDropdown();
 
   // Load TC
