@@ -72,44 +72,81 @@ window.FBsave = function(key, value) {
   }, 1500);
 };
 
-// ── Cargar todos los datos desde Firestore ──
+// ── Flag para evitar loop de carga ──
+let _alreadyLoaded = false;
+
+// ── Refrescar toda la UI sin recargar la página ──
+function refreshUI() {
+  try {
+    if (typeof updateOverview    === 'function') updateOverview();
+    if (typeof renderPlanSections=== 'function') renderPlanSections();
+    if (typeof renderFlujo       === 'function') renderFlujo();
+    if (typeof renderRecentTxs   === 'function') renderRecentTxs();
+    if (typeof renderInvList     === 'function') renderInvList();
+    if (typeof updatePatrimonio  === 'function') updatePatrimonio();
+    // Charts al final
+    setTimeout(() => {
+      if (typeof buildEvolChart  === 'function') buildEvolChart('2026');
+      if (typeof buildAnualChart === 'function') buildAnualChart();
+      if (typeof buildDonut      === 'function') buildDonut();
+    }, 150);
+  } catch(e) { console.error('refreshUI error:', e); }
+}
+
+// ── Cargar datos desde Firestore → localStorage → UI ──
 async function loadFromFirestore(uid) {
+  if (_alreadyLoaded) return; // evitar loop
+  _alreadyLoaded = true;
   setSyncStatus('syncing');
+
   const keys = ['txs', 'plans', 'inversiones', 'tc'];
-  let loaded = false;
+  let cloudHasData = false;
+  let uploadCount  = 0;
+
   for (const key of keys) {
     try {
       const snap = await getDoc(doc(db, 'users', uid, 'data', key));
       if (snap.exists()) {
-        const val = JSON.parse(snap.data().value);
-        localStorage.setItem(key, JSON.stringify(val));
-        loaded = true;
+        cloudHasData = true;
+        // Escribir en localStorage sin disparar FBsave
+        localStorage.setItem(key, JSON.stringify(JSON.parse(snap.data().value)));
+      } else {
+        // Nube vacía para esta key → subir desde local
+        const local = localStorage.getItem(key);
+        if (local && local !== '{}' && local !== '[]' && local !== 'null') {
+          await setDoc(doc(db, 'users', uid, 'data', key), { value: local });
+          uploadCount++;
+        }
       }
-    } catch(e) { console.error('Load error', key, e); }
+    } catch(e) { console.error('Firestore error:', key, e); }
   }
-  if (loaded) {
-    // Recargar la UI con los datos de la nube
-    if (typeof initApp === 'function') initApp();
-    else location.reload();
-  }
+
   setSyncStatus('ok');
+
+  if (cloudHasData) {
+    // Refrescar UI con datos de la nube — SIN reload
+    refreshUI();
+    if (typeof showToast === 'function') showToast('☁ Datos sincronizados');
+  } else if (uploadCount > 0) {
+    if (typeof showToast === 'function') showToast('✓ Datos subidos a la nube');
+  }
 }
 
 // ── Auth state ──
 onAuthStateChanged(auth, async (user) => {
-  const btn = document.getElementById('fb-login-btn');
+  const btn    = document.getElementById('fb-login-btn');
   const userEl = document.getElementById('fb-user');
   if (user) {
     _uid = user.uid;
-    if (btn) { btn.textContent = 'Cerrar sesión'; btn.onclick = () => signOut(auth); }
-    if (userEl) userEl.textContent = user.displayName || user.email;
-    setSyncStatus('ok');
-    // Cargar datos desde la nube al iniciar sesión
+    if (btn)    { btn.textContent = 'Cerrar sesión'; btn.onclick = () => { signOut(auth); _alreadyLoaded = false; }; }
+    if (userEl)   userEl.textContent = user.displayName || user.email;
+    setSyncStatus('syncing');
     await loadFromFirestore(user.uid);
   } else {
     _uid = null;
-    if (btn) { btn.textContent = 'Iniciar sesión con Google'; btn.onclick = fbLogin; }
-    if (userEl) userEl.textContent = 'No conectado';
+    _alreadyLoaded = false;
+    if (btn)    { btn.textContent = 'Iniciar sesión con Google'; btn.onclick = fbLogin; }
+    if (userEl)   userEl.textContent = 'No conectado';
     setSyncStatus('loggedout');
   }
 });
@@ -289,7 +326,7 @@ nav::-webkit-scrollbar{display:none}
 <header>
   <div class="logo"><em>CL</em> · Finanzas</div>
   <div style="display:flex;align-items:center;gap:8px">
-    <span id="sync-indicator" title="Estado de sincronización" style="font-size:1rem;cursor:pointer;color:#64748b" onclick="go('config',document.querySelector('.nb:last-child'))">⊙</span>
+    <span id="sync-indicator" title="Estado de sincronización" style="font-size:.8rem;cursor:pointer;color:#64748b;letter-spacing:0" onclick="go('config',document.querySelector('.nb:last-child'))">⊙</span>
     <button id="theme-btn" onclick="toggleTheme()" style="background:none;border:1px solid var(--border2);border-radius:20px;padding:4px 12px;color:var(--muted2);font-family:var(--fm);font-size:.7rem;cursor:pointer;transition:all .2s" title="Cambiar tema">🌙</button>
     <div class="mes-badge" id="header-mes">Mar 2026</div>
   </div>
@@ -700,7 +737,7 @@ nav::-webkit-scrollbar{display:none}
       <div class="ct">ℹ️ Acerca de</div>
       <p style="font-size:.75rem;color:var(--muted2);line-height:1.7">
         Dashboard financiero personal — CL Finanzas<br>
-        Datos guardados localmente en este dispositivo.<br>
+        Datos sincronizados en la nube con Firebase.<br>
         Form de gastos: <a href="https://forms.gle/cgxE8FDbhaZPkwjn9" target="_blank" style="color:var(--green)">forms.gle/cgxE8FDbhaZPkwjn9</a>
       </p>
     </div>
@@ -1743,12 +1780,17 @@ function buildEvolChart(year='2026') {
       { label:'Gastos',   data:g, borderColor:P.red,   backgroundColor:'rgba(244,63,94,.06)',   borderWidth:2, pointRadius:3, tension:.35, fill:true },
       { label:'Ingresos', data:i, borderColor:P.green, backgroundColor:'rgba(34,211,160,.06)',  borderWidth:2, pointRadius:3, tension:.35, fill:true },
     ]},
-    options: { responsive:true, interaction:{mode:'index',intersect:false},
+    options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
       plugins:{ legend:{position:'bottom',labels:{boxWidth:8,padding:14}},
         tooltip:{backgroundColor:'#0e1117',borderColor:'rgba(255,255,255,.1)',borderWidth:1,callbacks:{label:c=>` ${c.dataset.label}: ${fmt(c.parsed.y)}`}}},
-      scales:{ y:{ticks:{callback:v=>'$'+(v/1000).toFixed(0)+'k'},grid:{color:'rgba(255,255,255,.04)'}}, x:{grid:{display:false}} }
+      scales:{ 
+        y:{stacked:false, min:0, ticks:{callback:v=>'$'+(v/1000).toFixed(0)+'k'},grid:{color:'rgba(255,255,255,.04)'}}, 
+        x:{stacked:false, grid:{display:false}} 
+      }
     }
   });
+  // Forzar resize para que Chart.js calcule dimensiones correctamente
+  setTimeout(() => { if(chartEvol) chartEvol.resize(); }, 50);
 }
 
 function setEvolYear(yr, btn) {
