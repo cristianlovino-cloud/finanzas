@@ -455,31 +455,6 @@ nav::-webkit-scrollbar{display:none}
         <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Monto</th><th style="width:60px"></th></tr></thead>
         <tbody id="flujo-tx-tbody"></tbody>
       </table>
-      <!-- Edit modal -->
-      <div id="edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:900;display:none;align-items:center;justify-content:center;padding:20px">
-        <div style="background:var(--s1);border:1px solid var(--border2);border-radius:12px;padding:24px;width:100%;max-width:400px">
-          <div style="font-family:var(--fh);font-size:1rem;font-weight:700;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
-            ✏ Editar transacción
-            <button onclick="closeEditModal()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.2rem">✕</button>
-          </div>
-          <input type="hidden" id="edit-mes">
-          <input type="hidden" id="edit-idx">
-          <div class="field" style="margin-bottom:10px"><label style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Fecha</label>
-            <input type="date" id="edit-fecha" class="fi"></div>
-          <div class="field" style="margin-bottom:10px"><label style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Monto $</label>
-            <input type="number" id="edit-monto" class="fi" placeholder="0"></div>
-          <div class="field" style="margin-bottom:10px"><label style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Descripción</label>
-            <input type="text" id="edit-desc" class="fi"></div>
-          <div class="field" style="margin-bottom:16px">
-            <label style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Categoría</label>
-            <select id="edit-cat" class="fi"></select>
-          </div>
-          <div style="display:flex;gap:8px">
-            <button onclick="saveEditTx()" class="btn btn-g" style="flex:1">Guardar</button>
-            <button onclick="deleteTx()" class="btn" style="background:var(--red);color:white;padding:11px 18px;border-radius:7px;border:none;cursor:pointer">🗑 Borrar</button>
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 </div>
@@ -604,6 +579,32 @@ nav::-webkit-scrollbar{display:none}
   </div>
 </div>
 
+<!-- ════════════ EDIT TX MODAL (body-level, fuera de cualquier page) ════════════ -->
+<div id="edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:900;align-items:center;justify-content:center;padding:20px">
+  <div style="background:var(--s1);border:1px solid var(--border2);border-radius:12px;padding:24px;width:100%;max-width:400px">
+    <div style="font-family:var(--fh);font-size:1rem;font-weight:700;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
+      ✏ Editar transacción
+      <button onclick="closeEditModal()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.2rem">✕</button>
+    </div>
+    <input type="hidden" id="edit-mes">
+    <input type="hidden" id="edit-idx">
+    <div class="field" style="margin-bottom:10px"><label style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Fecha</label>
+      <input type="date" id="edit-fecha" class="fi"></div>
+    <div class="field" style="margin-bottom:10px"><label style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Monto $</label>
+      <input type="number" id="edit-monto" class="fi" placeholder="0"></div>
+    <div class="field" style="margin-bottom:10px"><label style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Descripción</label>
+      <input type="text" id="edit-desc" class="fi"></div>
+    <div class="field" style="margin-bottom:16px">
+      <label style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Categoría</label>
+      <select id="edit-cat" class="fi"></select>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button onclick="saveEditTx()" class="btn btn-g" style="flex:1">Guardar</button>
+      <button onclick="deleteTx()" class="btn" style="background:var(--red);color:white;padding:11px 18px;border-radius:7px;border:none;cursor:pointer">🗑 Borrar</button>
+    </div>
+  </div>
+</div>
+
 <!-- ════════════ CONFIG ════════════ -->
 <div class="page" id="page-config">
   <div style="max-width:600px">
@@ -687,14 +688,13 @@ let globalMes = getCurMes();
 
 function setGlobalMes(mesKey) {
   globalMes = mesKey;
-  // Sync selectors (plan-sel-top removed, only flujo-sel remains)
+  // Sync selectors (plan-sel-top removed)
   ['plan-sel','flujo-sel'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = mesKey;
   });
-  // Update header badge
+  // Update header badge and presupuesto badge
   document.getElementById('header-mes').textContent = mesLabel(mesKey);
-  // Update presupuesto month badge
   const planBadge = document.getElementById('plan-mes-badge');
   if (planBadge) planBadge.textContent = mesLabel(mesKey);
   // Refresh all views
@@ -1116,12 +1116,10 @@ function planTotals(plan) {
 }
 
 function syncPlanSel(source) {
-  // plan-sel-top removed; nothing to sync between top/main selectors
   loadPlanUI();
 }
 
 function loadPlanUI() {
-  // loadPlanUI now just reads curMes (set by setGlobalMes)
   curPlan = getPlan(curMes);
   renderPlanSections();
   updateHeaderMes();
@@ -2460,7 +2458,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Init — set global month and sync all selectors
   const initMes = getCurMes();
-  // Ensure flujo selector has current month as option
+  // Sync flujo selector
   ['plan-sel','flujo-sel'].forEach(selId => {
     const el = document.getElementById(selId);
     if (!el) return;
