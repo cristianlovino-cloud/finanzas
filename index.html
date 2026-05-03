@@ -1268,8 +1268,13 @@ function populateCatDropdown() {
   if (!sel) return;
   
   const fechaEl = document.getElementById('tx-fecha');
-  const fecha = fechaEl?.value || new Date().toISOString().split('T')[0];
-  const mes = fecha.slice(0,7);
+  let fechaRaw = fechaEl?.value || new Date().toISOString().split('T')[0];
+  // Normalize DD/MM/YYYY → YYYY-MM-DD
+  if (fechaRaw.includes('/')) {
+    const p = fechaRaw.split('/');
+    if (p.length === 3 && p[2].length === 4) fechaRaw = p[2] + '-' + p[1].padStart(2,'0') + '-' + p[0].padStart(2,'0');
+  }
+  const mes = fechaRaw.slice(0,7); // now always YYYY-MM
   const plan = getPlan(mes);
   
   sel.innerHTML = '<option value="">— elegir —</option>';
@@ -2454,7 +2459,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Set today's date in cargar form
   const fechaEl = document.getElementById('tx-fecha');
-  fechaEl.value = new Date().toISOString().split('T')[0];
+  const todayISO = new Date().toISOString().split('T')[0]; // always YYYY-MM-DD
+  fechaEl.value = todayISO;
   fechaEl.addEventListener('change', populateCatDropdown);
   populateCatDropdown();
 
