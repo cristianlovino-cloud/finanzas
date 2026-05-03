@@ -1,61 +1,75 @@
-// CL Finanzas — Service Worker v1.0
-const CACHE = 'cl-finanzas-v9';
-const OFFLINE_ASSETS = [
-  '/finanzas/',
-  '/finanzas/index.html',
+// CL Finanzas — Service Worker v2.0
+// Network-first para HTML, cache-first para assets estáticos
+const CACHE = 'cl-finanzas-v10';
+const STATIC_ASSETS = [
   'https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap',
   'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js',
 ];
 
-// Install — cache core assets
+// Install — cachear solo assets estáticos (NO el HTML)
 self.addEventListener('install', e => {
   e.waitUntil(
-    caches.open(CACHE).then(cache => {
-      return Promise.allSettled(
-        OFFLINE_ASSETS.map(url => cache.add(url).catch(() => null))
-      );
-    }).then(() => self.skipWaiting())
+    caches.open(CACHE).then(cache =>
+      Promise.allSettled(STATIC_ASSETS.map(url => cache.add(url).catch(() => null)))
+    ).then(() => self.skipWaiting())
   );
 });
 
-// Activate — clear old caches
+// Activate — limpiar cachés viejos y tomar control inmediatamente
 self.addEventListener('activate', e => {
   e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-    ).then(() => self.clients.claim())
+    caches.keys()
+      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+      .then(() => self.clients.claim())
   );
 });
 
-// Fetch — cache-first for assets, network-first for API calls
+// Fetch strategy:
+// - HTML principal → NETWORK FIRST (siempre baja la versión más nueva)
+// - Assets estáticos → CACHE FIRST (fuentes, Chart.js)
+// - APIs externas → bypass (sin caché)
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
-  
-  // Skip non-GET and external APIs (Yahoo, CoinGecko, DolarApi)
+
+  // Solo GET
   if (e.request.method !== 'GET') return;
+
+  // Bypass total para APIs externas y Firebase
   if (url.hostname.includes('yahoo') ||
       url.hostname.includes('coingecko') ||
       url.hostname.includes('dolarapi') ||
       url.hostname.includes('argentinadatos') ||
       url.hostname.includes('allorigins') ||
-      url.hostname.includes('corsproxy')) return;
+      url.hostname.includes('corsproxy') ||
+      url.hostname.includes('firestore') ||
+      url.hostname.includes('firebase') ||
+      url.hostname.includes('googleapis') && url.pathname.includes('/identitytoolkit') ||
+      url.hostname.includes('gstatic') && url.pathname.includes('/firebasejs')) return;
 
-  e.respondWith(
-    caches.match(e.request).then(cached => {
-      const fetchFresh = fetch(e.request)
+  // HTML principal → network first, fallback a caché
+  if (url.pathname === '/finanzas/' || url.pathname === '/finanzas/index.html') {
+    e.respondWith(
+      fetch(e.request)
         .then(res => {
-          if (res.ok && url.origin === self.location.origin) {
+          // Guardar la versión fresca en caché
+          if (res.ok) {
             caches.open(CACHE).then(c => c.put(e.request, res.clone()));
           }
           return res;
         })
-        .catch(() => cached); // fallback to cache if offline
-      
-      // For the main app — return cache instantly, update in background
-      if (url.pathname.includes('/finanzas')) {
-        return cached || fetchFresh;
-      }
-      return fetchFresh || cached;
+        .catch(() => caches.match(e.request)) // offline: usar caché
+    );
+    return;
+  }
+
+  // Assets estáticos → cache first
+  e.respondWith(
+    caches.match(e.request).then(cached => {
+      if (cached) return cached;
+      return fetch(e.request).then(res => {
+        if (res.ok) caches.open(CACHE).then(c => c.put(e.request, res.clone()));
+        return res;
+      });
     })
   );
 });
