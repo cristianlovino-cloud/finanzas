@@ -75,7 +75,26 @@ window.FBsave = function(key, value) {
 // ── Flag para evitar loop de carga ──
 let _alreadyLoaded = false;
 
-// refreshUI definida en el script principal como window.refreshUI
+// ── Refrescar toda la UI sin recargar la página ──
+function refreshUI() {
+  try {
+    if (typeof updateOverview    === 'function') updateOverview();
+    if (typeof renderPlanSections=== 'function') renderPlanSections();
+    if (typeof renderFlujo       === 'function') renderFlujo();
+    if (typeof renderRecentTxs   === 'function') renderRecentTxs();
+    if (typeof renderInvList     === 'function') renderInvList();
+    if (typeof updatePatrimonio   === 'function') updatePatrimonio();
+    if (typeof renderCuentas       === 'function') renderCuentas();
+    if (typeof updateMediosDePago  === 'function') updateMediosDePago();
+    if (typeof updateOverviewSaldos=== 'function') updateOverviewSaldos();
+    // Charts al final
+    setTimeout(() => {
+      if (typeof buildEvolChart  === 'function') buildEvolChart('2026');
+      if (typeof buildAnualChart === 'function') buildAnualChart();
+      if (typeof buildDonut      === 'function') buildDonut();
+    }, 150);
+  } catch(e) { console.error('refreshUI error:', e); }
+}
 
 // ── Cargar datos desde Firestore → localStorage → UI ──
 async function loadFromFirestore(uid) {
@@ -108,20 +127,11 @@ async function loadFromFirestore(uid) {
   setSyncStatus('ok');
 
   if (cloudHasData) {
-    // Esperar a que window.refreshUI esté disponible (timing issue con módulo ES)
-    const waitAndRefresh = (attempts) => {
-      if (typeof window.refreshUI === 'function') {
-        window.refreshUI();
-        if (typeof window.showToast === 'function') window.showToast('☁ Datos sincronizados');
-      } else if (attempts > 0) {
-        setTimeout(() => waitAndRefresh(attempts - 1), 200);
-      }
-    };
-    setTimeout(() => waitAndRefresh(20), 300);
+    // Refrescar UI con datos de la nube — SIN reload
+    refreshUI();
+    if (typeof showToast === 'function') showToast('☁ Datos sincronizados');
   } else if (uploadCount > 0) {
-    setTimeout(() => {
-      if (typeof window.showToast === 'function') window.showToast('✓ Datos subidos a la nube');
-    }, 500);
+    if (typeof showToast === 'function') showToast('✓ Datos subidos a la nube');
   }
 }
 
@@ -1293,10 +1303,8 @@ function showToast(msg, color) {
 function go(id, btn) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nb').forEach(b => b.classList.remove('active'));
-  const pageEl = document.getElementById('page-' + id);
-  if (!pageEl) { console.warn('go(): page not found:', id); return; }
-  pageEl.classList.add('active');
-  if (btn) btn.classList.add('active');
+  document.getElementById('page-' + id).classList.add('active');
+  btn.classList.add('active');
   // Show sticky save only on presupuesto
   const stickySave = document.getElementById('sticky-save');
   if (stickySave) stickySave.style.display = id === 'presupuesto' ? 'flex' : 'none';
@@ -2346,15 +2354,10 @@ async function renderInvList() {
   const cotiz = await fetchCotizaciones().catch(() => ({}));
 
   // Update ARS values from live prices for auto-priced types
-  const nowTs = Date.now();
   invs.forEach(inv => {
     const live = getArsFromCotiz(inv, cotiz);
     if (live > 0 && (inv.tipo === 'CEDEAR' || inv.tipo === 'Cripto' || inv.tipo === 'Stablecoin' || inv.tipo === 'Dólar')) {
-      if (live !== inv.ars) {
-        inv.ars = live;
-        inv.precioTs = nowTs;
-        inv.precioFuente = 'auto';
-      }
+      inv.ars = live;
     }
   });
 
@@ -2415,18 +2418,6 @@ async function renderInvList() {
         ? '<span style="font-size:.65rem;color:var(--muted)">— actualizar valor</span>'
         : `<span style="color:${rc};font-size:.7rem;font-weight:600">${rendPct>=0?'+':''}${(rendPct*100).toFixed(1)}%${ganLoss!==0?' ('+fmt(Math.abs(ganLoss))+')':''}</span>`;
       const badge   = buildCotizBadge(inv, cotiz);
-      // Frescura del precio
-      let frescuraHtml = '';
-      if (inv.precioTs) {
-        const diasFr = Math.floor((Date.now()-inv.precioTs)/86400000);
-        const horasFr = Math.floor((Date.now()-inv.precioTs)/3600000);
-        const fc = diasFr >= 7 ? '#f43f5e' : diasFr >= 3 ? '#fbbf24' : '#22d3a0';
-        const ft = diasFr === 0 ? (horasFr===0?'recién':'hace '+horasFr+'h') : diasFr===1?'ayer':'hace '+diasFr+' días';
-        const src = inv.precioFuente === 'manual' ? '✎' : '↻';
-        frescuraHtml = `<div style="font-size:.6rem;color:${fc};margin-top:2px">${src} ${ft}</div>`;
-      } else if (hasVal) {
-        frescuraHtml = `<div style="font-size:.6rem;color:#f43f5e;margin-top:2px">⚠ sin fecha</div>`;
-      }
       return `<div class="inv-row">
         <div class="inv-icon" style="background:${color}15">${icons[inv.tipo]||'📈'}</div>
         <div class="inv-body">
@@ -2436,7 +2427,6 @@ async function renderInvList() {
         <div style="text-align:right">
           <div class="inv-val" style="color:${hasVal?color:'var(--muted)'}">${hasVal?fmt(inv.ars):'— completar'}</div>
           ${rendLabel}
-          ${frescuraHtml}
         </div>
       </div>`;
     }).join('');
@@ -2467,23 +2457,6 @@ async function renderInvList() {
     : '<div style="color:var(--muted);font-size:.75rem;padding:16px 0;text-align:center">Sin movimientos registrados</div>';
 }
 
-// ── Actualizar precio manualmente ──
-function updatePrecioManual(i) {
-  const invs = getInv();
-  const inv  = invs[i];
-  const nuevo = prompt('Precio actual de ' + inv.activo + ' en ARS:', inv.ars || '');
-  if (nuevo === null) return;
-  const val = parseFloat(String(nuevo).replace(/[$. ]/g,'').replace(',','.'));
-  if (!val || val <= 0) { showToast('Monto inválido', '#f43f5e'); return; }
-  invs[i].ars          = val;
-  invs[i].precioTs     = Date.now();
-  invs[i].precioFuente = 'manual';
-  DB.set('inversiones', invs);
-  renderInvList();
-  renderInvEditor();
-  showToast('✓ ' + inv.activo + ' actualizado: ' + fmt(val));
-}
-
 function toggleInvEditor() {
   const ed  = document.getElementById('inv-editor');
   const btn = document.getElementById('inv-edit-btn');
@@ -2502,16 +2475,9 @@ function toggleInvEditor() {
 
 function renderInvEditor() {
   const invs = getInv();
-  document.getElementById('inv-editor-rows').innerHTML = invs.map((inv, i) => {
-    const diasEd = inv.precioTs ? Math.floor((Date.now()-inv.precioTs)/86400000) : null;
-    const fcEd = diasEd===null?'#f43f5e':diasEd>=7?'#f43f5e':diasEd>=3?'#fbbf24':'#22d3a0';
-    const ftEd = diasEd===null?'sin precio':diasEd===0?'hoy':diasEd===1?'ayer':'hace '+diasEd+' días';
-    return `
+  document.getElementById('inv-editor-rows').innerHTML = invs.map((inv, i) => `
     <div style="background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <div style="font-size:.6rem;color:${fcEd}">Último precio: ${ftEd}</div>
-        <button onclick="updatePrecioManual(${i})" style="font-size:.65rem;background:rgba(34,211,160,.12);color:#22d3a0;border:1px solid rgba(34,211,160,.3);border-radius:4px;padding:3px 8px;cursor:pointer">✎ Actualizar precio</button>
-      </div>
         <div style="font-size:.78rem;font-weight:600;color:var(--text)">${inv.activo}</div>
         <button onclick="delInvRow(${i})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:.85rem;padding:2px 6px">✕ Eliminar</button>
       </div>
@@ -2899,25 +2865,6 @@ if ('serviceWorker' in navigator) {
       .catch(err => console.log('SW failed:', err));
   });
 }
-
-// ── Exponer refreshUI globalmente (llamada desde módulo Firebase) ──
-window.refreshUI = function() {
-  const run = (name, fn) => { try { if (typeof fn === 'function') fn(); } catch(e) { console.error('refreshUI.' + name + ':', e); } };
-  run('updateOverview',      updateOverview);
-  run('renderPlanSections',  renderPlanSections);
-  run('renderFlujo',         renderFlujo);
-  run('renderRecentTxs',     renderRecentTxs);
-  run('renderCuentas',       renderCuentas);
-  run('updateMediosDePago',  updateMediosDePago);
-  run('updateOverviewSaldos',updateOverviewSaldos);
-  run('updatePatrimonio',    updatePatrimonio);
-  if (typeof renderInvList === 'function') renderInvList().catch(e => console.error('renderInvList:', e));
-  setTimeout(() => {
-    try { buildEvolChart(window.overviewYear || '2026'); } catch(e) {}
-    try { buildAnualChart(); } catch(e) {}
-    try { buildDonut(); } catch(e) {}
-  }, 200);
-};
 
 document.addEventListener('DOMContentLoaded', () => {
   // Migrate inversiones: replace if saved data has fewer CEDEARs than INV_DEFAULT
