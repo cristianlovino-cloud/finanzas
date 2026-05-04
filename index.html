@@ -75,26 +75,7 @@ window.FBsave = function(key, value) {
 // ── Flag para evitar loop de carga ──
 let _alreadyLoaded = false;
 
-// ── Refrescar toda la UI sin recargar la página ──
-function refreshUI() {
-  const run = (name, fn) => { try { if (typeof fn === 'function') fn(); } catch(e) { console.error('refreshUI.' + name + ':', e); } };
-  run('updateOverview',      updateOverview);
-  run('renderPlanSections',  renderPlanSections);
-  run('renderFlujo',         renderFlujo);
-  run('renderRecentTxs',     renderRecentTxs);
-  run('renderCuentas',       renderCuentas);
-  run('updateMediosDePago',  updateMediosDePago);
-  run('updateOverviewSaldos',updateOverviewSaldos);
-  run('updatePatrimonio',    updatePatrimonio);
-  // renderInvList es async — no bloquear
-  if (typeof renderInvList === 'function') renderInvList().catch(e => console.error('renderInvList:', e));
-  // Charts al final
-  setTimeout(() => {
-    try { if (typeof buildEvolChart  === 'function') buildEvolChart(overviewYear || '2026'); } catch(e) {}
-    try { if (typeof buildAnualChart === 'function') buildAnualChart(); } catch(e) {}
-    try { if (typeof buildDonut      === 'function') buildDonut(); } catch(e) {}
-  }, 200);
-}
+// refreshUI definida en el script principal como window.refreshUI
 
 // ── Cargar datos desde Firestore → localStorage → UI ──
 async function loadFromFirestore(uid) {
@@ -127,11 +108,11 @@ async function loadFromFirestore(uid) {
   setSyncStatus('ok');
 
   if (cloudHasData) {
-    // Refrescar UI con datos de la nube — SIN reload
-    refreshUI();
-    if (typeof showToast === 'function') showToast('☁ Datos sincronizados');
+    // Refrescar UI — llamar via window para cruzar el scope del módulo ES
+    if (typeof window.refreshUI === 'function') window.refreshUI();
+    if (typeof window.showToast === 'function') window.showToast('☁ Datos sincronizados');
   } else if (uploadCount > 0) {
-    if (typeof showToast === 'function') showToast('✓ Datos subidos a la nube');
+    if (typeof window.showToast === 'function') window.showToast('✓ Datos subidos a la nube');
   }
 }
 
@@ -2909,6 +2890,25 @@ if ('serviceWorker' in navigator) {
       .catch(err => console.log('SW failed:', err));
   });
 }
+
+// ── Exponer refreshUI globalmente (llamada desde módulo Firebase) ──
+window.refreshUI = function() {
+  const run = (name, fn) => { try { if (typeof fn === 'function') fn(); } catch(e) { console.error('refreshUI.' + name + ':', e); } };
+  run('updateOverview',      updateOverview);
+  run('renderPlanSections',  renderPlanSections);
+  run('renderFlujo',         renderFlujo);
+  run('renderRecentTxs',     renderRecentTxs);
+  run('renderCuentas',       renderCuentas);
+  run('updateMediosDePago',  updateMediosDePago);
+  run('updateOverviewSaldos',updateOverviewSaldos);
+  run('updatePatrimonio',    updatePatrimonio);
+  if (typeof renderInvList === 'function') renderInvList().catch(e => console.error('renderInvList:', e));
+  setTimeout(() => {
+    try { buildEvolChart(window.overviewYear || '2026'); } catch(e) {}
+    try { buildAnualChart(); } catch(e) {}
+    try { buildDonut(); } catch(e) {}
+  }, 200);
+};
 
 document.addEventListener('DOMContentLoaded', () => {
   // Migrate inversiones: replace if saved data has fewer CEDEARs than INV_DEFAULT
