@@ -77,23 +77,23 @@ let _alreadyLoaded = false;
 
 // ── Refrescar toda la UI sin recargar la página ──
 function refreshUI() {
-  try {
-    if (typeof updateOverview    === 'function') updateOverview();
-    if (typeof renderPlanSections=== 'function') renderPlanSections();
-    if (typeof renderFlujo       === 'function') renderFlujo();
-    if (typeof renderRecentTxs   === 'function') renderRecentTxs();
-    if (typeof renderInvList     === 'function') renderInvList();
-    if (typeof updatePatrimonio   === 'function') updatePatrimonio();
-    if (typeof renderCuentas       === 'function') renderCuentas();
-    if (typeof updateMediosDePago  === 'function') updateMediosDePago();
-    if (typeof updateOverviewSaldos=== 'function') updateOverviewSaldos();
-    // Charts al final
-    setTimeout(() => {
-      if (typeof buildEvolChart  === 'function') buildEvolChart('2026');
-      if (typeof buildAnualChart === 'function') buildAnualChart();
-      if (typeof buildDonut      === 'function') buildDonut();
-    }, 150);
-  } catch(e) { console.error('refreshUI error:', e); }
+  const run = (name, fn) => { try { if (typeof fn === 'function') fn(); } catch(e) { console.error('refreshUI.' + name + ':', e); } };
+  run('updateOverview',      updateOverview);
+  run('renderPlanSections',  renderPlanSections);
+  run('renderFlujo',         renderFlujo);
+  run('renderRecentTxs',     renderRecentTxs);
+  run('renderCuentas',       renderCuentas);
+  run('updateMediosDePago',  updateMediosDePago);
+  run('updateOverviewSaldos',updateOverviewSaldos);
+  run('updatePatrimonio',    updatePatrimonio);
+  // renderInvList es async — no bloquear
+  if (typeof renderInvList === 'function') renderInvList().catch(e => console.error('renderInvList:', e));
+  // Charts al final
+  setTimeout(() => {
+    try { if (typeof buildEvolChart  === 'function') buildEvolChart(overviewYear || '2026'); } catch(e) {}
+    try { if (typeof buildAnualChart === 'function') buildAnualChart(); } catch(e) {}
+    try { if (typeof buildDonut      === 'function') buildDonut(); } catch(e) {}
+  }, 200);
 }
 
 // ── Cargar datos desde Firestore → localStorage → UI ──
@@ -1303,8 +1303,10 @@ function showToast(msg, color) {
 function go(id, btn) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nb').forEach(b => b.classList.remove('active'));
-  document.getElementById('page-' + id).classList.add('active');
-  btn.classList.add('active');
+  const pageEl = document.getElementById('page-' + id);
+  if (!pageEl) { console.warn('go(): page not found:', id); return; }
+  pageEl.classList.add('active');
+  if (btn) btn.classList.add('active');
   // Show sticky save only on presupuesto
   const stickySave = document.getElementById('sticky-save');
   if (stickySave) stickySave.style.display = id === 'presupuesto' ? 'flex' : 'none';
