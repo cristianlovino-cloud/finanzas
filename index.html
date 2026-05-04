@@ -1315,6 +1315,7 @@ function go(id, btn) {
   }
   if (id === 'flujo')       renderFlujo();
   if (id === 'patrimonio')  updatePatrimonio();
+  if (id === 'cuentas')   { renderCuentas(); updateMediosDePago(); updateOverviewSaldos(); }
 }
 
 // ══════════════════════════════════════════════════════
