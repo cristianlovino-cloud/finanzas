@@ -340,6 +340,7 @@ nav::-webkit-scrollbar{display:none}
   <button class="nb" onclick="go('presupuesto',this)">◎ Presupuesto</button>
   <button class="nb" onclick="go('flujo',this)">⇄ Flujo</button>
   <button class="nb" onclick="go('cargar',this)">＋ Cargar</button>
+  <button class="nb" onclick="go('cuentas',this)">◈ Cuentas</button>
   <button class="nb" onclick="go('inversiones',this)">◈ Inversiones</button>
   <button class="nb" onclick="go('patrimonio',this)" style="display:none">⬟ Patrimonio</button>
   <button class="nb" onclick="go('config',this)">⚙ Config</button>
@@ -388,12 +389,12 @@ nav::-webkit-scrollbar{display:none}
   </div>
   <!-- Saldos de cuentas -->
   <div class="kg" style="grid-template-columns:1fr 1fr;margin-bottom:16px">
-    <div class="kpi" style="--kc:var(--green);cursor:pointer" onclick="go('cuentas',document.querySelector('.nb'))">
+    <div class="kpi" style="--kc:var(--green);cursor:pointer" onclick="go('cuentas',Array.from(document.querySelectorAll('.nb')).find(b=>b.textContent.includes('Cuentas')))">
       <div class="kl">💵 Saldo ARS</div>
       <div class="kv pos" id="ov-saldo-ars">$0</div>
       <div class="ks" id="ov-saldo-ars-det">—</div>
     </div>
-    <div class="kpi" style="--kc:var(--yellow);cursor:pointer" onclick="go('cuentas',document.querySelector('.nb'))">
+    <div class="kpi" style="--kc:var(--yellow);cursor:pointer" onclick="go('cuentas',Array.from(document.querySelectorAll('.nb')).find(b=>b.textContent.includes('Cuentas')))">
       <div class="kl">🟡 Saldo USD</div>
       <div class="kv" style="color:var(--yellow)" id="ov-saldo-usd">U$S 0</div>
       <div class="ks" id="ov-saldo-usd-det">—</div>
@@ -2831,9 +2832,28 @@ function migrateOldTxNames() {
 
 // Register Service Worker for PWA
 if ('serviceWorker' in navigator) {
+  // Primero desregistrar todos los SW viejos y limpiar cachés
+  navigator.serviceWorker.getRegistrations().then(regs => {
+    Promise.all(regs.map(r => r.unregister())).then(() => {
+      caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))));
+    });
+  });
+  // Registrar SW nuevo (con ?v= para forzar descarga)
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/finanzas/sw.js')
-      .then(reg => console.log('SW registered:', reg.scope))
+    navigator.serviceWorker.register('/finanzas/sw.js?v=3')
+      .then(reg => {
+        console.log('SW v3 registered');
+        // Forzar activación inmediata si hay update pendiente
+        if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+        reg.addEventListener('updatefound', () => {
+          const newSW = reg.installing;
+          newSW.addEventListener('statechange', () => {
+            if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+              newSW.postMessage({ type: 'SKIP_WAITING' });
+            }
+          });
+        });
+      })
       .catch(err => console.log('SW failed:', err));
   });
 }
