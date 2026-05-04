@@ -108,11 +108,20 @@ async function loadFromFirestore(uid) {
   setSyncStatus('ok');
 
   if (cloudHasData) {
-    // Refrescar UI — llamar via window para cruzar el scope del módulo ES
-    if (typeof window.refreshUI === 'function') window.refreshUI();
-    if (typeof window.showToast === 'function') window.showToast('☁ Datos sincronizados');
+    // Esperar a que window.refreshUI esté disponible (timing issue con módulo ES)
+    const waitAndRefresh = (attempts) => {
+      if (typeof window.refreshUI === 'function') {
+        window.refreshUI();
+        if (typeof window.showToast === 'function') window.showToast('☁ Datos sincronizados');
+      } else if (attempts > 0) {
+        setTimeout(() => waitAndRefresh(attempts - 1), 200);
+      }
+    };
+    setTimeout(() => waitAndRefresh(20), 300);
   } else if (uploadCount > 0) {
-    if (typeof window.showToast === 'function') window.showToast('✓ Datos subidos a la nube');
+    setTimeout(() => {
+      if (typeof window.showToast === 'function') window.showToast('✓ Datos subidos a la nube');
+    }, 500);
   }
 }
 
