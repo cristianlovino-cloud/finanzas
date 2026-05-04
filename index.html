@@ -106,15 +106,29 @@ async function loadFromFirestore(uid) {
   let cloudHasData = false;
   let uploadCount  = 0;
 
+  // Timestamp de inicio de carga — no pisar datos guardados DESPUÉS de este momento
+  const loadStartTs = Date.now();
+
   for (const key of keys) {
     try {
       const snap = await getDoc(doc(db, 'users', uid, 'data', key));
       if (snap.exists()) {
         cloudHasData = true;
-        // Escribir en localStorage sin disparar FBsave
-        localStorage.setItem(key, JSON.stringify(JSON.parse(snap.data().value)));
+        const cloudVal = JSON.parse(snap.data().value);
+        // Solo escribir en localStorage si el usuario NO guardó algo nuevo mientras bajábamos
+        const localRaw = localStorage.getItem(key);
+        const localTs  = parseInt(localStorage.getItem(key + '_ts') || '0');
+        if (localTs < loadStartTs) {
+          // El local no cambió durante la carga — podemos usar el de la nube
+          localStorage.setItem(key, JSON.stringify(cloudVal));
+        } else {
+          // El usuario guardó algo nuevo mientras bajábamos — subir ESO a la nube
+          if (localRaw) {
+            await setDoc(doc(db, 'users', uid, 'data', key), { value: localRaw });
+          }
+        }
       } else {
-        // Nube vacía para esta key → subir desde local
+        // Nube vacía → subir desde local
         const local = localStorage.getItem(key);
         if (local && local !== '{}' && local !== '[]' && local !== 'null') {
           await setDoc(doc(db, 'users', uid, 'data', key), { value: local });
@@ -887,6 +901,7 @@ const DB = {
   get: (k, def={}) => { try { return JSON.parse(localStorage.getItem(k)) ?? def; } catch { return def; } },
   set: (k, v)      => {
     localStorage.setItem(k, JSON.stringify(v));
+    localStorage.setItem(k + '_ts', Date.now().toString()); // timestamp para detectar cambios
     if (window.FBsave) window.FBsave(k, v); // sync a Firebase si hay sesión
   },
   del: (k)         => localStorage.removeItem(k),
