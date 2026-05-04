@@ -102,7 +102,7 @@ async function loadFromFirestore(uid) {
   _alreadyLoaded = true;
   setSyncStatus('syncing');
 
-  const keys = ['txs', 'plans', 'inversiones', 'tc'];
+  const keys = ['txs', 'plans', 'inversiones', 'tc', 'cuentas'];
   let cloudHasData = false;
   let uploadCount  = 0;
 
@@ -1919,10 +1919,17 @@ function updateMediosDePago() {
   if (!sel) return;
   const cuentas = getCuentas();
   sel.innerHTML = '<option value="">— elegir —</option>';
+  if (!cuentas.length) {
+    // Fallback con opciones básicas si no hay cuentas cargadas
+    ['Efectivo','Mercado Pago','Débito BSF','Débito BBVA','Transferencia'].forEach(m => {
+      const o = document.createElement('option'); o.value=m; o.text=m; sel.appendChild(o);
+    });
+    return;
+  }
   cuentas.forEach(ct => {
     const o = document.createElement('option');
     o.value = ct.nombre;
-    o.text  = ct.nombre + (ct.moneda === 'USD' ? ' (USD)' : '');
+    o.text  = ct.nombre + (ct.moneda === 'USD' ? ' (U$S)' : '');
     sel.appendChild(o);
   });
 }
