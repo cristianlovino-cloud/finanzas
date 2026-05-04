@@ -96,42 +96,45 @@ function refreshUI() {
   } catch(e) { console.error('refreshUI error:', e); }
 }
 
-// ── Cargar datos desde Firestore → localStorage → UI ──
+// ── Sincronizar con Firestore al iniciar ──
+// REGLA: localStorage es la fuente de verdad durante la sesión.
+// Si local tiene datos → subir a la nube (backup).
+// Si local está vacío → bajar de la nube (restaurar).
+// NUNCA pisar localStorage con datos de la nube si ya hay datos locales.
 async function loadFromFirestore(uid) {
-  if (_alreadyLoaded) return; // evitar loop
+  if (_alreadyLoaded) return;
   _alreadyLoaded = true;
   setSyncStatus('syncing');
 
   const keys = ['txs', 'plans', 'inversiones', 'tc', 'cuentas', 'ct_movimientos'];
-  let cloudHasData = false;
-  let uploadCount  = 0;
+  let needsUIRefresh = false;
 
   for (const key of keys) {
     try {
-      const snap = await getDoc(doc(db, 'users', uid, 'data', key));
-      if (snap.exists()) {
-        cloudHasData = true;
-        // Escribir en localStorage sin disparar FBsave
-        localStorage.setItem(key, JSON.stringify(JSON.parse(snap.data().value)));
-      } else {
-        // Nube vacía para esta key → subir desde local
-        const local = localStorage.getItem(key);
-        if (local && local !== '{}' && local !== '[]' && local !== 'null') {
-          await setDoc(doc(db, 'users', uid, 'data', key), { value: local });
-          uploadCount++;
+      const localRaw = localStorage.getItem(key);
+      const localEmpty = !localRaw || localRaw === '{}' || localRaw === '[]' || localRaw === 'null';
+
+      if (localEmpty) {
+        // Local vacío → bajar de la nube
+        const snap = await getDoc(doc(db, 'users', uid, 'data', key));
+        if (snap.exists()) {
+          localStorage.setItem(key, JSON.stringify(JSON.parse(snap.data().value)));
+          needsUIRefresh = true;
         }
+      } else {
+        // Local tiene datos → subir a la nube como backup
+        await setDoc(doc(db, 'users', uid, 'data', key), { value: localRaw });
       }
-    } catch(e) { console.error('Firestore error:', key, e); }
+    } catch(e) { console.error('Firestore sync error:', key, e); }
   }
 
   setSyncStatus('ok');
 
-  if (cloudHasData) {
-    // Refrescar UI con datos de la nube — SIN reload
-    refreshUI();
-    if (typeof showToast === 'function') showToast('☁ Datos sincronizados');
-  } else if (uploadCount > 0) {
-    if (typeof showToast === 'function') showToast('✓ Datos subidos a la nube');
+  if (needsUIRefresh) {
+    if (typeof window.refreshUI === 'function') window.refreshUI();
+    if (typeof showToast === 'function') showToast('☁ Datos restaurados de la nube');
+  } else {
+    if (typeof showToast === 'function') showToast('☁ Backup en la nube actualizado');
   }
 }
 
@@ -660,7 +663,6 @@ nav::-webkit-scrollbar{display:none}
 <!-- ════════════ CUENTAS ════════════ -->
 <div class="page" id="page-cuentas">
 
-  <!-- KPIs totales -->
   <div class="kg" style="grid-template-columns:1fr 1fr;margin-bottom:16px">
     <div class="kpi" style="--kc:var(--green)">
       <div class="kl">Total ARS</div>
@@ -674,43 +676,16 @@ nav::-webkit-scrollbar{display:none}
     </div>
   </div>
 
-  <!-- 1. MIS CUENTAS (primero) -->
-  <div class="card" style="margin-bottom:14px">
-    <div class="ct">Mis cuentas</div>
-    <div id="cuentas-list"><div style="color:var(--muted);font-size:.75rem;text-align:center;padding:20px 0">Sin cuentas todavía</div></div>
-  </div>
-
-  <!-- 2. TRANSFERENCIA -->
-  <div class="card" style="margin-bottom:14px">
-    <div class="ct">Transferencia entre cuentas</div>
-    <div class="r2" style="margin-bottom:10px">
-      <div class="field"><label>Desde</label><select id="ct-desde" class="fi"></select></div>
-      <div class="field"><label>Hacia</label><select id="ct-hacia" class="fi"></select></div>
-    </div>
-    <div class="r2" style="margin-bottom:10px">
-      <div class="field"><label>Monto</label><input type="number" id="ct-transf-monto" class="fi" placeholder="0" step="0.01"></div>
-      <div class="field"><label>Moneda</label>
-        <select id="ct-transf-moneda" class="fi">
-          <option value="ARS">ARS $</option>
-          <option value="USD">USD U$S</option>
-        </select>
-      </div>
-    </div>
-    <button onclick="hacerTransferencia()" class="btn btn-g btn-full">⇄ Transferir</button>
-  </div>
-
-  <!-- 3. ÚLTIMOS MOVIMIENTOS -->
-  <div class="card" style="margin-bottom:14px">
-    <div class="ct">Últimos movimientos</div>
-    <div id="ct-movimientos"><div style="color:var(--muted);font-size:.75rem;text-align:center;padding:16px 0">Sin movimientos</div></div>
-  </div>
-
-  <!-- 4. AGREGAR CUENTA (al final) -->
-  <div class="card" style="margin-bottom:14px;border-color:var(--green)">
+  <!-- Form nueva cuenta -->
+  <div class="card" id="add-cuenta-form" style="margin-bottom:14px;border-color:var(--green)">
     <div class="ct">Nueva cuenta</div>
     <div class="r2">
-      <div class="field"><label>Nombre</label><input type="text" id="ct-nombre" class="fi" placeholder="BSF, MP, Efectivo..."></div>
-      <div class="field"><label>Tipo</label>
+      <div class="field">
+        <label>Nombre</label>
+        <input type="text" id="ct-nombre" class="fi" placeholder="BSF, MP, Efectivo...">
+      </div>
+      <div class="field">
+        <label>Tipo</label>
         <select id="ct-tipo" class="fi">
           <option value="banco">Banco</option>
           <option value="billetera">Billetera digital</option>
@@ -719,15 +694,56 @@ nav::-webkit-scrollbar{display:none}
       </div>
     </div>
     <div class="r2">
-      <div class="field"><label>Moneda</label>
+      <div class="field">
+        <label>Moneda</label>
         <select id="ct-moneda" class="fi">
           <option value="ARS">ARS $</option>
           <option value="USD">USD U$S</option>
         </select>
       </div>
-      <div class="field"><label>Saldo inicial</label><input type="number" id="ct-saldo-ini" class="fi" placeholder="0" step="0.01"></div>
+      <div class="field">
+        <label>Saldo inicial</label>
+        <input type="number" id="ct-saldo-ini" class="fi" placeholder="0" step="0.01">
+      </div>
     </div>
-    <button onclick="agregarCuenta()" class="btn btn-g btn-full">+ Agregar cuenta</button>
+    <div style="display:flex;gap:8px">
+      <button onclick="agregarCuenta()" class="btn btn-g" style="flex:1">+ Guardar cuenta</button>
+    </div>
+  </div>
+
+  <!-- Lista de cuentas -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="ct">Mis cuentas</div>
+    <div id="cuentas-list"><div style="color:var(--muted);font-size:.75rem;text-align:center;padding:20px 0">Agregá tu primera cuenta arriba</div></div>
+  </div>
+
+  <!-- Transferencia entre cuentas -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="ct">Transferencia entre cuentas</div>
+    <div class="r2" style="margin-bottom:10px">
+      <div class="field">
+        <label>Desde</label>
+        <select id="ct-desde" class="fi"></select>
+      </div>
+      <div class="field">
+        <label>Hacia</label>
+        <select id="ct-hacia" class="fi"></select>
+      </div>
+    </div>
+    <div class="r2" style="margin-bottom:10px">
+      <div class="field">
+        <label>Monto</label>
+        <input type="number" id="ct-transf-monto" class="fi" placeholder="0" step="0.01">
+      </div>
+      <div class="field">
+        <label>Moneda</label>
+        <select id="ct-transf-moneda" class="fi">
+          <option value="ARS">ARS $</option>
+          <option value="USD">USD U$S</option>
+        </select>
+      </div>
+    </div>
+    <button onclick="hacerTransferencia()" class="btn btn-g btn-full">⇄ Transferir</button>
   </div>
 
 </div>
@@ -1302,7 +1318,7 @@ function go(id, btn) {
   }
   if (id === 'flujo')       renderFlujo();
   if (id === 'patrimonio')  updatePatrimonio();
-  if (id === 'cuentas')   { renderCuentas(); updateMediosDePago(); updateOverviewSaldos(); renderMovimientos(); }
+  if (id === 'cuentas')   { renderCuentas(); updateMediosDePago(); updateOverviewSaldos(); }
 }
 
 // ══════════════════════════════════════════════════════
@@ -1550,8 +1566,8 @@ function submitTx() {
 
   // Actualizar saldo de cuenta
   if (medio) {
-    if (curTipo === 'ingreso') acreditarACuenta(medio, monto, moneda, desc);
-    else descontarDeCuenta(medio, monto, moneda, desc);
+    if (curTipo === 'ingreso') acreditarACuenta(medio, monto, moneda);
+    else descontarDeCuenta(medio, monto, moneda);
   }
 
   // Clear form
@@ -1839,10 +1855,8 @@ function ajustarSaldo(i) {
   const ajuste = parseFloat(document.getElementById('ajuste-'+i).value);
   if (isNaN(ajuste)) return;
   const cuentas = getCuentas();
-  const ctNom = cuentas[i].nombre, ctMon = cuentas[i].moneda;
   cuentas[i].saldo += ajuste;
   saveCuentas(cuentas);
-  registrarMovimiento(ctNom, 'ajuste', Math.abs(ajuste), ctMon, 'Ajuste ' + (ajuste>=0?'+':'') + fmt(ajuste));
   showToast('✓ Saldo ajustado: ' + (ajuste >= 0 ? '+' : '') + fmt(ajuste));
 }
 
@@ -1877,8 +1891,6 @@ function hacerTransferencia() {
   if (ctHacia.moneda === moneda) ctHacia.saldo += monto;
 
   saveCuentas(cuentas);
-  registrarMovimiento(ctDesde.nombre, 'transferencia', -monto, moneda, '→ ' + ctHacia.nombre);
-  registrarMovimiento(ctHacia.nombre, 'transferencia', monto, moneda, '← ' + ctDesde.nombre);
   document.getElementById('ct-transf-monto').value = '';
   showToast('✓ Transferencia: ' + ctDesde.nombre + ' → ' + ctHacia.nombre);
 }
@@ -1910,17 +1922,20 @@ function updateMediosDePago() {
   const sel = document.getElementById('tx-medio');
   if (!sel) return;
   const cuentas = getCuentas();
-  const opts = ['<option value="">— elegir —</option>'];
+  sel.innerHTML = '<option value="">— elegir —</option>';
   if (!cuentas.length) {
+    // Fallback con opciones básicas si no hay cuentas cargadas
     ['Efectivo','Mercado Pago','Débito BSF','Débito BBVA','Transferencia'].forEach(m => {
-      opts.push(`<option value="${m}">${m}</option>`);
+      const o = document.createElement('option'); o.value=m; o.text=m; sel.appendChild(o);
     });
-  } else {
-    cuentas.forEach(ct => {
-      opts.push(`<option value="${ct.nombre}">${ct.nombre}${ct.moneda==='USD'?' (U$S)':''}</option>`);
-    });
+    return;
   }
-  sel.innerHTML = opts.join('');
+  cuentas.forEach(ct => {
+    const o = document.createElement('option');
+    o.value = ct.nombre;
+    o.text  = ct.nombre + (ct.moneda === 'USD' ? ' (U$S)' : '');
+    sel.appendChild(o);
+  });
 }
 
 // ── Actualizar KPIs de saldos en Overview ──
