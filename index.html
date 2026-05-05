@@ -2940,6 +2940,21 @@ document.addEventListener('DOMContentLoaded', () => {
     buildAnualChart();
     buildDonut();
   }, 100));
+
+  // Re-check: si Firebase tardó en bajar datos, refrescar overview a los 2s y 4s
+  [2000, 4000].forEach(delay => {
+    setTimeout(() => {
+      const ingEl = document.getElementById('ov-ing');
+      if (ingEl && (ingEl.textContent === '$0' || ingEl.textContent === '$o' || ingEl.textContent === '$0k')) {
+        updateOverview();
+        updateOverviewSaldos();
+        renderCuentas();
+        renderRecentTxs();
+        buildEvolChart(overviewYear || '2026');
+        buildAnualChart();
+      }
+    }, delay);
+  });
 });
 </script>
 </body>
