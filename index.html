@@ -1921,21 +1921,20 @@ function acreditarACuenta(medioNombre, monto, moneda) {
 function updateMediosDePago() {
   const sel = document.getElementById('tx-medio');
   if (!sel) return;
+  const prev = sel.value; // conservar selección actual
   const cuentas = getCuentas();
-  sel.innerHTML = '<option value="">— elegir —</option>';
+  const opts = ['<option value="">— elegir —</option>'];
   if (!cuentas.length) {
-    // Fallback con opciones básicas si no hay cuentas cargadas
     ['Efectivo','Mercado Pago','Débito BSF','Débito BBVA','Transferencia'].forEach(m => {
-      const o = document.createElement('option'); o.value=m; o.text=m; sel.appendChild(o);
+      opts.push(`<option value="${m}">${m}</option>`);
     });
-    return;
+  } else {
+    cuentas.forEach(ct => {
+      opts.push(`<option value="${ct.nombre}">${ct.nombre}${ct.moneda==='USD'?' (U$S)':''}</option>`);
+    });
   }
-  cuentas.forEach(ct => {
-    const o = document.createElement('option');
-    o.value = ct.nombre;
-    o.text  = ct.nombre + (ct.moneda === 'USD' ? ' (U$S)' : '');
-    sel.appendChild(o);
-  });
+  sel.innerHTML = opts.join('');
+  if (prev) sel.value = prev;
 }
 
 // ── Actualizar KPIs de saldos en Overview ──
