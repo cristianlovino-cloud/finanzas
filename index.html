@@ -89,52 +89,49 @@ function refreshUI() {
     if (typeof updateOverviewSaldos=== 'function') updateOverviewSaldos();
     // Charts al final
     setTimeout(() => {
-      if (typeof buildEvolChart  === 'function') // buildEvolChart pausado
+      if (typeof buildEvolChart  === 'function') buildEvolChart('2026');
       if (typeof buildAnualChart === 'function') buildAnualChart();
       if (typeof buildDonut      === 'function') buildDonut();
     }, 150);
   } catch(e) { console.error('refreshUI error:', e); }
 }
 
-// ── Sincronizar con Firestore al iniciar ──
-// REGLA: localStorage es la fuente de verdad durante la sesión.
-// Si local tiene datos → subir a la nube (backup).
-// Si local está vacío → bajar de la nube (restaurar).
-// NUNCA pisar localStorage con datos de la nube si ya hay datos locales.
+// ── Cargar datos desde Firestore → localStorage → UI ──
 async function loadFromFirestore(uid) {
-  if (_alreadyLoaded) return;
+  if (_alreadyLoaded) return; // evitar loop
   _alreadyLoaded = true;
   setSyncStatus('syncing');
 
-  const keys = ['txs', 'plans', 'inversiones', 'tc', 'cuentas', 'ct_movimientos'];
-  let needsUIRefresh = false;
+  const keys = ['txs', 'plans', 'inversiones', 'tc', 'cuentas'];
+  let cloudHasData = false;
+  let uploadCount  = 0;
 
   for (const key of keys) {
     try {
-      const localRaw = localStorage.getItem(key);
-      const localEmpty = !localRaw || localRaw === '{}' || localRaw === '[]' || localRaw === 'null';
-
-      if (localEmpty) {
-        // Local vacío → bajar de la nube
-        const snap = await getDoc(doc(db, 'users', uid, 'data', key));
-        if (snap.exists()) {
-          localStorage.setItem(key, JSON.stringify(JSON.parse(snap.data().value)));
-          needsUIRefresh = true;
-        }
+      const snap = await getDoc(doc(db, 'users', uid, 'data', key));
+      if (snap.exists()) {
+        cloudHasData = true;
+        // Escribir en localStorage sin disparar FBsave
+        localStorage.setItem(key, JSON.stringify(JSON.parse(snap.data().value)));
       } else {
-        // Local tiene datos → subir a la nube como backup
-        await setDoc(doc(db, 'users', uid, 'data', key), { value: localRaw });
+        // Nube vacía para esta key → subir desde local
+        const local = localStorage.getItem(key);
+        if (local && local !== '{}' && local !== '[]' && local !== 'null') {
+          await setDoc(doc(db, 'users', uid, 'data', key), { value: local });
+          uploadCount++;
+        }
       }
-    } catch(e) { console.error('Firestore sync error:', key, e); }
+    } catch(e) { console.error('Firestore error:', key, e); }
   }
 
   setSyncStatus('ok');
 
-  if (needsUIRefresh) {
-    if (typeof window.refreshUI === 'function') window.refreshUI();
-    if (typeof showToast === 'function') showToast('☁ Datos restaurados de la nube');
-  } else {
-    if (typeof showToast === 'function') showToast('☁ Backup en la nube actualizado');
+  if (cloudHasData) {
+    // Refrescar UI con datos de la nube — SIN reload
+    refreshUI();
+    if (typeof showToast === 'function') showToast('☁ Datos sincronizados');
+  } else if (uploadCount > 0) {
+    if (typeof showToast === 'function') showToast('✓ Datos subidos a la nube');
   }
 }
 
@@ -405,7 +402,7 @@ nav::-webkit-scrollbar{display:none}
   </div>
 
   <div class="g2">
-    <div class="card span2" id="evol-card" style="display:none">
+    <div class="card span2">
       <div class="ct">Evolución mensual
         <div style="display:flex;gap:6px">
           <button class="chip neu" onclick="setEvolYear('2024',this)" style="cursor:pointer;border:none">2024</button>
@@ -643,7 +640,7 @@ nav::-webkit-scrollbar{display:none}
         </div>
         <div class="field">
           <label>Medio de pago</label>
-          <select id="tx-medio" class="fi">
+          <select id="tx-medio" class="fi" onfocus="updateMediosDePago()">
             <option value="">— elegir —</option>
           </select>
         </div>
@@ -676,16 +673,43 @@ nav::-webkit-scrollbar{display:none}
     </div>
   </div>
 
-  <!-- Form nueva cuenta -->
-  <div class="card" id="add-cuenta-form" style="margin-bottom:14px;border-color:var(--green)">
+  <!-- 1. MIS CUENTAS -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="ct">Mis cuentas</div>
+    <div id="cuentas-list"><div style="color:var(--muted);font-size:.75rem;text-align:center;padding:20px 0">Sin cuentas</div></div>
+  </div>
+
+  <!-- 2. TRANSFERENCIA -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="ct">Transferencia entre cuentas</div>
+    <div class="r2" style="margin-bottom:10px">
+      <div class="field"><label>Desde</label><select id="ct-desde" class="fi"></select></div>
+      <div class="field"><label>Hacia</label><select id="ct-hacia" class="fi"></select></div>
+    </div>
+    <div class="r2" style="margin-bottom:10px">
+      <div class="field"><label>Monto</label><input type="number" id="ct-transf-monto" class="fi" placeholder="0" step="0.01"></div>
+      <div class="field"><label>Moneda</label>
+        <select id="ct-transf-moneda" class="fi">
+          <option value="ARS">ARS $</option>
+          <option value="USD">USD U$S</option>
+        </select>
+      </div>
+    </div>
+    <button onclick="hacerTransferencia()" class="btn btn-g btn-full">⇄ Transferir</button>
+  </div>
+
+  <!-- 3. ÚLTIMOS MOVIMIENTOS -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="ct">Últimos movimientos</div>
+    <div id="ct-movimientos"><div style="color:var(--muted);font-size:.75rem;text-align:center;padding:16px 0">Sin movimientos</div></div>
+  </div>
+
+  <!-- 4. NUEVA CUENTA -->
+  <div class="card" style="margin-bottom:14px;border-color:var(--green)">
     <div class="ct">Nueva cuenta</div>
     <div class="r2">
-      <div class="field">
-        <label>Nombre</label>
-        <input type="text" id="ct-nombre" class="fi" placeholder="BSF, MP, Efectivo...">
-      </div>
-      <div class="field">
-        <label>Tipo</label>
+      <div class="field"><label>Nombre</label><input type="text" id="ct-nombre" class="fi" placeholder="BSF, MP, Efectivo..."></div>
+      <div class="field"><label>Tipo</label>
         <select id="ct-tipo" class="fi">
           <option value="banco">Banco</option>
           <option value="billetera">Billetera digital</option>
@@ -694,56 +718,15 @@ nav::-webkit-scrollbar{display:none}
       </div>
     </div>
     <div class="r2">
-      <div class="field">
-        <label>Moneda</label>
+      <div class="field"><label>Moneda</label>
         <select id="ct-moneda" class="fi">
           <option value="ARS">ARS $</option>
           <option value="USD">USD U$S</option>
         </select>
       </div>
-      <div class="field">
-        <label>Saldo inicial</label>
-        <input type="number" id="ct-saldo-ini" class="fi" placeholder="0" step="0.01">
-      </div>
+      <div class="field"><label>Saldo inicial</label><input type="number" id="ct-saldo-ini" class="fi" placeholder="0" step="0.01"></div>
     </div>
-    <div style="display:flex;gap:8px">
-      <button onclick="agregarCuenta()" class="btn btn-g" style="flex:1">+ Guardar cuenta</button>
-    </div>
-  </div>
-
-  <!-- Lista de cuentas -->
-  <div class="card" style="margin-bottom:14px">
-    <div class="ct">Mis cuentas</div>
-    <div id="cuentas-list"><div style="color:var(--muted);font-size:.75rem;text-align:center;padding:20px 0">Agregá tu primera cuenta arriba</div></div>
-  </div>
-
-  <!-- Transferencia entre cuentas -->
-  <div class="card" style="margin-bottom:14px">
-    <div class="ct">Transferencia entre cuentas</div>
-    <div class="r2" style="margin-bottom:10px">
-      <div class="field">
-        <label>Desde</label>
-        <select id="ct-desde" class="fi"></select>
-      </div>
-      <div class="field">
-        <label>Hacia</label>
-        <select id="ct-hacia" class="fi"></select>
-      </div>
-    </div>
-    <div class="r2" style="margin-bottom:10px">
-      <div class="field">
-        <label>Monto</label>
-        <input type="number" id="ct-transf-monto" class="fi" placeholder="0" step="0.01">
-      </div>
-      <div class="field">
-        <label>Moneda</label>
-        <select id="ct-transf-moneda" class="fi">
-          <option value="ARS">ARS $</option>
-          <option value="USD">USD U$S</option>
-        </select>
-      </div>
-    </div>
-    <button onclick="hacerTransferencia()" class="btn btn-g btn-full">⇄ Transferir</button>
+    <button onclick="agregarCuenta()" class="btn btn-g btn-full">+ Agregar cuenta</button>
   </div>
 
 </div>
@@ -1316,6 +1299,7 @@ function go(id, btn) {
     updateOverview();
     setTimeout(() => buildEvolChart(overviewYear || '2026'), 100);
   }
+  if (id === 'cargar')    { updateMediosDePago(); populateCatDropdown(); }
   if (id === 'flujo')       renderFlujo();
   if (id === 'patrimonio')  updatePatrimonio();
   if (id === 'cuentas')   { renderCuentas(); updateMediosDePago(); updateOverviewSaldos(); }
@@ -1552,6 +1536,7 @@ function submitTx() {
   const notas = document.getElementById('tx-notas').value.trim();
 
   if (!fecha || !monto || !desc) { showToast('Completá fecha, monto y descripción', P.red); return; }
+  if (!medio) { showToast('Elegí el medio de pago', '#f43f5e'); return; }
 
   // Determine month from date
   const parts = fecha.split('-');
@@ -1921,18 +1906,13 @@ function acreditarACuenta(medioNombre, monto, moneda) {
 function updateMediosDePago() {
   const sel = document.getElementById('tx-medio');
   if (!sel) return;
-  const prev = sel.value; // conservar selección actual
+  const prev = sel.value;
   const cuentas = getCuentas();
   const opts = ['<option value="">— elegir —</option>'];
-  if (!cuentas.length) {
-    ['Efectivo','Mercado Pago','Débito BSF','Débito BBVA','Transferencia'].forEach(m => {
-      opts.push(`<option value="${m}">${m}</option>`);
-    });
-  } else {
-    cuentas.forEach(ct => {
-      opts.push(`<option value="${ct.nombre}">${ct.nombre}${ct.moneda==='USD'?' (U$S)':''}</option>`);
-    });
-  }
+  (cuentas.length
+    ? cuentas.map(ct => `<option value="${ct.nombre}">${ct.nombre}${ct.moneda==='USD'?' (U$S)':''}</option>`)
+    : ['Efectivo','Mercado Pago','Débito BSF','Débito BBVA','Transferencia'].map(m => `<option value="${m}">${m}</option>`)
+  ).forEach(o => opts.push(o));
   sel.innerHTML = opts.join('');
   if (prev) sel.value = prev;
 }
@@ -2940,17 +2920,12 @@ document.addEventListener('DOMContentLoaded', () => {
     buildDonut();
   }, 100));
 
-  // Re-check: si Firebase tardó en bajar datos, refrescar overview a los 2s y 4s
+  // Re-check overview si Firebase tardó
   [2000, 4000].forEach(delay => {
     setTimeout(() => {
-      const ingEl = document.getElementById('ov-ing');
-      if (ingEl && (ingEl.textContent === '$0' || ingEl.textContent === '$o' || ingEl.textContent === '$0k')) {
-        updateOverview();
-        updateOverviewSaldos();
-        renderCuentas();
-        renderRecentTxs();
-        // buildEvolChart pausado
-        buildAnualChart();
+      const el = document.getElementById('ov-ing');
+      if (el && (el.textContent === '$0' || el.textContent === '$o' || el.textContent === '$0k')) {
+        updateOverview(); updateOverviewSaldos(); renderCuentas(); renderRecentTxs(); buildAnualChart();
       }
     }, delay);
   });
