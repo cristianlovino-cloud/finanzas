@@ -1265,10 +1265,11 @@ const P = { green:'#22d3a0',red:'#f43f5e',yellow:'#fbbf24',blue:'#38bdf8',purple
 const fmt  = n => n == null ? '—' : '$' + Math.abs(Math.round(n)).toLocaleString('es-AR');
 const fmtK = n => {
   if (n == null) return '—';
-  const abs = Math.abs(Math.round(n));
-  if (abs >= 1000000) return (n < 0 ? '-' : '') + '$' + (abs/1000000).toFixed(1) + 'M';
-  if (abs >= 1000)    return (n < 0 ? '-' : '') + '$' + (abs/1000).toFixed(0) + 'k';
-  return (n < 0 ? '-' : '') + '$' + abs.toLocaleString('es-AR');
+  const abs = Math.abs(n);
+  const sign = n < 0 ? '-' : '';
+  // Siempre en miles — nunca nominal ni millones
+  if (abs >= 1000) return sign + '$' + (abs/1000).toFixed(1).replace('.0','') + 'k';
+  return sign + '$' + Math.round(abs).toLocaleString('es-AR');
 };
 const fmtp = p => (p > 0 ? '+' : '') + (p * 100).toFixed(1) + '%';
 let TC = parseInt(DB.get('tc','1250')) || 1250;
@@ -1823,7 +1824,7 @@ function renderCuentas() {
   const totalUSD = cuentas.filter(c=>c.moneda==='USD').reduce((s,c)=>s+c.saldo,0);
   const arsEl = document.getElementById('ct-total-ars');
   const usdEl = document.getElementById('ct-total-usd');
-  if (arsEl) arsEl.textContent = fmt(totalARS);
+  if (arsEl) arsEl.textContent = fmtK(totalARS);
   if (usdEl) usdEl.textContent = 'U$S ' + fmt(totalUSD).replace('$','');
 
   // Selectores de transferencia
@@ -1930,7 +1931,7 @@ function updateOverviewSaldos() {
   const usdEl    = document.getElementById('ov-saldo-usd');
   const usdDetEl = document.getElementById('ov-saldo-usd-det');
 
-  if (arsEl)    arsEl.textContent    = fmt(totalARS);
+  if (arsEl)    arsEl.textContent    = fmtK(totalARS);
   if (arsDetEl) arsDetEl.textContent = nARS + ' cuenta' + (nARS!==1?'s':'');
   if (usdEl)    usdEl.textContent    = 'U$S ' + (totalUSD % 1 === 0 ? totalUSD.toLocaleString('es-AR') : totalUSD.toFixed(2));
   if (usdDetEl) usdDetEl.textContent = nUSD + ' cuenta' + (nUSD!==1?'s':'');
