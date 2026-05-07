@@ -1288,9 +1288,19 @@ const INV_DEFAULT = [
 const P = { green:'#22d3a0',red:'#f43f5e',yellow:'#fbbf24',blue:'#38bdf8',purple:'#a78bfa',orange:'#fb923c' };
 const fmt  = n => n == null ? '—' : '$' + Math.abs(Math.round(n)).toLocaleString('es-AR');
 const fmtK = n => {
+  // Gastos/ingresos están en miles de pesos — mostrar con separadores sin dividir
   if (n == null || isNaN(n)) return '—';
   const sign = n < 0 ? '-' : '';
   return sign + '$' + Math.abs(Math.round(n)).toLocaleString('es-AR');
+};
+const fmtM = n => {
+  // Inversiones están en pesos nominales — abreviar en miles (k) o millones (M)
+  if (n == null || isNaN(n)) return '—';
+  const sign = n < 0 ? '-' : '';
+  const abs = Math.abs(Math.round(n));
+  if (abs >= 1000000) return sign + '$' + (abs/1000000).toFixed(2) + 'M';
+  if (abs >= 1000)    return sign + '$' + (abs/1000).toFixed(0) + 'k';
+  return sign + '$' + abs.toLocaleString('es-AR');
 };
 const fmtp = p => (p > 0 ? '+' : '') + (p * 100).toFixed(1) + '%';
 let TC = parseInt(DB.get('tc','1250')) || 1250;
@@ -2052,7 +2062,7 @@ function updateOverview() {
   // Patrimonio
   const invs = DB.get('inversiones', INV_DEFAULT);
   const totalPat = invs.reduce((s, i) => s + (i.ars||0), 0);
-  document.getElementById('ov-pat').textContent = fmtK(totalPat);
+  document.getElementById('ov-pat').textContent = fmtM(totalPat);
 
   // Alerts — based on current month only
   const alerts = [];
@@ -2398,11 +2408,11 @@ async function renderInvList() {
   const fci   = invs.filter(i=>i.tipo==='FCI').reduce((s,i)=>s+(i.ars||0),0);
   const usdVal= invs.filter(i=>i.moneda==='USD').reduce((s,i)=>s+(i.ars||0)/TC,0);
 
-  document.getElementById('inv-total-kpi').textContent = fmtK(total);
+  document.getElementById('inv-total-kpi').textContent = fmtM(total);
   document.getElementById('inv-usd-kpi').textContent   = 'u$s ' + Math.round(usdVal).toLocaleString('es-AR');
-  document.getElementById('inv-fci-kpi').textContent   = fmtK(fci);
+  document.getElementById('inv-fci-kpi').textContent   = fmtM(fci);
   document.getElementById('inv-tc-kpi').textContent    = fmt(TC);
-  document.getElementById('ov-pat').textContent        = fmtK(total);
+  document.getElementById('ov-pat').textContent        = fmtM(total);
 
   const icons = {FCI:'📊',Cripto:'₿',Stablecoin:'💲',Dólar:'💵',Bono:'📋',Acciones:'📈'};
   const colors = {FCI:P.purple,Cripto:P.yellow,Stablecoin:P.blue,Dólar:P.green,Bono:P.orange};
@@ -2584,10 +2594,10 @@ function updatePatrimonio() {
     {label:'Dólar/MEP',  val:invs.filter(i=>i.tipo==='Dólar').reduce((s,i)=>s+(i.ars||0),0), color:P.green},
   ].filter(i => i.val > 0);
 
-  document.getElementById('pat-activos').textContent = fmtK(total);
+  document.getElementById('pat-activos').textContent = fmtM(total);
   document.getElementById('pat-pasivos').textContent = fmt(0);
-  document.getElementById('pat-neto').textContent    = fmtK(total);
-  document.getElementById('ov-pat').textContent      = fmtK(total);
+  document.getElementById('pat-neto').textContent    = fmtM(total);
+  document.getElementById('ov-pat').textContent      = fmtM(total);
 
   // Bar
   const barEl = document.getElementById('pat-bar-wrap');
