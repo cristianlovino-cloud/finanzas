@@ -626,7 +626,7 @@ nav::-webkit-scrollbar{display:none}
         </div>
         <div class="field">
           <label>Medio de pago</label>
-          <select id="tx-medio" class="fi">
+          <select id="tx-medio" class="fi" onfocus="updateMediosDePago()" onclick="updateMediosDePago()">
             <option value="">— elegir —</option>
           </select>
         </div>
@@ -1299,6 +1299,7 @@ function go(id, btn) {
     updateOverview();
     setTimeout(() => buildEvolChart(overviewYear || '2026'), 100);
   }
+  if (id === 'cargar')    { updateMediosDePago(); populateCatDropdown(); }
   if (id === 'flujo')       renderFlujo();
   if (id === 'patrimonio')  updatePatrimonio();
   if (id === 'cuentas')   { renderCuentas(); updateMediosDePago(); updateOverviewSaldos(); }
@@ -1904,21 +1905,15 @@ function acreditarACuenta(medioNombre, monto, moneda) {
 function updateMediosDePago() {
   const sel = document.getElementById('tx-medio');
   if (!sel) return;
+  const prev = sel.value;
   const cuentas = getCuentas();
-  sel.innerHTML = '<option value="">— elegir —</option>';
-  if (!cuentas.length) {
-    // Fallback con opciones básicas si no hay cuentas cargadas
-    ['Efectivo','Mercado Pago','Débito BSF','Débito BBVA','Transferencia'].forEach(m => {
-      const o = document.createElement('option'); o.value=m; o.text=m; sel.appendChild(o);
-    });
-    return;
-  }
-  cuentas.forEach(ct => {
-    const o = document.createElement('option');
-    o.value = ct.nombre;
-    o.text  = ct.nombre + (ct.moneda === 'USD' ? ' (U$S)' : '');
-    sel.appendChild(o);
-  });
+  const opts = ['<option value="">— elegir —</option>'];
+  (cuentas.length
+    ? cuentas.map(ct => `<option value="${ct.nombre}">${ct.nombre}${ct.moneda==='USD'?' (U$S)':''}</option>`)
+    : ['Efectivo','Mercado Pago','Débito BSF','Débito BBVA','Transferencia'].map(m=>`<option value="${m}">${m}</option>`)
+  ).forEach(o => opts.push(o));
+  sel.innerHTML = opts.join('');
+  if (prev) sel.value = prev;
 }
 
 // ── Actualizar KPIs de saldos en Overview ──
