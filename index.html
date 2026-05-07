@@ -640,7 +640,7 @@ nav::-webkit-scrollbar{display:none}
         </div>
         <div class="field">
           <label>Medio de pago</label>
-          <select id="tx-medio" class="fi">
+          <select id="tx-medio" class="fi" onfocus="updateMediosDePago()">
             <option value="">— elegir —</option>
           </select>
         </div>
@@ -1278,7 +1278,7 @@ const INV_DEFAULT = [
 const P = { green:'#22d3a0',red:'#f43f5e',yellow:'#fbbf24',blue:'#38bdf8',purple:'#a78bfa',orange:'#fb923c' };
 const fmt  = n => n == null ? '—' : '$' + Math.abs(Math.round(n)).toLocaleString('es-AR');
 const fmtK = n => {
-  // Datos cargados en miles de pesos — formatear con separadores, sin dividir
+  // Datos en miles de pesos — solo formato con separadores, sin dividir
   if (n == null || isNaN(n)) return '—';
   const sign = n < 0 ? '-' : '';
   const abs  = Math.abs(Math.round(n));
@@ -1313,6 +1313,7 @@ function go(id, btn) {
     updateOverview();
     setTimeout(() => buildEvolChart(overviewYear || '2026'), 100);
   }
+  if (id === 'cargar')    { updateMediosDePago(); populateCatDropdown(); }
   if (id === 'flujo')       renderFlujo();
   if (id === 'patrimonio')  updatePatrimonio();
   if (id === 'cuentas')   { renderCuentas(); updateMediosDePago(); updateOverviewSaldos(); }
@@ -1819,7 +1820,7 @@ function renderCuentas() {
         <div style="text-align:right">
           <div style="font-family:var(--fh);font-weight:700;color:${saldoColor}">${saldoFmt}</div>
           <div style="font-size:.65rem;color:var(--muted)">
-            <input type="number" placeholder="±ajuste" step="0.01"
+            <input type="number" placeholder="ajuste" step="0.01"
               style="width:80px;background:var(--s2);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:2px 5px;font-size:.65rem"
               id="ajuste-${i}">
             <button onclick="ajustarSaldo(${i})" style="background:none;border:none;color:var(--green);cursor:pointer;font-size:.7rem;padding:2px 4px">✓</button>
@@ -1835,8 +1836,8 @@ function renderCuentas() {
   const totalUSD = cuentas.filter(c=>c.moneda==='USD').reduce((s,c)=>s+c.saldo,0);
   const arsEl = document.getElementById('ct-total-ars');
   const usdEl = document.getElementById('ct-total-usd');
-  if (arsEl) arsEl.textContent = fmt(totalARS);
-  if (usdEl) usdEl.textContent = 'U$S ' + fmt(totalUSD).replace('$','');
+  if (arsEl) arsEl.textContent = fmtK(totalARS);
+  if (usdEl) usdEl.textContent = 'U$S ' + fmtK(totalUSD).replace('$','');
 
   // Selectores de transferencia
   ['ct-desde','ct-hacia'].forEach(id => {
@@ -1918,21 +1919,15 @@ function acreditarACuenta(medioNombre, monto, moneda) {
 function updateMediosDePago() {
   const sel = document.getElementById('tx-medio');
   if (!sel) return;
+  const prev = sel.value;
   const cuentas = getCuentas();
-  sel.innerHTML = '<option value="">— elegir —</option>';
-  if (!cuentas.length) {
-    // Fallback con opciones básicas si no hay cuentas cargadas
-    ['Efectivo','Mercado Pago','Débito BSF','Débito BBVA','Transferencia'].forEach(m => {
-      const o = document.createElement('option'); o.value=m; o.text=m; sel.appendChild(o);
-    });
-    return;
-  }
-  cuentas.forEach(ct => {
-    const o = document.createElement('option');
-    o.value = ct.nombre;
-    o.text  = ct.nombre + (ct.moneda === 'USD' ? ' (U$S)' : '');
-    sel.appendChild(o);
-  });
+  const opts = ['<option value="">— elegir —</option>'];
+  (cuentas.length
+    ? cuentas.map(ct => `<option value="${ct.nombre}">${ct.nombre}${ct.moneda==='USD'?' (U$S)':''}</option>`)
+    : ['Efectivo','Mercado Pago','Débito BSF','Débito BBVA','Transferencia'].map(m=>`<option value="${m}">${m}</option>`)
+  ).forEach(o => opts.push(o));
+  sel.innerHTML = opts.join('');
+  if (prev) sel.value = prev;
 }
 
 // ── Actualizar KPIs de saldos en Overview ──
@@ -1948,7 +1943,7 @@ function updateOverviewSaldos() {
   const usdEl    = document.getElementById('ov-saldo-usd');
   const usdDetEl = document.getElementById('ov-saldo-usd-det');
 
-  if (arsEl)    arsEl.textContent    = fmt(totalARS);
+  if (arsEl)    arsEl.textContent    = fmtK(totalARS);
   if (arsDetEl) arsDetEl.textContent = nARS + ' cuenta' + (nARS!==1?'s':'');
   if (usdEl)    usdEl.textContent    = 'U$S ' + (totalUSD % 1 === 0 ? totalUSD.toLocaleString('es-AR') : totalUSD.toFixed(2));
   if (usdDetEl) usdDetEl.textContent = nUSD + ' cuenta' + (nUSD!==1?'s':'');
@@ -2379,7 +2374,7 @@ async function renderInvList() {
   document.getElementById('inv-usd-kpi').textContent   = 'u$s ' + Math.round(usdVal).toLocaleString('es-AR');
   document.getElementById('inv-fci-kpi').textContent   = fmtK(fci);
   document.getElementById('inv-tc-kpi').textContent    = fmt(TC);
-  document.getElementById('ov-pat').textContent        = fmt(total);
+  document.getElementById('ov-pat').textContent        = fmtK(total);
 
   const icons = {FCI:'📊',Cripto:'₿',Stablecoin:'💲',Dólar:'💵',Bono:'📋',Acciones:'📈'};
   const colors = {FCI:P.purple,Cripto:P.yellow,Stablecoin:P.blue,Dólar:P.green,Bono:P.orange};
