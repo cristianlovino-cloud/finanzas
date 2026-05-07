@@ -855,6 +855,16 @@ nav::-webkit-scrollbar{display:none}
     </div>
   </div>
 
+  <div class="card" style="margin-top:16px;border-color:var(--yellow)">
+    <div class="ct">🔄 Recuperar datos de la nube</div>
+    <p style="font-size:.72rem;color:var(--muted);margin-bottom:14px;line-height:1.5">
+      Si perdiste gastos o datos, forzá la descarga desde Firebase. Reemplaza los datos locales con los de la nube.
+    </p>
+    <button onclick="forzarRecuperacion()" style="width:100%;padding:12px;background:#fbbf24;color:#000;border:none;border-radius:8px;font-family:var(--fh);font-size:.8rem;font-weight:700;cursor:pointer">
+      ⬇ Forzar descarga desde Firebase
+    </button>
+  </div>
+
   <!-- Sync Firebase -->
   <div class="card" style="margin-top:16px">
     <div class="ct">☁ Sincronización en la nube</div>
@@ -1278,11 +1288,9 @@ const INV_DEFAULT = [
 const P = { green:'#22d3a0',red:'#f43f5e',yellow:'#fbbf24',blue:'#38bdf8',purple:'#a78bfa',orange:'#fb923c' };
 const fmt  = n => n == null ? '—' : '$' + Math.abs(Math.round(n)).toLocaleString('es-AR');
 const fmtK = n => {
-  // Datos en miles de pesos — solo formato con separadores, sin dividir
   if (n == null || isNaN(n)) return '—';
   const sign = n < 0 ? '-' : '';
-  const abs  = Math.abs(Math.round(n));
-  return sign + '$' + abs.toLocaleString('es-AR');
+  return sign + '$' + Math.abs(Math.round(n)).toLocaleString('es-AR');
 };
 const fmtp = p => (p > 0 ? '+' : '') + (p * 100).toFixed(1) + '%';
 let TC = parseInt(DB.get('tc','1250')) || 1250;
@@ -1313,7 +1321,6 @@ function go(id, btn) {
     updateOverview();
     setTimeout(() => buildEvolChart(overviewYear || '2026'), 100);
   }
-  if (id === 'cargar')    { updateMediosDePago(); populateCatDropdown(); }
   if (id === 'flujo')       renderFlujo();
   if (id === 'patrimonio')  updatePatrimonio();
   if (id === 'cuentas')   { renderCuentas(); updateMediosDePago(); updateOverviewSaldos(); }
@@ -1819,11 +1826,12 @@ function renderCuentas() {
         </div>
         <div style="text-align:right">
           <div style="font-family:var(--fh);font-weight:700;color:${saldoColor}">${saldoFmt}</div>
-          <div style="font-size:.65rem;color:var(--muted)">
-            <input type="number" placeholder="ajuste" step="0.01"
-              style="width:80px;background:var(--s2);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:2px 5px;font-size:.65rem"
+          <div style="display:flex;align-items:center;gap:3px;margin-top:4px">
+            <input type="number" placeholder="monto" min="0" step="0.01"
+              style="width:65px;background:var(--s2);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:2px 4px;font-size:.62rem"
               id="ajuste-${i}">
-            <button onclick="ajustarSaldo(${i})" style="background:none;border:none;color:var(--green);cursor:pointer;font-size:.7rem;padding:2px 4px">✓</button>
+            <button onclick="ajustarSaldoDir(${i},1)"  style="background:rgba(34,211,160,.2);border:none;color:var(--green);cursor:pointer;font-size:.8rem;padding:1px 7px;border-radius:4px;font-weight:700">+</button>
+            <button onclick="ajustarSaldoDir(${i},-1)" style="background:rgba(244,63,94,.2);border:none;color:var(--red);cursor:pointer;font-size:.8rem;padding:1px 7px;border-radius:4px;font-weight:700">−</button>
           </div>
         </div>
         <button onclick="eliminarCuenta(${i})" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1rem;padding:4px">✕</button>
@@ -1836,8 +1844,8 @@ function renderCuentas() {
   const totalUSD = cuentas.filter(c=>c.moneda==='USD').reduce((s,c)=>s+c.saldo,0);
   const arsEl = document.getElementById('ct-total-ars');
   const usdEl = document.getElementById('ct-total-usd');
-  if (arsEl) arsEl.textContent = fmtK(totalARS);
-  if (usdEl) usdEl.textContent = 'U$S ' + fmtK(totalUSD).replace('$','');
+  if (arsEl) arsEl.textContent = fmt(totalARS);
+  if (usdEl) usdEl.textContent = 'U$S ' + fmt(totalUSD).replace('$','');
 
   // Selectores de transferencia
   ['ct-desde','ct-hacia'].forEach(id => {
@@ -1849,6 +1857,20 @@ function renderCuentas() {
 }
 
 // ── Ajuste manual de saldo ──
+function ajustarSaldoDir(i, dir) {
+  const val = parseFloat(document.getElementById('ajuste-'+i).value);
+  if (!val || val <= 0) { showToast('Ingresá un monto', '#f43f5e'); return; }
+  const ajuste = dir * val;
+  const cuentas = getCuentas();
+  const ctNom = cuentas[i].nombre, ctMon = cuentas[i].moneda;
+  cuentas[i].saldo += ajuste;
+  saveCuentas(cuentas);
+  if (typeof registrarMovimiento === 'function')
+    registrarMovimiento(ctNom, 'ajuste', Math.abs(ajuste), ctMon, 'Ajuste ' + (dir>0?'+':'-') + val);
+  document.getElementById('ajuste-'+i).value = '';
+  showToast((dir>0?'+ Suma ':' − Resta ') + fmtK(val) + ' en ' + ctNom);
+}
+
 function ajustarSaldo(i) {
   const ajuste = parseFloat(document.getElementById('ajuste-'+i).value);
   if (isNaN(ajuste)) return;
@@ -1919,15 +1941,21 @@ function acreditarACuenta(medioNombre, monto, moneda) {
 function updateMediosDePago() {
   const sel = document.getElementById('tx-medio');
   if (!sel) return;
-  const prev = sel.value;
   const cuentas = getCuentas();
-  const opts = ['<option value="">— elegir —</option>'];
-  (cuentas.length
-    ? cuentas.map(ct => `<option value="${ct.nombre}">${ct.nombre}${ct.moneda==='USD'?' (U$S)':''}</option>`)
-    : ['Efectivo','Mercado Pago','Débito BSF','Débito BBVA','Transferencia'].map(m=>`<option value="${m}">${m}</option>`)
-  ).forEach(o => opts.push(o));
-  sel.innerHTML = opts.join('');
-  if (prev) sel.value = prev;
+  sel.innerHTML = '<option value="">— elegir —</option>';
+  if (!cuentas.length) {
+    // Fallback con opciones básicas si no hay cuentas cargadas
+    ['Efectivo','Mercado Pago','Débito BSF','Débito BBVA','Transferencia'].forEach(m => {
+      const o = document.createElement('option'); o.value=m; o.text=m; sel.appendChild(o);
+    });
+    return;
+  }
+  cuentas.forEach(ct => {
+    const o = document.createElement('option');
+    o.value = ct.nombre;
+    o.text  = ct.nombre + (ct.moneda === 'USD' ? ' (U$S)' : '');
+    sel.appendChild(o);
+  });
 }
 
 // ── Actualizar KPIs de saldos en Overview ──
@@ -1943,7 +1971,7 @@ function updateOverviewSaldos() {
   const usdEl    = document.getElementById('ov-saldo-usd');
   const usdDetEl = document.getElementById('ov-saldo-usd-det');
 
-  if (arsEl)    arsEl.textContent    = fmtK(totalARS);
+  if (arsEl)    arsEl.textContent    = fmt(totalARS);
   if (arsDetEl) arsDetEl.textContent = nARS + ' cuenta' + (nARS!==1?'s':'');
   if (usdEl)    usdEl.textContent    = 'U$S ' + (totalUSD % 1 === 0 ? totalUSD.toLocaleString('es-AR') : totalUSD.toFixed(2));
   if (usdDetEl) usdDetEl.textContent = nUSD + ' cuenta' + (nUSD!==1?'s':'');
@@ -2556,10 +2584,10 @@ function updatePatrimonio() {
     {label:'Dólar/MEP',  val:invs.filter(i=>i.tipo==='Dólar').reduce((s,i)=>s+(i.ars||0),0), color:P.green},
   ].filter(i => i.val > 0);
 
-  document.getElementById('pat-activos').textContent = fmt(total);
+  document.getElementById('pat-activos').textContent = fmtK(total);
   document.getElementById('pat-pasivos').textContent = fmt(0);
-  document.getElementById('pat-neto').textContent    = fmt(total);
-  document.getElementById('ov-pat').textContent      = fmt(total);
+  document.getElementById('pat-neto').textContent    = fmtK(total);
+  document.getElementById('ov-pat').textContent      = fmtK(total);
 
   // Bar
   const barEl = document.getElementById('pat-bar-wrap');
@@ -2739,6 +2767,16 @@ function forceUpdate() {
   }
   // Force reload bypassing cache
   setTimeout(() => window.location.reload(true), 300);
+}
+
+function forzarRecuperacion() {
+  if (!confirm('¿Reemplazar datos locales con los de Firebase?\nSe perderán cambios no sincronizados.')) return;
+  ['txs','plans','inversiones','tc','cuentas','ct_movimientos'].forEach(k => {
+    localStorage.removeItem(k);
+    localStorage.removeItem(k + '_ts');
+  });
+  showToast('Descargando datos de Firebase...', '#fbbf24');
+  setTimeout(() => location.reload(), 800);
 }
 
 function clearAll() {
