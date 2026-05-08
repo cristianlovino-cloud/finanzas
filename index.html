@@ -56,69 +56,83 @@ function setSyncStatus(state) {
   el.title = s.title;
 }
 
-// ── REGLA DE ORO: localStorage es la fuente de verdad ──
-// Firebase SOLO sube datos, NUNCA los baja durante una sesión activa.
-// La bajada ocurre ÚNICAMENTE si el localStorage está vacío (dispositivo nuevo).
-
-// ── Guardar en Firestore — inmediato, sin debounce ──
+// ── Guardar en Firestore (debounced 1.5s) ──
 window.FBsave = function(key, value) {
-  if (!_uid) return;
+  if (!_uid) return; // sin sesión, solo guarda en localStorage
+  clearTimeout(_syncTimeout);
   setSyncStatus('syncing');
-  setDoc(doc(db, 'users', _uid, 'data', key), { value: JSON.stringify(value) })
-    .then(() => setSyncStatus('ok'))
-    .catch(e => { console.error('FBsave error:', e); setSyncStatus('error'); });
+  _syncTimeout = setTimeout(async () => {
+    try {
+      await setDoc(doc(db, 'users', _uid, 'data', key), { value: JSON.stringify(value) });
+      setSyncStatus('ok');
+    } catch(e) {
+      console.error('Firebase save error:', e);
+      setSyncStatus('error');
+    }
+  }, 1500);
 };
 
-// ── Flag: solo cargar una vez por sesión ──
+// ── Flag para evitar loop de carga ──
 let _alreadyLoaded = false;
-let _sessionActive = false;
 
-// ── Refrescar UI (expuesta globalmente para el módulo) ──
-window.refreshUI = function() {
-  const run = (fn) => { try { if(typeof fn==='function') fn(); } catch(e){} };
-  run(updateOverview); run(renderPlanSections); run(renderFlujo);
-  run(renderRecentTxs); run(renderCuentas); run(updateMediosDePago);
-  run(updateOverviewSaldos); run(updatePatrimonio);
-  if(typeof renderInvList==='function') renderInvList().catch(()=>{});
-  setTimeout(()=>{ try{buildAnualChart();}catch(e){} try{buildDonut();}catch(e){} }, 200);
-};
+// ── Refrescar toda la UI sin recargar la página ──
+function refreshUI() {
+  try {
+    if (typeof updateOverview    === 'function') updateOverview();
+    if (typeof renderPlanSections=== 'function') renderPlanSections();
+    if (typeof renderFlujo       === 'function') renderFlujo();
+    if (typeof renderRecentTxs   === 'function') renderRecentTxs();
+    if (typeof renderInvList     === 'function') renderInvList();
+    if (typeof updatePatrimonio   === 'function') updatePatrimonio();
+    if (typeof renderCuentas       === 'function') renderCuentas();
+    if (typeof renderHistorialTransf === 'function') renderHistorialTransf();
+    if (typeof updateMediosDePago  === 'function') updateMediosDePago();
+    if (typeof updateOverviewSaldos=== 'function') updateOverviewSaldos();
+    // Charts al final
+    setTimeout(() => {
+      if (typeof buildEvolChart  === 'function') buildEvolChart('2026');
+      if (typeof buildAnualChart === 'function') buildAnualChart();
+      if (typeof buildDonut      === 'function') buildDonut();
+    }, 150);
+  } catch(e) { console.error('refreshUI error:', e); }
+}
 
-// ── Sincronización inicial ──
+// ── Cargar datos desde Firestore → localStorage → UI ──
 async function loadFromFirestore(uid) {
-  if (_alreadyLoaded) return;
+  if (_alreadyLoaded) return; // evitar loop
   _alreadyLoaded = true;
-  _sessionActive = true;
   setSyncStatus('syncing');
 
-  const keys = ['txs', 'plans', 'inversiones', 'tc', 'cuentas', 'ct_movimientos'];
-  let restoredFromCloud = false;
+  const keys = ['txs', 'plans', 'inversiones', 'tc', 'cuentas'];
+  let cloudHasData = false;
+  let uploadCount  = 0;
 
   for (const key of keys) {
     try {
-      const local = localStorage.getItem(key);
-      const localEmpty = !local || local === '{}' || local === '[]' || local === 'null';
-
-      if (localEmpty) {
-        // Dispositivo nuevo o datos borrados → bajar de la nube
-        const snap = await getDoc(doc(db, 'users', uid, 'data', key));
-        if (snap.exists()) {
-          localStorage.setItem(key, JSON.stringify(JSON.parse(snap.data().value)));
-          restoredFromCloud = true;
-        }
+      const snap = await getDoc(doc(db, 'users', uid, 'data', key));
+      if (snap.exists()) {
+        cloudHasData = true;
+        // Escribir en localStorage sin disparar FBsave
+        localStorage.setItem(key, JSON.stringify(JSON.parse(snap.data().value)));
       } else {
-        // Local tiene datos → subir a nube como backup (no toca local)
-        setDoc(doc(db, 'users', uid, 'data', key), { value: local }).catch(e=>console.error('backup error',key,e));
+        // Nube vacía para esta key → subir desde local
+        const local = localStorage.getItem(key);
+        if (local && local !== '{}' && local !== '[]' && local !== 'null') {
+          await setDoc(doc(db, 'users', uid, 'data', key), { value: local });
+          uploadCount++;
+        }
       }
-    } catch(e) { console.error('Firestore sync error:', key, e); }
+    } catch(e) { console.error('Firestore error:', key, e); }
   }
 
   setSyncStatus('ok');
 
-  if (restoredFromCloud) {
-    if (typeof window.refreshUI === 'function') window.refreshUI();
-    if (typeof showToast === 'function') showToast('☁ Datos restaurados de la nube');
-  } else {
-    if (typeof showToast === 'function') showToast('☁ Conectado');
+  if (cloudHasData) {
+    // Refrescar UI con datos de la nube — SIN reload
+    refreshUI();
+    if (typeof showToast === 'function') showToast('☁ Datos sincronizados');
+  } else if (uploadCount > 0) {
+    if (typeof showToast === 'function') showToast('✓ Datos subidos a la nube');
   }
 }
 
@@ -128,12 +142,13 @@ onAuthStateChanged(auth, async (user) => {
   const userEl = document.getElementById('fb-user');
   if (user) {
     _uid = user.uid;
-    if (btn)    { btn.textContent = 'Cerrar sesión'; btn.onclick = () => { signOut(auth); _alreadyLoaded = false; _sessionActive = false; }; }
+    if (btn)    { btn.textContent = 'Cerrar sesión'; btn.onclick = () => { signOut(auth); _alreadyLoaded = false; }; }
     if (userEl)   userEl.textContent = user.displayName || user.email;
-    if (!_alreadyLoaded) await loadFromFirestore(user.uid);
-    else setSyncStatus('ok');
+    setSyncStatus('syncing');
+    await loadFromFirestore(user.uid);
   } else {
-    _uid = null; _alreadyLoaded = false; _sessionActive = false;
+    _uid = null;
+    _alreadyLoaded = false;
     if (btn)    { btn.textContent = 'Iniciar sesión con Google'; btn.onclick = fbLogin; }
     if (userEl)   userEl.textContent = 'No conectado';
     setSyncStatus('loggedout');
@@ -388,7 +403,7 @@ nav::-webkit-scrollbar{display:none}
   </div>
 
   <div class="g2">
-    <div class="card span2" style="display:none">
+    <div class="card span2">
       <div class="ct">Evolución mensual
         <div style="display:flex;gap:6px">
           <button class="chip neu" onclick="setEvolYear('2024',this)" style="cursor:pointer;border:none">2024</button>
@@ -626,7 +641,7 @@ nav::-webkit-scrollbar{display:none}
         </div>
         <div class="field">
           <label>Medio de pago</label>
-          <select id="tx-medio" class="fi" onfocus="updateMediosDePago()" onclick="updateMediosDePago()">
+          <select id="tx-medio" class="fi">
             <option value="">— elegir —</option>
           </select>
         </div>
@@ -646,6 +661,7 @@ nav::-webkit-scrollbar{display:none}
 <!-- ════════════ CUENTAS ════════════ -->
 <div class="page" id="page-cuentas">
 
+  <!-- KPIs + botón nueva cuenta -->
   <div class="kg" style="grid-template-columns:1fr 1fr;margin-bottom:16px">
     <div class="kpi" style="--kc:var(--green)">
       <div class="kl">Total ARS</div>
@@ -659,67 +675,64 @@ nav::-webkit-scrollbar{display:none}
     </div>
   </div>
 
-  <!-- Form nueva cuenta -->
-  <div class="card" id="add-cuenta-form" style="margin-bottom:14px;border-color:var(--green)">
-    <div class="ct">Nueva cuenta</div>
-    <div class="r2">
-      <div class="field">
-        <label>Nombre</label>
-        <input type="text" id="ct-nombre" class="fi" placeholder="BSF, MP, Efectivo...">
-      </div>
-      <div class="field">
-        <label>Tipo</label>
-        <select id="ct-tipo" class="fi">
-          <option value="banco">Banco</option>
-          <option value="billetera">Billetera digital</option>
-          <option value="efectivo">Efectivo</option>
-        </select>
-      </div>
-    </div>
-    <div class="r2">
-      <div class="field">
-        <label>Moneda</label>
-        <select id="ct-moneda" class="fi">
-          <option value="ARS">ARS $</option>
-          <option value="USD">USD U$S</option>
-        </select>
-      </div>
-      <div class="field">
-        <label>Saldo inicial</label>
-        <input type="number" id="ct-saldo-ini" class="fi" placeholder="0" step="0.01">
-      </div>
-    </div>
-    <div style="display:flex;gap:8px">
-      <button onclick="agregarCuenta()" class="btn btn-g" style="flex:1">+ Guardar cuenta</button>
-    </div>
-  </div>
-
-  <!-- Lista de cuentas -->
+  <!-- 1. MIS CUENTAS con botón + Nueva -->
   <div class="card" style="margin-bottom:14px">
-    <div class="ct">Mis cuentas</div>
-    <div id="cuentas-list"><div style="color:var(--muted);font-size:.75rem;text-align:center;padding:20px 0">Agregá tu primera cuenta arriba</div></div>
+    <div class="ct" style="display:flex;justify-content:space-between;align-items:center">
+      <span>Mis cuentas</span>
+      <button onclick="toggleNuevaCuenta()" id="btn-nueva-cuenta"
+        style="background:var(--green);color:var(--bg);border:none;border-radius:6px;padding:4px 12px;font-family:var(--fh);font-size:.7rem;font-weight:700;cursor:pointer">
+        + Nueva cuenta
+      </button>
+    </div>
+    <!-- Form nueva cuenta — oculto por defecto -->
+    <div id="add-cuenta-form" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+      <div class="r2">
+        <div class="field">
+          <label>Nombre</label>
+          <input type="text" id="ct-nombre" class="fi" placeholder="BSF, MP, Efectivo...">
+        </div>
+        <div class="field">
+          <label>Tipo</label>
+          <select id="ct-tipo" class="fi">
+            <option value="banco">Banco</option>
+            <option value="billetera">Billetera digital</option>
+            <option value="efectivo">Efectivo</option>
+          </select>
+        </div>
+      </div>
+      <div class="r2">
+        <div class="field">
+          <label>Moneda</label>
+          <select id="ct-moneda" class="fi">
+            <option value="ARS">ARS $</option>
+            <option value="USD">USD U$S</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Saldo inicial</label>
+          <input type="number" id="ct-saldo-ini" class="fi" placeholder="0" step="0.01">
+        </div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button onclick="agregarCuenta()" class="btn btn-g" style="flex:1">✓ Guardar</button>
+        <button onclick="toggleNuevaCuenta()" class="btn btn-o" style="padding:10px 16px">✕</button>
+      </div>
+    </div>
+    <div id="cuentas-list" style="margin-top:8px">
+      <div style="color:var(--muted);font-size:.75rem;text-align:center;padding:20px 0">Sin cuentas</div>
+    </div>
   </div>
 
-  <!-- Transferencia entre cuentas -->
+  <!-- 2. TRANSFERENCIA + HISTORIAL -->
   <div class="card" style="margin-bottom:14px">
     <div class="ct">Transferencia entre cuentas</div>
     <div class="r2" style="margin-bottom:10px">
-      <div class="field">
-        <label>Desde</label>
-        <select id="ct-desde" class="fi"></select>
-      </div>
-      <div class="field">
-        <label>Hacia</label>
-        <select id="ct-hacia" class="fi"></select>
-      </div>
+      <div class="field"><label>Desde</label><select id="ct-desde" class="fi"></select></div>
+      <div class="field"><label>Hacia</label><select id="ct-hacia" class="fi"></select></div>
     </div>
     <div class="r2" style="margin-bottom:10px">
-      <div class="field">
-        <label>Monto</label>
-        <input type="number" id="ct-transf-monto" class="fi" placeholder="0" step="0.01">
-      </div>
-      <div class="field">
-        <label>Moneda</label>
+      <div class="field"><label>Monto</label><input type="number" id="ct-transf-monto" class="fi" placeholder="0" step="0.01"></div>
+      <div class="field"><label>Moneda</label>
         <select id="ct-transf-moneda" class="fi">
           <option value="ARS">ARS $</option>
           <option value="USD">USD U$S</option>
@@ -727,6 +740,19 @@ nav::-webkit-scrollbar{display:none}
       </div>
     </div>
     <button onclick="hacerTransferencia()" class="btn btn-g btn-full">⇄ Transferir</button>
+
+    <!-- Historial de transferencias con filtro por mes -->
+    <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="font-size:.7rem;font-weight:600;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em">Historial</div>
+        <select id="ct-transf-mes-fil" class="fi" style="width:auto;padding:4px 8px;font-size:.68rem" onchange="renderHistorialTransf()">
+          <option value="">Todos</option>
+        </select>
+      </div>
+      <div id="ct-historial-transf">
+        <div style="color:var(--muted);font-size:.75rem;text-align:center;padding:10px 0">Sin transferencias</div>
+      </div>
+    </div>
   </div>
 
 </div>
@@ -1263,22 +1289,12 @@ const INV_DEFAULT = [
 // ══════════════════════════════════════════════════════
 const P = { green:'#22d3a0',red:'#f43f5e',yellow:'#fbbf24',blue:'#38bdf8',purple:'#a78bfa',orange:'#fb923c' };
 const fmt  = n => n == null ? '—' : '$' + Math.abs(Math.round(n)).toLocaleString('es-AR');
-const fmtM = n => {
-  // Inversiones en pesos nominales — abreviar
-  if (n == null || isNaN(n)) return '—';
-  const sign = n < 0 ? '-' : '';
-  const abs = Math.abs(Math.round(n));
-  if (abs >= 1000000) return sign + '$' + (abs/1000000).toFixed(2) + 'M';
-  if (abs >= 1000)    return sign + '$' + Math.round(abs/1000) + 'k';
-  return sign + '$' + abs.toLocaleString('es-AR');
-};
 const fmtK = n => {
-  // Gastos/ingresos/saldos en miles de pesos — mostrar con separadores sin dividir
-  if (n == null || isNaN(n)) return '—';
-  const sign = n < 0 ? '-' : '';
-  const abs  = Math.abs(Math.round(n));
-  if (abs >= 1000) return sign + '$' + Math.round(abs/1000) + 'k';
-  return sign + '$' + abs.toLocaleString('es-AR');
+  if (n == null) return '—';
+  const abs = Math.abs(Math.round(n));
+  if (abs >= 1000000) return (n < 0 ? '-' : '') + '$' + (abs/1000000).toFixed(1) + 'M';
+  if (abs >= 1000)    return (n < 0 ? '-' : '') + '$' + (abs/1000).toFixed(0) + 'k';
+  return (n < 0 ? '-' : '') + '$' + abs.toLocaleString('es-AR');
 };
 const fmtp = p => (p > 0 ? '+' : '') + (p * 100).toFixed(1) + '%';
 let TC = parseInt(DB.get('tc','1250')) || 1250;
@@ -1309,10 +1325,9 @@ function go(id, btn) {
     updateOverview();
     setTimeout(() => buildEvolChart(overviewYear || '2026'), 100);
   }
-  if (id === 'cargar')    { updateMediosDePago(); populateCatDropdown(); }
   if (id === 'flujo')       renderFlujo();
   if (id === 'patrimonio')  updatePatrimonio();
-  if (id === 'cuentas')   { renderCuentas(); updateMediosDePago(); updateOverviewSaldos(); }
+  if (id === 'cuentas')   { renderCuentas(); updateMediosDePago(); updateOverviewSaldos(); renderHistorialTransf(); }
 }
 
 // ══════════════════════════════════════════════════════
@@ -1768,6 +1783,67 @@ function saveCuentas(cuentas) {
 }
 
 // ── Agregar cuenta nueva ──
+// ── Toggle form nueva cuenta ──
+function toggleNuevaCuenta() {
+  const form = document.getElementById('add-cuenta-form');
+  const btn  = document.getElementById('btn-nueva-cuenta');
+  if (!form) return;
+  const visible = form.style.display !== 'none';
+  form.style.display = visible ? 'none' : 'block';
+  if (btn) btn.textContent = visible ? '+ Nueva cuenta' : '✕ Cancelar';
+  if (!visible) document.getElementById('ct-nombre')?.focus();
+}
+
+// ── Historial de transferencias ──
+function renderHistorialTransf() {
+  const el  = document.getElementById('ct-historial-transf');
+  const fil = document.getElementById('ct-transf-mes-fil');
+  if (!el) return;
+
+  const movs = DB.get('ct_movimientos', []);
+  const transfs = movs.filter(m => m.tipo === 'transferencia');
+
+  // Poblar filtro de meses
+  if (fil) {
+    const meses = [...new Set(transfs.map(m => new Date(m.ts).toISOString().slice(0,7)))].sort().reverse();
+    const current = fil.value;
+    fil.innerHTML = '<option value="">Todos</option>' +
+      meses.map(m => {
+        const [y, mo] = m.split('-');
+        const label = MESES[parseInt(mo)-1] + ' ' + y;
+        return `<option value="${m}" ${m===current?'selected':''}>${label}</option>`;
+      }).join('');
+  }
+
+  const mesFil = fil ? fil.value : '';
+  const filtered = mesFil
+    ? transfs.filter(m => new Date(m.ts).toISOString().slice(0,7) === mesFil)
+    : transfs.slice(0, 30);
+
+  if (!filtered.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:.75rem;text-align:center;padding:10px 0">Sin transferencias</div>';
+    return;
+  }
+
+  el.innerHTML = filtered.map(m => {
+    const fecha = new Date(m.ts);
+    const fechaStr = fecha.getDate() + '/' + (fecha.getMonth()+1) + ' ' + String(fecha.getHours()).padStart(2,'0') + ':' + String(fecha.getMinutes()).padStart(2,'0');
+    const esEntrada = m.monto > 0;
+    const color = esEntrada ? 'var(--green)' : 'var(--muted2)';
+    const signo = esEntrada ? '→' : '←';
+    const montoFmt = m.moneda === 'USD'
+      ? 'U$S ' + Math.abs(m.monto).toFixed(2)
+      : fmtK(Math.abs(m.monto));
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
+      <div>
+        <div style="font-size:.78rem;font-weight:600">${signo} ${m.desc || m.cuenta}</div>
+        <div style="font-size:.63rem;color:var(--muted)">${m.cuenta} · ${fechaStr}</div>
+      </div>
+      <div style="font-family:var(--fh);font-weight:700;color:${color};font-size:.8rem">${montoFmt}</div>
+    </div>`;
+  }).join('');
+}
+
 function agregarCuenta() {
   const nombre = document.getElementById('ct-nombre').value.trim();
   const tipo   = document.getElementById('ct-tipo').value;
@@ -1788,6 +1864,7 @@ function agregarCuenta() {
   document.getElementById('ct-nombre').value = '';
   document.getElementById('ct-saldo-ini').value = '';
   showToast('✓ Cuenta "' + nombre + '" agregada');
+  toggleNuevaCuenta(); // cerrar form
 }
 
 // ── Render lista de cuentas ──
@@ -1915,15 +1992,21 @@ function acreditarACuenta(medioNombre, monto, moneda) {
 function updateMediosDePago() {
   const sel = document.getElementById('tx-medio');
   if (!sel) return;
-  const prev = sel.value;
   const cuentas = getCuentas();
-  const opts = ['<option value="">— elegir —</option>'];
-  (cuentas.length
-    ? cuentas.map(ct => `<option value="${ct.nombre}">${ct.nombre}${ct.moneda==='USD'?' (U$S)':''}</option>`)
-    : ['Efectivo','Mercado Pago','Débito BSF','Débito BBVA','Transferencia'].map(m=>`<option value="${m}">${m}</option>`)
-  ).forEach(o => opts.push(o));
-  sel.innerHTML = opts.join('');
-  if (prev) sel.value = prev;
+  sel.innerHTML = '<option value="">— elegir —</option>';
+  if (!cuentas.length) {
+    // Fallback con opciones básicas si no hay cuentas cargadas
+    ['Efectivo','Mercado Pago','Débito BSF','Débito BBVA','Transferencia'].forEach(m => {
+      const o = document.createElement('option'); o.value=m; o.text=m; sel.appendChild(o);
+    });
+    return;
+  }
+  cuentas.forEach(ct => {
+    const o = document.createElement('option');
+    o.value = ct.nombre;
+    o.text  = ct.nombre + (ct.moneda === 'USD' ? ' (U$S)' : '');
+    sel.appendChild(o);
+  });
 }
 
 // ── Actualizar KPIs de saldos en Overview ──
@@ -2020,7 +2103,7 @@ function updateOverview() {
   // Patrimonio
   const invs = DB.get('inversiones', INV_DEFAULT);
   const totalPat = invs.reduce((s, i) => s + (i.ars||0), 0);
-  document.getElementById('ov-pat').textContent = fmtM(totalPat);
+  document.getElementById('ov-pat').textContent = fmtK(totalPat);
 
   // Alerts — based on current month only
   const alerts = [];
