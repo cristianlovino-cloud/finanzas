@@ -660,6 +660,7 @@ nav::-webkit-scrollbar{display:none}
 <!-- ════════════ CUENTAS ════════════ -->
 <div class="page" id="page-cuentas">
 
+  <!-- KPIs -->
   <div class="kg" style="grid-template-columns:1fr 1fr;margin-bottom:16px">
     <div class="kpi" style="--kc:var(--green)">
       <div class="kl">Total ARS</div>
@@ -673,67 +674,56 @@ nav::-webkit-scrollbar{display:none}
     </div>
   </div>
 
-  <!-- Form nueva cuenta -->
-  <div class="card" id="add-cuenta-form" style="margin-bottom:14px;border-color:var(--green)">
-    <div class="ct">Nueva cuenta</div>
-    <div class="r2">
-      <div class="field">
-        <label>Nombre</label>
-        <input type="text" id="ct-nombre" class="fi" placeholder="BSF, MP, Efectivo...">
-      </div>
-      <div class="field">
-        <label>Tipo</label>
-        <select id="ct-tipo" class="fi">
-          <option value="banco">Banco</option>
-          <option value="billetera">Billetera digital</option>
-          <option value="efectivo">Efectivo</option>
-        </select>
-      </div>
-    </div>
-    <div class="r2">
-      <div class="field">
-        <label>Moneda</label>
-        <select id="ct-moneda" class="fi">
-          <option value="ARS">ARS $</option>
-          <option value="USD">USD U$S</option>
-        </select>
-      </div>
-      <div class="field">
-        <label>Saldo inicial</label>
-        <input type="number" id="ct-saldo-ini" class="fi" placeholder="0" step="0.01">
-      </div>
-    </div>
-    <div style="display:flex;gap:8px">
-      <button onclick="agregarCuenta()" class="btn btn-g" style="flex:1">+ Guardar cuenta</button>
-    </div>
-  </div>
-
-  <!-- Lista de cuentas -->
+  <!-- MIS CUENTAS + botón nueva -->
   <div class="card" style="margin-bottom:14px">
-    <div class="ct">Mis cuentas</div>
-    <div id="cuentas-list"><div style="color:var(--muted);font-size:.75rem;text-align:center;padding:20px 0">Agregá tu primera cuenta arriba</div></div>
+    <div class="ct" style="display:flex;justify-content:space-between;align-items:center">
+      <span>Mis cuentas</span>
+      <button onclick="toggleNuevaCuenta()" id="btn-nueva-cuenta"
+        style="background:var(--green);color:var(--bg);border:none;border-radius:6px;padding:4px 12px;font-family:var(--fh);font-size:.7rem;font-weight:700;cursor:pointer">
+        + Nueva cuenta
+      </button>
+    </div>
+    <!-- Form oculto -->
+    <div id="add-cuenta-form" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+      <div class="r2">
+        <div class="field"><label>Nombre</label><input type="text" id="ct-nombre" class="fi" placeholder="BSF, MP, Efectivo..."></div>
+        <div class="field"><label>Tipo</label>
+          <select id="ct-tipo" class="fi">
+            <option value="banco">Banco</option>
+            <option value="billetera">Billetera digital</option>
+            <option value="efectivo">Efectivo</option>
+          </select>
+        </div>
+      </div>
+      <div class="r2">
+        <div class="field"><label>Moneda</label>
+          <select id="ct-moneda" class="fi">
+            <option value="ARS">ARS $</option>
+            <option value="USD">USD U$S</option>
+          </select>
+        </div>
+        <div class="field"><label>Saldo inicial</label><input type="number" id="ct-saldo-ini" class="fi" placeholder="0" step="0.01"></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button onclick="agregarCuenta()" class="btn btn-g" style="flex:1">✓ Guardar</button>
+        <button onclick="toggleNuevaCuenta()" class="btn btn-o" style="padding:10px 16px">✕</button>
+      </div>
+    </div>
+    <div id="cuentas-list" style="margin-top:8px">
+      <div style="color:var(--muted);font-size:.75rem;text-align:center;padding:20px 0">Sin cuentas</div>
+    </div>
   </div>
 
-  <!-- Transferencia entre cuentas -->
+  <!-- TRANSFERENCIA + HISTORIAL -->
   <div class="card" style="margin-bottom:14px">
     <div class="ct">Transferencia entre cuentas</div>
     <div class="r2" style="margin-bottom:10px">
-      <div class="field">
-        <label>Desde</label>
-        <select id="ct-desde" class="fi"></select>
-      </div>
-      <div class="field">
-        <label>Hacia</label>
-        <select id="ct-hacia" class="fi"></select>
-      </div>
+      <div class="field"><label>Desde</label><select id="ct-desde" class="fi"></select></div>
+      <div class="field"><label>Hacia</label><select id="ct-hacia" class="fi"></select></div>
     </div>
     <div class="r2" style="margin-bottom:10px">
-      <div class="field">
-        <label>Monto</label>
-        <input type="number" id="ct-transf-monto" class="fi" placeholder="0" step="0.01">
-      </div>
-      <div class="field">
-        <label>Moneda</label>
+      <div class="field"><label>Monto</label><input type="number" id="ct-transf-monto" class="fi" placeholder="0" step="0.01"></div>
+      <div class="field"><label>Moneda</label>
         <select id="ct-transf-moneda" class="fi">
           <option value="ARS">ARS $</option>
           <option value="USD">USD U$S</option>
@@ -741,6 +731,19 @@ nav::-webkit-scrollbar{display:none}
       </div>
     </div>
     <button onclick="hacerTransferencia()" class="btn btn-g btn-full">⇄ Transferir</button>
+
+    <!-- Historial -->
+    <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="font-size:.7rem;font-weight:600;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em">Historial</div>
+        <select id="ct-transf-mes-fil" class="fi" style="width:auto;padding:4px 8px;font-size:.68rem" onchange="renderHistorialTransf()">
+          <option value="">Todos los meses</option>
+        </select>
+      </div>
+      <div id="ct-historial-transf">
+        <div style="color:var(--muted);font-size:.75rem;text-align:center;padding:10px 0">Sin transferencias</div>
+      </div>
+    </div>
   </div>
 
 </div>
@@ -1791,6 +1794,7 @@ function agregarCuenta() {
   document.getElementById('ct-nombre').value = '';
   document.getElementById('ct-saldo-ini').value = '';
   showToast('✓ Cuenta "' + nombre + '" agregada');
+  toggleNuevaCuenta();
 }
 
 // ── Render lista de cuentas ──
@@ -1866,6 +1870,17 @@ function eliminarCuenta(i) {
 }
 
 // ── Transferencia entre cuentas ──
+// ── Toggle form nueva cuenta ──
+function toggleNuevaCuenta() {
+  const form = document.getElementById('add-cuenta-form');
+  const btn  = document.getElementById('btn-nueva-cuenta');
+  if (!form) return;
+  const abierto = form.style.display !== 'none';
+  form.style.display = abierto ? 'none' : 'block';
+  if (btn) btn.textContent = abierto ? '+ Nueva cuenta' : '✕ Cancelar';
+  if (!abierto) document.getElementById('ct-nombre')?.focus();
+}
+
 // ── Registrar movimiento en historial ──
 function registrarMovimiento(cuenta, tipo, monto, moneda, desc) {
   const movs = DB.get('ct_movimientos', []);
@@ -1874,7 +1889,7 @@ function registrarMovimiento(cuenta, tipo, monto, moneda, desc) {
   renderHistorialTransf();
 }
 
-// ── Historial de transferencias con filtro por mes ──
+// ── Historial de transferencias ──
 function renderHistorialTransf() {
   const el  = document.getElementById('ct-historial-transf');
   const fil = document.getElementById('ct-transf-mes-fil');
@@ -1883,14 +1898,13 @@ function renderHistorialTransf() {
   const movs    = DB.get('ct_movimientos', []);
   const transfs = movs.filter(m => m.tipo === 'transferencia');
 
-  // Poblar selector de meses
   if (fil) {
     const meses = [...new Set(transfs.map(m => new Date(m.ts).toISOString().slice(0,7)))].sort().reverse();
-    const cur   = fil.value;
-    fil.innerHTML = '<option value="">Todos</option>' +
+    const cur = fil.value;
+    fil.innerHTML = '<option value="">Todos los meses</option>' +
       meses.map(m => {
         const [y, mo] = m.split('-');
-        const lbl = (typeof MESES !== 'undefined' ? MESES[parseInt(mo)-1] : mo) + ' ' + y;
+        const lbl = (typeof MESES!=='undefined' ? MESES[parseInt(mo)-1] : mo) + ' ' + y;
         return `<option value="${m}"${m===cur?' selected':''}>${lbl}</option>`;
       }).join('');
     if (cur) fil.value = cur;
@@ -1907,14 +1921,14 @@ function renderHistorialTransf() {
   }
 
   el.innerHTML = filtered.map(m => {
-    const d      = new Date(m.ts);
-    const fecha  = d.getDate() + '/' + (d.getMonth()+1) + ' ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
-    const pos    = m.monto > 0;
-    const color  = pos ? 'var(--green)' : 'var(--muted2)';
-    const icono  = pos ? '→' : '←';
-    const mFmt   = m.moneda === 'USD'
+    const d     = new Date(m.ts);
+    const fecha = d.getDate() + '/' + (d.getMonth()+1) + ' ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+    const pos   = m.monto > 0;
+    const color = pos ? 'var(--green)' : 'var(--muted2)';
+    const icono = pos ? '→' : '←';
+    const mFmt  = m.moneda === 'USD'
       ? 'U$S ' + Math.abs(m.monto).toFixed(2)
-      : (typeof fmtK === 'function' ? fmtK(Math.abs(m.monto)) : '$' + Math.abs(m.monto));
+      : (typeof fmtK==='function' ? fmtK(Math.abs(m.monto)) : '$'+Math.abs(m.monto));
     return `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
       <div style="flex:1;min-width:0">
         <div style="font-size:.78rem;font-weight:600">${icono} ${m.desc||m.cuenta}</div>
