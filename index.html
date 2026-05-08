@@ -1,4 +1,9 @@
 <!DOCTYPE html>
+<!-- 
+  CL-Finanzas v1.2.0
+  Cambios: Firebase local-first definitivo (no pisa localStorage)
+  FBsave sin debounce, loadFromFirestore solo baja si local vacío
+-->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -10,7 +15,7 @@
 <meta name="application-name" content="CL Finanzas">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-192.png">
-<title>CL · Finanzas</title>
+<title>CL · Finanzas v1.2.0</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <!-- Firebase SDK -->
 <script type="module">
@@ -840,7 +845,7 @@ nav::-webkit-scrollbar{display:none}
     <div class="card">
       <div class="ct">ℹ️ Acerca de</div>
       <p style="font-size:.75rem;color:var(--muted2);line-height:1.7">
-        Dashboard financiero personal — CL Finanzas<br>
+        Dashboard financiero personal — CL Finanzas <span style="color:var(--muted);font-size:.7em">v1.2.0</span><br>
         Datos sincronizados en la nube con Firebase.<br>
         Form de gastos: <a href="https://forms.gle/cgxE8FDbhaZPkwjn9" target="_blank" style="color:var(--green)">forms.gle/cgxE8FDbhaZPkwjn9</a>
       </p>
