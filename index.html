@@ -85,7 +85,6 @@ function refreshUI() {
     if (typeof renderInvList     === 'function') renderInvList();
     if (typeof updatePatrimonio   === 'function') updatePatrimonio();
     if (typeof renderCuentas       === 'function') renderCuentas();
-    if (typeof renderHistorialTransf === 'function') renderHistorialTransf();
     if (typeof updateMediosDePago  === 'function') updateMediosDePago();
     if (typeof updateOverviewSaldos=== 'function') updateOverviewSaldos();
     // Charts al final
@@ -103,7 +102,7 @@ async function loadFromFirestore(uid) {
   _alreadyLoaded = true;
   setSyncStatus('syncing');
 
-  const keys = ['txs', 'plans', 'inversiones', 'tc', 'cuentas'];
+  const keys = ['txs', 'plans', 'inversiones', 'tc', 'cuentas', 'ct_movimientos'];
   let cloudHasData = false;
   let uploadCount  = 0;
 
@@ -661,7 +660,6 @@ nav::-webkit-scrollbar{display:none}
 <!-- ════════════ CUENTAS ════════════ -->
 <div class="page" id="page-cuentas">
 
-  <!-- KPIs + botón nueva cuenta -->
   <div class="kg" style="grid-template-columns:1fr 1fr;margin-bottom:16px">
     <div class="kpi" style="--kc:var(--green)">
       <div class="kl">Total ARS</div>
@@ -675,64 +673,67 @@ nav::-webkit-scrollbar{display:none}
     </div>
   </div>
 
-  <!-- 1. MIS CUENTAS con botón + Nueva -->
-  <div class="card" style="margin-bottom:14px">
-    <div class="ct" style="display:flex;justify-content:space-between;align-items:center">
-      <span>Mis cuentas</span>
-      <button onclick="toggleNuevaCuenta()" id="btn-nueva-cuenta"
-        style="background:var(--green);color:var(--bg);border:none;border-radius:6px;padding:4px 12px;font-family:var(--fh);font-size:.7rem;font-weight:700;cursor:pointer">
-        + Nueva cuenta
-      </button>
-    </div>
-    <!-- Form nueva cuenta — oculto por defecto -->
-    <div id="add-cuenta-form" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
-      <div class="r2">
-        <div class="field">
-          <label>Nombre</label>
-          <input type="text" id="ct-nombre" class="fi" placeholder="BSF, MP, Efectivo...">
-        </div>
-        <div class="field">
-          <label>Tipo</label>
-          <select id="ct-tipo" class="fi">
-            <option value="banco">Banco</option>
-            <option value="billetera">Billetera digital</option>
-            <option value="efectivo">Efectivo</option>
-          </select>
-        </div>
+  <!-- Form nueva cuenta -->
+  <div class="card" id="add-cuenta-form" style="margin-bottom:14px;border-color:var(--green)">
+    <div class="ct">Nueva cuenta</div>
+    <div class="r2">
+      <div class="field">
+        <label>Nombre</label>
+        <input type="text" id="ct-nombre" class="fi" placeholder="BSF, MP, Efectivo...">
       </div>
-      <div class="r2">
-        <div class="field">
-          <label>Moneda</label>
-          <select id="ct-moneda" class="fi">
-            <option value="ARS">ARS $</option>
-            <option value="USD">USD U$S</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Saldo inicial</label>
-          <input type="number" id="ct-saldo-ini" class="fi" placeholder="0" step="0.01">
-        </div>
-      </div>
-      <div style="display:flex;gap:8px">
-        <button onclick="agregarCuenta()" class="btn btn-g" style="flex:1">✓ Guardar</button>
-        <button onclick="toggleNuevaCuenta()" class="btn btn-o" style="padding:10px 16px">✕</button>
+      <div class="field">
+        <label>Tipo</label>
+        <select id="ct-tipo" class="fi">
+          <option value="banco">Banco</option>
+          <option value="billetera">Billetera digital</option>
+          <option value="efectivo">Efectivo</option>
+        </select>
       </div>
     </div>
-    <div id="cuentas-list" style="margin-top:8px">
-      <div style="color:var(--muted);font-size:.75rem;text-align:center;padding:20px 0">Sin cuentas</div>
+    <div class="r2">
+      <div class="field">
+        <label>Moneda</label>
+        <select id="ct-moneda" class="fi">
+          <option value="ARS">ARS $</option>
+          <option value="USD">USD U$S</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Saldo inicial</label>
+        <input type="number" id="ct-saldo-ini" class="fi" placeholder="0" step="0.01">
+      </div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button onclick="agregarCuenta()" class="btn btn-g" style="flex:1">+ Guardar cuenta</button>
     </div>
   </div>
 
-  <!-- 2. TRANSFERENCIA + HISTORIAL -->
+  <!-- Lista de cuentas -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="ct">Mis cuentas</div>
+    <div id="cuentas-list"><div style="color:var(--muted);font-size:.75rem;text-align:center;padding:20px 0">Agregá tu primera cuenta arriba</div></div>
+  </div>
+
+  <!-- Transferencia entre cuentas -->
   <div class="card" style="margin-bottom:14px">
     <div class="ct">Transferencia entre cuentas</div>
     <div class="r2" style="margin-bottom:10px">
-      <div class="field"><label>Desde</label><select id="ct-desde" class="fi"></select></div>
-      <div class="field"><label>Hacia</label><select id="ct-hacia" class="fi"></select></div>
+      <div class="field">
+        <label>Desde</label>
+        <select id="ct-desde" class="fi"></select>
+      </div>
+      <div class="field">
+        <label>Hacia</label>
+        <select id="ct-hacia" class="fi"></select>
+      </div>
     </div>
     <div class="r2" style="margin-bottom:10px">
-      <div class="field"><label>Monto</label><input type="number" id="ct-transf-monto" class="fi" placeholder="0" step="0.01"></div>
-      <div class="field"><label>Moneda</label>
+      <div class="field">
+        <label>Monto</label>
+        <input type="number" id="ct-transf-monto" class="fi" placeholder="0" step="0.01">
+      </div>
+      <div class="field">
+        <label>Moneda</label>
         <select id="ct-transf-moneda" class="fi">
           <option value="ARS">ARS $</option>
           <option value="USD">USD U$S</option>
@@ -740,19 +741,6 @@ nav::-webkit-scrollbar{display:none}
       </div>
     </div>
     <button onclick="hacerTransferencia()" class="btn btn-g btn-full">⇄ Transferir</button>
-
-    <!-- Historial de transferencias con filtro por mes -->
-    <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <div style="font-size:.7rem;font-weight:600;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em">Historial</div>
-        <select id="ct-transf-mes-fil" class="fi" style="width:auto;padding:4px 8px;font-size:.68rem" onchange="renderHistorialTransf()">
-          <option value="">Todos</option>
-        </select>
-      </div>
-      <div id="ct-historial-transf">
-        <div style="color:var(--muted);font-size:.75rem;text-align:center;padding:10px 0">Sin transferencias</div>
-      </div>
-    </div>
   </div>
 
 </div>
@@ -1575,8 +1563,8 @@ function submitTx() {
 
   // Actualizar saldo de cuenta
   if (medio) {
-    if (curTipo === 'ingreso') acreditarACuenta(medio, monto, moneda);
-    else descontarDeCuenta(medio, monto, moneda);
+    if (curTipo === 'ingreso') acreditarACuenta(medio, monto, moneda, desc);
+    else descontarDeCuenta(medio, monto, moneda, desc);
   }
 
   // Clear form
@@ -1783,67 +1771,6 @@ function saveCuentas(cuentas) {
 }
 
 // ── Agregar cuenta nueva ──
-// ── Toggle form nueva cuenta ──
-function toggleNuevaCuenta() {
-  const form = document.getElementById('add-cuenta-form');
-  const btn  = document.getElementById('btn-nueva-cuenta');
-  if (!form) return;
-  const visible = form.style.display !== 'none';
-  form.style.display = visible ? 'none' : 'block';
-  if (btn) btn.textContent = visible ? '+ Nueva cuenta' : '✕ Cancelar';
-  if (!visible) document.getElementById('ct-nombre')?.focus();
-}
-
-// ── Historial de transferencias ──
-function renderHistorialTransf() {
-  const el  = document.getElementById('ct-historial-transf');
-  const fil = document.getElementById('ct-transf-mes-fil');
-  if (!el) return;
-
-  const movs = DB.get('ct_movimientos', []);
-  const transfs = movs.filter(m => m.tipo === 'transferencia');
-
-  // Poblar filtro de meses
-  if (fil) {
-    const meses = [...new Set(transfs.map(m => new Date(m.ts).toISOString().slice(0,7)))].sort().reverse();
-    const current = fil.value;
-    fil.innerHTML = '<option value="">Todos</option>' +
-      meses.map(m => {
-        const [y, mo] = m.split('-');
-        const label = MESES[parseInt(mo)-1] + ' ' + y;
-        return `<option value="${m}" ${m===current?'selected':''}>${label}</option>`;
-      }).join('');
-  }
-
-  const mesFil = fil ? fil.value : '';
-  const filtered = mesFil
-    ? transfs.filter(m => new Date(m.ts).toISOString().slice(0,7) === mesFil)
-    : transfs.slice(0, 30);
-
-  if (!filtered.length) {
-    el.innerHTML = '<div style="color:var(--muted);font-size:.75rem;text-align:center;padding:10px 0">Sin transferencias</div>';
-    return;
-  }
-
-  el.innerHTML = filtered.map(m => {
-    const fecha = new Date(m.ts);
-    const fechaStr = fecha.getDate() + '/' + (fecha.getMonth()+1) + ' ' + String(fecha.getHours()).padStart(2,'0') + ':' + String(fecha.getMinutes()).padStart(2,'0');
-    const esEntrada = m.monto > 0;
-    const color = esEntrada ? 'var(--green)' : 'var(--muted2)';
-    const signo = esEntrada ? '→' : '←';
-    const montoFmt = m.moneda === 'USD'
-      ? 'U$S ' + Math.abs(m.monto).toFixed(2)
-      : fmtK(Math.abs(m.monto));
-    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
-      <div>
-        <div style="font-size:.78rem;font-weight:600">${signo} ${m.desc || m.cuenta}</div>
-        <div style="font-size:.63rem;color:var(--muted)">${m.cuenta} · ${fechaStr}</div>
-      </div>
-      <div style="font-family:var(--fh);font-weight:700;color:${color};font-size:.8rem">${montoFmt}</div>
-    </div>`;
-  }).join('');
-}
-
 function agregarCuenta() {
   const nombre = document.getElementById('ct-nombre').value.trim();
   const tipo   = document.getElementById('ct-tipo').value;
@@ -1864,7 +1791,6 @@ function agregarCuenta() {
   document.getElementById('ct-nombre').value = '';
   document.getElementById('ct-saldo-ini').value = '';
   showToast('✓ Cuenta "' + nombre + '" agregada');
-  toggleNuevaCuenta(); // cerrar form
 }
 
 // ── Render lista de cuentas ──
@@ -1940,6 +1866,65 @@ function eliminarCuenta(i) {
 }
 
 // ── Transferencia entre cuentas ──
+// ── Registrar movimiento en historial ──
+function registrarMovimiento(cuenta, tipo, monto, moneda, desc) {
+  const movs = DB.get('ct_movimientos', []);
+  movs.unshift({ ts: Date.now(), cuenta, tipo, monto, moneda, desc });
+  DB.set('ct_movimientos', movs.slice(0, 300));
+  renderHistorialTransf();
+}
+
+// ── Historial de transferencias con filtro por mes ──
+function renderHistorialTransf() {
+  const el  = document.getElementById('ct-historial-transf');
+  const fil = document.getElementById('ct-transf-mes-fil');
+  if (!el) return;
+
+  const movs    = DB.get('ct_movimientos', []);
+  const transfs = movs.filter(m => m.tipo === 'transferencia');
+
+  // Poblar selector de meses
+  if (fil) {
+    const meses = [...new Set(transfs.map(m => new Date(m.ts).toISOString().slice(0,7)))].sort().reverse();
+    const cur   = fil.value;
+    fil.innerHTML = '<option value="">Todos</option>' +
+      meses.map(m => {
+        const [y, mo] = m.split('-');
+        const lbl = (typeof MESES !== 'undefined' ? MESES[parseInt(mo)-1] : mo) + ' ' + y;
+        return `<option value="${m}"${m===cur?' selected':''}>${lbl}</option>`;
+      }).join('');
+    if (cur) fil.value = cur;
+  }
+
+  const mesFil   = fil ? fil.value : '';
+  const filtered = mesFil
+    ? transfs.filter(m => new Date(m.ts).toISOString().slice(0,7) === mesFil)
+    : transfs.slice(0, 40);
+
+  if (!filtered.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:.75rem;text-align:center;padding:10px 0">Sin transferencias registradas</div>';
+    return;
+  }
+
+  el.innerHTML = filtered.map(m => {
+    const d      = new Date(m.ts);
+    const fecha  = d.getDate() + '/' + (d.getMonth()+1) + ' ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+    const pos    = m.monto > 0;
+    const color  = pos ? 'var(--green)' : 'var(--muted2)';
+    const icono  = pos ? '→' : '←';
+    const mFmt   = m.moneda === 'USD'
+      ? 'U$S ' + Math.abs(m.monto).toFixed(2)
+      : (typeof fmtK === 'function' ? fmtK(Math.abs(m.monto)) : '$' + Math.abs(m.monto));
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:.78rem;font-weight:600">${icono} ${m.desc||m.cuenta}</div>
+        <div style="font-size:.63rem;color:var(--muted)">${m.cuenta} · ${fecha}</div>
+      </div>
+      <div style="font-family:var(--fh);font-weight:700;color:${color};font-size:.8rem;margin-left:8px">${mFmt}</div>
+    </div>`;
+  }).join('');
+}
+
 function hacerTransferencia() {
   const desde  = parseInt(document.getElementById('ct-desde').value);
   const hacia  = parseInt(document.getElementById('ct-hacia').value);
@@ -1962,29 +1947,33 @@ function hacerTransferencia() {
   if (ctHacia.moneda === moneda) ctHacia.saldo += monto;
 
   saveCuentas(cuentas);
+  registrarMovimiento(ctDesde.nombre, 'transferencia', -monto, moneda, '→ ' + ctHacia.nombre);
+  registrarMovimiento(ctHacia.nombre, 'transferencia',  monto, moneda, '← ' + ctDesde.nombre);
   document.getElementById('ct-transf-monto').value = '';
   showToast('✓ Transferencia: ' + ctDesde.nombre + ' → ' + ctHacia.nombre);
 }
 
 // ── Descontar de cuenta al cargar gasto ──
-function descontarDeCuenta(medioNombre, monto, moneda) {
+function descontarDeCuenta(medioNombre, monto, moneda, desc) {
   const cuentas = getCuentas();
   const ct = cuentas.find(c => c.nombre === medioNombre);
   if (!ct) return;
   if (ct.moneda === moneda) {
     ct.saldo -= monto;
     saveCuentas(cuentas);
+    registrarMovimiento(medioNombre, 'gasto', monto, moneda, desc || medioNombre);
   }
 }
 
 // ── Acreditar a cuenta al cargar ingreso ──
-function acreditarACuenta(medioNombre, monto, moneda) {
+function acreditarACuenta(medioNombre, monto, moneda, desc) {
   const cuentas = getCuentas();
   const ct = cuentas.find(c => c.nombre === medioNombre);
   if (!ct) return;
   if (ct.moneda === moneda) {
     ct.saldo += monto;
     saveCuentas(cuentas);
+    registrarMovimiento(medioNombre, 'ingreso', monto, moneda, desc || medioNombre);
   }
 }
 
