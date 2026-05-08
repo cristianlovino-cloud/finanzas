@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- 
-  CL-Finanzas v1.2.1
+  CL-Finanzas v1.2.2
   Cambios: Firebase local-first definitivo (no pisa localStorage)
   FBsave sin debounce, loadFromFirestore solo baja si local vacío
 -->
@@ -15,7 +15,7 @@
 <meta name="application-name" content="CL Finanzas">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-192.png">
-<title>CL · Finanzas v1.2.1</title>
+<title>CL · Finanzas v1.2.2</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <!-- Firebase SDK -->
 <script type="module">
@@ -83,7 +83,7 @@ window.refreshUI = function() {
   run(updateOverview); run(renderPlanSections); run(renderFlujo);
   run(renderRecentTxs); run(renderCuentas); run(updateMediosDePago);
   run(updateOverviewSaldos); run(updatePatrimonio);
-  if (typeof renderInvList==='function') renderInvList().catch(()=>{});
+  // renderInvList NO se llama en refreshUI — los precios se actualizan solos al navegar a Inversiones
   setTimeout(() => {
     try { buildAnualChart(); } catch(e) {}
     try { buildDonut(); } catch(e) {}
@@ -845,7 +845,7 @@ nav::-webkit-scrollbar{display:none}
     <div class="card">
       <div class="ct">ℹ️ Acerca de</div>
       <p style="font-size:.75rem;color:var(--muted2);line-height:1.7">
-        Dashboard financiero personal — CL Finanzas <span style="color:var(--muted);font-size:.7em">v1.2.1</span><br>
+        Dashboard financiero personal — CL Finanzas <span style="color:var(--muted);font-size:.7em">v1.2.2</span><br>
         Datos sincronizados en la nube con Firebase.<br>
         Form de gastos: <a href="https://forms.gle/cgxE8FDbhaZPkwjn9" target="_blank" style="color:var(--green)">forms.gle/cgxE8FDbhaZPkwjn9</a>
       </p>
@@ -2419,13 +2419,21 @@ async function renderInvList() {
   // Fetch live prices
   const cotiz = await fetchCotizaciones().catch(() => ({}));
 
-  // Update ARS values from live prices for auto-priced types
+  // Update ARS values from live prices — guardar en DB para que persistan
+  let updatedPrices = false;
   invs.forEach(inv => {
     const live = getArsFromCotiz(inv, cotiz);
     if (live > 0 && (inv.tipo === 'CEDEAR' || inv.tipo === 'Cripto' || inv.tipo === 'Stablecoin' || inv.tipo === 'Dólar')) {
-      inv.ars = live;
+      if (live !== inv.ars) {
+        inv.ars = live;
+        inv.precioTs = Date.now();
+        inv.precioFuente = 'auto';
+        updatedPrices = true;
+      }
     }
   });
+  // Persistir precios actualizados en localStorage (y Firebase via DB.set)
+  if (updatedPrices) DB.set('inversiones', invs);
 
   // Update TC from MEP if available
   if (cotiz.MEP) {
@@ -3003,6 +3011,20 @@ document.addEventListener('DOMContentLoaded', () => {
     buildAnualChart();
     buildDonut();
   }, 100));
+
+  // Re-check overview: Firebase puede tardar en bajar datos
+  [1000, 2000, 3500, 5000].forEach(delay => {
+    setTimeout(() => {
+      const el = document.getElementById('ov-ing');
+      if (el && (el.textContent === '$0' || el.textContent === '$0k' || el.textContent === '$o')) {
+        updateOverview();
+        updateOverviewSaldos();
+        renderCuentas();
+        renderRecentTxs();
+        try { buildAnualChart(); } catch(e) {}
+      }
+    }, delay);
+  });
 });
 </script>
 </body>
