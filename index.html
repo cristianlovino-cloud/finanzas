@@ -1263,12 +1263,22 @@ const INV_DEFAULT = [
 // ══════════════════════════════════════════════════════
 const P = { green:'#22d3a0',red:'#f43f5e',yellow:'#fbbf24',blue:'#38bdf8',purple:'#a78bfa',orange:'#fb923c' };
 const fmt  = n => n == null ? '—' : '$' + Math.abs(Math.round(n)).toLocaleString('es-AR');
-const fmtK = n => {
-  if (n == null) return '—';
+const fmtM = n => {
+  // Inversiones en pesos nominales — abreviar
+  if (n == null || isNaN(n)) return '—';
+  const sign = n < 0 ? '-' : '';
   const abs = Math.abs(Math.round(n));
-  if (abs >= 1000000) return (n < 0 ? '-' : '') + '$' + (abs/1000000).toFixed(1) + 'M';
-  if (abs >= 1000)    return (n < 0 ? '-' : '') + '$' + (abs/1000).toFixed(0) + 'k';
-  return (n < 0 ? '-' : '') + '$' + abs.toLocaleString('es-AR');
+  if (abs >= 1000000) return sign + '$' + (abs/1000000).toFixed(2) + 'M';
+  if (abs >= 1000)    return sign + '$' + Math.round(abs/1000) + 'k';
+  return sign + '$' + abs.toLocaleString('es-AR');
+};
+const fmtK = n => {
+  // Gastos/ingresos/saldos en miles de pesos — mostrar con separadores sin dividir
+  if (n == null || isNaN(n)) return '—';
+  const sign = n < 0 ? '-' : '';
+  const abs  = Math.abs(Math.round(n));
+  if (abs >= 1000) return sign + '$' + Math.round(abs/1000) + 'k';
+  return sign + '$' + abs.toLocaleString('es-AR');
 };
 const fmtp = p => (p > 0 ? '+' : '') + (p * 100).toFixed(1) + '%';
 let TC = parseInt(DB.get('tc','1250')) || 1250;
@@ -2010,7 +2020,7 @@ function updateOverview() {
   // Patrimonio
   const invs = DB.get('inversiones', INV_DEFAULT);
   const totalPat = invs.reduce((s, i) => s + (i.ars||0), 0);
-  document.getElementById('ov-pat').textContent = fmtK(totalPat);
+  document.getElementById('ov-pat').textContent = fmtM(totalPat);
 
   // Alerts — based on current month only
   const alerts = [];
