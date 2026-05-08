@@ -56,82 +56,71 @@ function setSyncStatus(state) {
   el.title = s.title;
 }
 
-// ── Guardar en Firestore (debounced 1.5s) ──
+// ── REGLA DE ORO: localStorage es la fuente de verdad ──
+// Firebase SOLO sube datos. NUNCA baja durante sesión activa.
+// Solo baja si localStorage está vacío (dispositivo nuevo).
+
+// ── FBsave: inmediato, sin debounce ──
 window.FBsave = function(key, value) {
-  if (!_uid) return; // sin sesión, solo guarda en localStorage
-  clearTimeout(_syncTimeout);
+  if (!_uid) return;
   setSyncStatus('syncing');
-  _syncTimeout = setTimeout(async () => {
-    try {
-      await setDoc(doc(db, 'users', _uid, 'data', key), { value: JSON.stringify(value) });
-      setSyncStatus('ok');
-    } catch(e) {
-      console.error('Firebase save error:', e);
-      setSyncStatus('error');
-    }
-  }, 1500);
+  setDoc(doc(db, 'users', _uid, 'data', key), { value: JSON.stringify(value) })
+    .then(() => setSyncStatus('ok'))
+    .catch(e => { console.error('FBsave:', e); setSyncStatus('error'); });
 };
 
-// ── Flag para evitar loop de carga ──
+// ── Flag: una sola carga por sesión ──
 let _alreadyLoaded = false;
 
-// ── Refrescar toda la UI sin recargar la página ──
-function refreshUI() {
-  try {
-    if (typeof updateOverview    === 'function') updateOverview();
-    if (typeof renderPlanSections=== 'function') renderPlanSections();
-    if (typeof renderFlujo       === 'function') renderFlujo();
-    if (typeof renderRecentTxs   === 'function') renderRecentTxs();
-    if (typeof renderInvList     === 'function') renderInvList();
-    if (typeof updatePatrimonio   === 'function') updatePatrimonio();
-    if (typeof renderCuentas       === 'function') renderCuentas();
-    if (typeof updateMediosDePago  === 'function') updateMediosDePago();
-    if (typeof updateOverviewSaldos=== 'function') updateOverviewSaldos();
-    // Charts al final
-    setTimeout(() => {
-      if (typeof buildEvolChart  === 'function') buildEvolChart('2026');
-      if (typeof buildAnualChart === 'function') buildAnualChart();
-      if (typeof buildDonut      === 'function') buildDonut();
-    }, 150);
-  } catch(e) { console.error('refreshUI error:', e); }
-}
+// ── refreshUI expuesta globalmente ──
+window.refreshUI = function() {
+  const run = (fn) => { try { if (typeof fn==='function') fn(); } catch(e) {} };
+  run(updateOverview); run(renderPlanSections); run(renderFlujo);
+  run(renderRecentTxs); run(renderCuentas); run(updateMediosDePago);
+  run(updateOverviewSaldos); run(updatePatrimonio);
+  if (typeof renderInvList==='function') renderInvList().catch(()=>{});
+  setTimeout(() => {
+    try { buildAnualChart(); } catch(e) {}
+    try { buildDonut(); } catch(e) {}
+  }, 200);
+};
 
-// ── Cargar datos desde Firestore → localStorage → UI ──
+// ── loadFromFirestore: local primero, nube como backup ──
 async function loadFromFirestore(uid) {
-  if (_alreadyLoaded) return; // evitar loop
+  if (_alreadyLoaded) return;
   _alreadyLoaded = true;
   setSyncStatus('syncing');
 
   const keys = ['txs', 'plans', 'inversiones', 'tc', 'cuentas', 'ct_movimientos'];
-  let cloudHasData = false;
-  let uploadCount  = 0;
+  let restoredFromCloud = false;
 
   for (const key of keys) {
     try {
-      const snap = await getDoc(doc(db, 'users', uid, 'data', key));
-      if (snap.exists()) {
-        cloudHasData = true;
-        // Escribir en localStorage sin disparar FBsave
-        localStorage.setItem(key, JSON.stringify(JSON.parse(snap.data().value)));
-      } else {
-        // Nube vacía para esta key → subir desde local
-        const local = localStorage.getItem(key);
-        if (local && local !== '{}' && local !== '[]' && local !== 'null') {
-          await setDoc(doc(db, 'users', uid, 'data', key), { value: local });
-          uploadCount++;
+      const local      = localStorage.getItem(key);
+      const localEmpty = !local || local === '{}' || local === '[]' || local === 'null';
+
+      if (localEmpty) {
+        // Sin datos locales → bajar de la nube
+        const snap = await getDoc(doc(db, 'users', uid, 'data', key));
+        if (snap.exists()) {
+          localStorage.setItem(key, JSON.stringify(JSON.parse(snap.data().value)));
+          restoredFromCloud = true;
         }
+      } else {
+        // Hay datos locales → subirlos a la nube como backup (NO tocar local)
+        setDoc(doc(db, 'users', uid, 'data', key), { value: local })
+          .catch(e => console.error('backup error', key, e));
       }
-    } catch(e) { console.error('Firestore error:', key, e); }
+    } catch(e) { console.error('Firestore sync error:', key, e); }
   }
 
   setSyncStatus('ok');
 
-  if (cloudHasData) {
-    // Refrescar UI con datos de la nube — SIN reload
-    refreshUI();
-    if (typeof showToast === 'function') showToast('☁ Datos sincronizados');
-  } else if (uploadCount > 0) {
-    if (typeof showToast === 'function') showToast('✓ Datos subidos a la nube');
+  if (restoredFromCloud) {
+    if (typeof window.refreshUI === 'function') window.refreshUI();
+    if (typeof showToast === 'function') showToast('☁ Datos restaurados de la nube');
+  } else {
+    if (typeof showToast === 'function') showToast('☁ Conectado');
   }
 }
 
@@ -143,8 +132,8 @@ onAuthStateChanged(auth, async (user) => {
     _uid = user.uid;
     if (btn)    { btn.textContent = 'Cerrar sesión'; btn.onclick = () => { signOut(auth); _alreadyLoaded = false; }; }
     if (userEl)   userEl.textContent = user.displayName || user.email;
-    setSyncStatus('syncing');
-    await loadFromFirestore(user.uid);
+    if (!_alreadyLoaded) await loadFromFirestore(user.uid);
+    else setSyncStatus('ok');
   } else {
     _uid = null;
     _alreadyLoaded = false;
