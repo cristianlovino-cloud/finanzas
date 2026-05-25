@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <!-- 
-  CL-Finanzas v1.2.2
-  Cambios: Firebase local-first definitivo (no pisa localStorage)
-  FBsave sin debounce, loadFromFirestore solo baja si local vacío
+  CL-Finanzas v1.3.0
+  Cambios: Cuentas mejorado — reconciliar saldo (⟳), historial completo con débitos rojo/créditos verde,
+  filtro por tipo de movimiento, tipografía más grande en mayúsculas, ajuste con feedback de nuevo saldo.
 -->
 <html lang="es">
 <head>
@@ -15,7 +15,7 @@
 <meta name="application-name" content="CL Finanzas">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-192.png">
-<title>CL · Finanzas v1.2.2</title>
+<title>CL · Finanzas v1.3.0</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <!-- Firebase SDK -->
 <script type="module">
@@ -728,14 +728,22 @@ nav::-webkit-scrollbar{display:none}
 
     <!-- Historial -->
     <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <div style="font-size:.7rem;font-weight:600;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em">Historial</div>
-        <select id="ct-transf-mes-fil" class="fi" style="width:auto;padding:4px 8px;font-size:.68rem" onchange="renderHistorialTransf()">
-          <option value="">Todos los meses</option>
-        </select>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:6px">
+        <div style="font-family:var(--fh);font-size:.72rem;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.08em">Historial de movimientos</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <select id="ct-tipo-fil" class="fi" style="width:auto;padding:4px 8px;font-size:.68rem" onchange="renderHistorialTransf()">
+            <option value="">Todos</option>
+            <option value="transferencia">Transferencias</option>
+            <option value="gasto">Gastos</option>
+            <option value="ingreso">Ingresos</option>
+          </select>
+          <select id="ct-transf-mes-fil" class="fi" style="width:auto;padding:4px 8px;font-size:.68rem" onchange="renderHistorialTransf()">
+            <option value="">Todos los meses</option>
+          </select>
+        </div>
       </div>
       <div id="ct-historial-transf">
-        <div style="color:var(--muted);font-size:.75rem;text-align:center;padding:10px 0">Sin transferencias</div>
+        <div style="color:var(--muted);font-size:.75rem;text-align:center;padding:10px 0">Sin movimientos</div>
       </div>
     </div>
   </div>
@@ -1808,23 +1816,25 @@ function renderCuentas() {
         ? 'U$S ' + fmt(ct.saldo).replace('$','')
         : fmt(ct.saldo);
       const saldoColor = ct.saldo >= 0 ? 'var(--green)' : 'var(--red)';
+      const tipoLabel = ct.tipo === 'banco' ? 'BANCO' : ct.tipo === 'billetera' ? 'BILLETERA' : 'EFECTIVO';
       return `
-      <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
-        <div style="width:6px;height:36px;border-radius:3px;background:${color};flex-shrink:0"></div>
+      <div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid var(--border)">
+        <div style="width:5px;height:42px;border-radius:3px;background:${color};flex-shrink:0"></div>
         <div style="flex:1;min-width:0">
-          <div style="font-weight:600;font-size:.82rem">${ct.nombre}</div>
-          <div style="font-size:.68rem;color:var(--muted)">${ct.tipo} · ${ct.moneda}</div>
+          <div style="font-family:var(--fh);font-weight:700;font-size:.92rem;letter-spacing:.01em;text-transform:uppercase">${ct.nombre}</div>
+          <div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:2px">${tipoLabel} · ${ct.moneda}</div>
         </div>
-        <div style="text-align:right">
-          <div style="font-family:var(--fh);font-weight:700;color:${saldoColor}">${saldoFmt}</div>
-          <div style="font-size:.65rem;color:var(--muted)">
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-family:var(--fh);font-weight:700;font-size:1.05rem;color:${saldoColor}">${saldoFmt}</div>
+          <div style="display:flex;align-items:center;gap:4px;margin-top:4px;justify-content:flex-end">
             <input type="number" placeholder="ajuste" step="0.01"
-              style="width:80px;background:var(--s2);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:2px 5px;font-size:.65rem"
+              style="width:80px;background:var(--s2);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:3px 6px;font-size:.7rem;font-family:var(--fm)"
               id="ajuste-${i}">
-            <button onclick="ajustarSaldo(${i})" style="background:none;border:none;color:var(--green);cursor:pointer;font-size:.7rem;padding:2px 4px">✓</button>
+            <button onclick="ajustarSaldo(${i})" style="background:rgba(34,211,160,.12);border:1px solid rgba(34,211,160,.25);color:var(--green);cursor:pointer;font-size:.72rem;padding:3px 7px;border-radius:4px;font-weight:700" title="Aplicar ajuste">✓</button>
+            <button onclick="reconciliarSaldo(${i})" style="background:rgba(56,189,248,.1);border:1px solid rgba(56,189,248,.25);color:var(--blue);cursor:pointer;font-size:.7rem;padding:3px 7px;border-radius:4px;font-weight:700" title="Setear saldo real (reconciliar)">⟳</button>
           </div>
         </div>
-        <button onclick="eliminarCuenta(${i})" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1rem;padding:4px">✕</button>
+        <button onclick="eliminarCuenta(${i})" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1rem;padding:4px;flex-shrink:0" title="Eliminar cuenta">✕</button>
       </div>`;
     }).join('');
   }
@@ -1853,7 +1863,31 @@ function ajustarSaldo(i) {
   const cuentas = getCuentas();
   cuentas[i].saldo += ajuste;
   saveCuentas(cuentas);
-  showToast('✓ Saldo ajustado: ' + (ajuste >= 0 ? '+' : '') + fmt(ajuste));
+  document.getElementById('ajuste-'+i).value = '';
+  const signo = ajuste >= 0 ? '+' : '';
+  showToast('✓ Ajuste ' + cuentas[i].nombre + ': ' + signo + fmt(ajuste) + ' → nuevo saldo: ' + fmt(cuentas[i].saldo));
+}
+
+// ── Reconciliar saldo (setear saldo real) ──
+function reconciliarSaldo(i) {
+  const cuentas = getCuentas();
+  const ct = cuentas[i];
+  const moneda = ct.moneda === 'USD' ? 'U$S' : '$';
+  const saldoActual = ct.moneda === 'USD'
+    ? 'U$S ' + ct.saldo.toFixed(2)
+    : fmt(ct.saldo);
+  const nuevo = prompt(
+    `RECONCILIAR "${ct.nombre.toUpperCase()}"\n\nSaldo guardado: ${saldoActual}\n\nIngresá el saldo REAL actual (${moneda}):`,
+    ct.saldo
+  );
+  if (nuevo === null) return;
+  const nuevoNum = parseFloat(String(nuevo).replace(',','.'));
+  if (isNaN(nuevoNum)) { showToast('Valor inválido', 'var(--red)'); return; }
+  const diff = nuevoNum - ct.saldo;
+  ct.saldo = nuevoNum;
+  saveCuentas(cuentas);
+  const signo = diff >= 0 ? '+' : '';
+  showToast(`✓ ${ct.nombre} reconciliado. Diferencia: ${signo}${fmt(diff)}`);
 }
 
 // ── Eliminar cuenta ──
@@ -1884,17 +1918,19 @@ function registrarMovimiento(cuenta, tipo, monto, moneda, desc) {
   renderHistorialTransf();
 }
 
-// ── Historial de transferencias ──
+// ── Historial de movimientos de cuentas ──
 function renderHistorialTransf() {
   const el  = document.getElementById('ct-historial-transf');
   const fil = document.getElementById('ct-transf-mes-fil');
+  const tipFil = document.getElementById('ct-tipo-fil');
   if (!el) return;
 
-  const movs    = DB.get('ct_movimientos', []);
-  const transfs = movs.filter(m => m.tipo === 'transferencia');
+  const movs = DB.get('ct_movimientos', []);
+  // Todos los movimientos (transf + gastos + ingresos)
+  const todos = movs;
 
   if (fil) {
-    const meses = [...new Set(transfs.map(m => new Date(m.ts).toISOString().slice(0,7)))].sort().reverse();
+    const meses = [...new Set(todos.map(m => new Date(m.ts).toISOString().slice(0,7)))].sort().reverse();
     const cur = fil.value;
     fil.innerHTML = '<option value="">Todos los meses</option>' +
       meses.map(m => {
@@ -1905,31 +1941,57 @@ function renderHistorialTransf() {
     if (cur) fil.value = cur;
   }
 
-  const mesFil   = fil ? fil.value : '';
-  const filtered = mesFil
-    ? transfs.filter(m => new Date(m.ts).toISOString().slice(0,7) === mesFil)
-    : transfs.slice(0, 40);
+  const mesFil  = fil ? fil.value : '';
+  const tipoFil = tipFil ? tipFil.value : '';
+  let filtered  = mesFil
+    ? todos.filter(m => new Date(m.ts).toISOString().slice(0,7) === mesFil)
+    : todos.slice(0, 60);
+  if (tipoFil) filtered = filtered.filter(m => m.tipo === tipoFil);
 
   if (!filtered.length) {
-    el.innerHTML = '<div style="color:var(--muted);font-size:.75rem;text-align:center;padding:10px 0">Sin transferencias registradas</div>';
+    el.innerHTML = '<div style="color:var(--muted);font-size:.75rem;text-align:center;padding:10px 0">Sin movimientos registrados</div>';
+    return;
+  }
     return;
   }
 
   el.innerHTML = filtered.map(m => {
     const d     = new Date(m.ts);
-    const fecha = d.getDate() + '/' + (d.getMonth()+1) + ' ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
-    const pos   = m.monto > 0;
-    const color = pos ? 'var(--green)' : 'var(--muted2)';
-    const icono = pos ? '→' : '←';
+    const dia   = d.getDate() + '/' + (d.getMonth()+1);
+    const hora  = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+    // monto > 0 = entrada (crédito), monto < 0 o tipo=gasto = salida (débito)
+    const esEntrada = m.monto > 0;
+    const color     = esEntrada ? 'var(--green)' : 'var(--red)';
+
+    // Badge según tipo de movimiento
+    let badge;
+    if (m.tipo === 'transferencia') {
+      badge = esEntrada
+        ? `<span style="font-size:.6rem;font-weight:700;color:var(--green);background:rgba(34,211,160,.12);border:1px solid rgba(34,211,160,.2);padding:1px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.04em">↓ TRANSFER ENTRA</span>`
+        : `<span style="font-size:.6rem;font-weight:700;color:var(--red);background:rgba(244,63,94,.1);border:1px solid rgba(244,63,94,.2);padding:1px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.04em">↑ TRANSFER SALE</span>`;
+    } else if (m.tipo === 'gasto') {
+      badge = `<span style="font-size:.6rem;font-weight:700;color:var(--red);background:rgba(244,63,94,.1);border:1px solid rgba(244,63,94,.2);padding:1px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.04em">↑ GASTO</span>`;
+    } else if (m.tipo === 'ingreso') {
+      badge = `<span style="font-size:.6rem;font-weight:700;color:var(--green);background:rgba(34,211,160,.12);border:1px solid rgba(34,211,160,.2);padding:1px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.04em">↓ INGRESO</span>`;
+    } else {
+      badge = `<span style="font-size:.6rem;font-weight:700;color:var(--muted2);background:var(--s3);border:1px solid var(--border);padding:1px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.04em">${m.tipo||'MOV'}</span>`;
+    }
+
+    const signo = esEntrada ? '+' : '−';
     const mFmt  = m.moneda === 'USD'
-      ? 'U$S ' + Math.abs(m.monto).toFixed(2)
-      : (typeof fmtK==='function' ? fmtK(Math.abs(m.monto)) : '$'+Math.abs(m.monto));
-    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
+      ? signo + ' U$S ' + Math.abs(m.monto).toFixed(2)
+      : signo + ' ' + (typeof fmtK==='function' ? fmtK(Math.abs(m.monto)) : '$'+Math.abs(m.monto));
+    const desc = m.desc || m.cuenta;
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);gap:10px">
       <div style="flex:1;min-width:0">
-        <div style="font-size:.78rem;font-weight:600">${icono} ${m.desc||m.cuenta}</div>
-        <div style="font-size:.63rem;color:var(--muted)">${m.cuenta} · ${fecha}</div>
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;flex-wrap:wrap">
+          ${badge}
+          <span style="font-family:var(--fh);font-size:.82rem;font-weight:700;text-transform:uppercase;letter-spacing:.01em">${m.cuenta}</span>
+        </div>
+        <div style="font-size:.68rem;color:var(--muted2)">${desc}</div>
+        <div style="font-size:.62rem;color:var(--muted);margin-top:1px">${dia} · ${hora}</div>
       </div>
-      <div style="font-family:var(--fh);font-weight:700;color:${color};font-size:.8rem;margin-left:8px">${mFmt}</div>
+      <div style="font-family:var(--fh);font-weight:700;color:${color};font-size:.95rem;flex-shrink:0;text-align:right">${mFmt}</div>
     </div>`;
   }).join('');
 }
