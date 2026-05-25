@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <!-- 
   CL-Finanzas v1.3.0
-  Cambios: Cuentas mejorado — reconciliar saldo (⟳), historial completo con débitos rojo/créditos verde,
-  filtro por tipo de movimiento, tipografía más grande en mayúsculas, ajuste con feedback de nuevo saldo.
+  Cambios: Fix mesKeys hoisting (ReferenceError), cuentas mejorado — reconciliar saldo (⟳),
+  historial completo con débitos rojo/créditos verde, filtro por tipo, tipografía uppercase.
 -->
 <html lang="es">
 <head>
@@ -1882,7 +1882,7 @@ function reconciliarSaldo(i) {
   );
   if (nuevo === null) return;
   const nuevoNum = parseFloat(String(nuevo).replace(',','.'));
-  if (isNaN(nuevoNum)) { showToast('Valor inválido', 'var(--red)'); return; }
+  if (isNaN(nuevoNum)) { showToast('Valor inválido'); return; }
   const diff = nuevoNum - ct.saldo;
   ct.saldo = nuevoNum;
   saveCuentas(cuentas);
@@ -1920,17 +1920,15 @@ function registrarMovimiento(cuenta, tipo, monto, moneda, desc) {
 
 // ── Historial de movimientos de cuentas ──
 function renderHistorialTransf() {
-  const el  = document.getElementById('ct-historial-transf');
-  const fil = document.getElementById('ct-transf-mes-fil');
+  const el     = document.getElementById('ct-historial-transf');
+  const fil    = document.getElementById('ct-transf-mes-fil');
   const tipFil = document.getElementById('ct-tipo-fil');
   if (!el) return;
 
   const movs = DB.get('ct_movimientos', []);
-  // Todos los movimientos (transf + gastos + ingresos)
-  const todos = movs;
 
   if (fil) {
-    const meses = [...new Set(todos.map(m => new Date(m.ts).toISOString().slice(0,7)))].sort().reverse();
+    const meses = [...new Set(movs.map(m => new Date(m.ts).toISOString().slice(0,7)))].sort().reverse();
     const cur = fil.value;
     fil.innerHTML = '<option value="">Todos los meses</option>' +
       meses.map(m => {
@@ -1944,37 +1942,33 @@ function renderHistorialTransf() {
   const mesFil  = fil ? fil.value : '';
   const tipoFil = tipFil ? tipFil.value : '';
   let filtered  = mesFil
-    ? todos.filter(m => new Date(m.ts).toISOString().slice(0,7) === mesFil)
-    : todos.slice(0, 60);
+    ? movs.filter(m => new Date(m.ts).toISOString().slice(0,7) === mesFil)
+    : movs.slice(0, 60);
   if (tipoFil) filtered = filtered.filter(m => m.tipo === tipoFil);
 
   if (!filtered.length) {
     el.innerHTML = '<div style="color:var(--muted);font-size:.75rem;text-align:center;padding:10px 0">Sin movimientos registrados</div>';
     return;
   }
-    return;
-  }
 
   el.innerHTML = filtered.map(m => {
-    const d     = new Date(m.ts);
-    const dia   = d.getDate() + '/' + (d.getMonth()+1);
-    const hora  = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
-    // monto > 0 = entrada (crédito), monto < 0 o tipo=gasto = salida (débito)
+    const d    = new Date(m.ts);
+    const dia  = d.getDate() + '/' + (d.getMonth()+1);
+    const hora = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
     const esEntrada = m.monto > 0;
     const color     = esEntrada ? 'var(--green)' : 'var(--red)';
 
-    // Badge según tipo de movimiento
     let badge;
     if (m.tipo === 'transferencia') {
       badge = esEntrada
-        ? `<span style="font-size:.6rem;font-weight:700;color:var(--green);background:rgba(34,211,160,.12);border:1px solid rgba(34,211,160,.2);padding:1px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.04em">↓ TRANSFER ENTRA</span>`
-        : `<span style="font-size:.6rem;font-weight:700;color:var(--red);background:rgba(244,63,94,.1);border:1px solid rgba(244,63,94,.2);padding:1px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.04em">↑ TRANSFER SALE</span>`;
+        ? `<span style="font-size:.6rem;font-weight:700;color:var(--green);background:rgba(34,211,160,.12);border:1px solid rgba(34,211,160,.2);padding:1px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.04em">↓ ENTRA</span>`
+        : `<span style="font-size:.6rem;font-weight:700;color:var(--red);background:rgba(244,63,94,.1);border:1px solid rgba(244,63,94,.2);padding:1px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.04em">↑ SALE</span>`;
     } else if (m.tipo === 'gasto') {
       badge = `<span style="font-size:.6rem;font-weight:700;color:var(--red);background:rgba(244,63,94,.1);border:1px solid rgba(244,63,94,.2);padding:1px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.04em">↑ GASTO</span>`;
     } else if (m.tipo === 'ingreso') {
       badge = `<span style="font-size:.6rem;font-weight:700;color:var(--green);background:rgba(34,211,160,.12);border:1px solid rgba(34,211,160,.2);padding:1px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.04em">↓ INGRESO</span>`;
     } else {
-      badge = `<span style="font-size:.6rem;font-weight:700;color:var(--muted2);background:var(--s3);border:1px solid var(--border);padding:1px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.04em">${m.tipo||'MOV'}</span>`;
+      badge = `<span style="font-size:.6rem;font-weight:700;color:var(--muted2);background:var(--s3);border:1px solid var(--border);padding:1px 6px;border-radius:3px;text-transform:uppercase">${m.tipo||'MOV'}</span>`;
     }
 
     const signo = esEntrada ? '+' : '−';
@@ -1982,6 +1976,7 @@ function renderHistorialTransf() {
       ? signo + ' U$S ' + Math.abs(m.monto).toFixed(2)
       : signo + ' ' + (typeof fmtK==='function' ? fmtK(Math.abs(m.monto)) : '$'+Math.abs(m.monto));
     const desc = m.desc || m.cuenta;
+
     return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);gap:10px">
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;flex-wrap:wrap">
@@ -2712,7 +2707,11 @@ function updatePatrimonio() {
     ${i.label}: ${fmt(i.val)} (${(i.val/total*100).toFixed(0)}%)
   </div>`).join('');
 
-  // Charts
+  // Charts — mesKeys declarado ANTES del primer uso
+  const now2 = new Date();
+  const curIdx = now2.getFullYear() === 2026 ? now2.getMonth() : 3;
+  const mesKeys = Array.from({length: curIdx+1}, (_,i) => '2026-'+String(i+1).padStart(2,'0'));
+
   new Chart(document.getElementById('c-pat').getContext('2d'), {
     type:'line',
     data:{labels:mesKeys.map(k=>MESES[parseInt(k.split('-')[1])-1]),datasets:[{label:'Patrimonio',data:mesKeys.map((_,i)=>[215000,238000,259760,total][i]||total),borderColor:P.purple,backgroundColor:'rgba(167,139,250,.08)',fill:true,tension:.4,borderWidth:2.5}]},
@@ -2721,9 +2720,6 @@ function updatePatrimonio() {
   });
 
   // Ahorro mensual
-  const now2 = new Date();
-  const curIdx = now2.getFullYear() === 2026 ? now2.getMonth() : 3;
-  const mesKeys = Array.from({length: curIdx+1}, (_,i) => '2026-'+String(i+1).padStart(2,'0'));
   const ahorros = mesKeys.map(mes => {
     const plan = getPlan(mes);
     const pt   = planTotals(plan);
