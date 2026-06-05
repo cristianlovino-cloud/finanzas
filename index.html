@@ -799,115 +799,106 @@ nav::-webkit-scrollbar{display:none}
   </div>
 </div>
 
-<!-- ════════════ MODAL ROTAR CEDEAR ════════════ -->
-<div id="rotar-overlay" style="display:none;position:fixed;inset:0;background:rgba(8,10,15,.85);backdrop-filter:blur(8px);z-index:500;overflow-y:auto;padding:20px 0" onclick="if(event.target===this)closeRotarModal()">
-  <div style="max-width:480px;margin:0 auto;padding:0 16px">
+<!-- ════════════ MODAL OPERACIONES CEDEAR ════════════ -->
+<div id="rotar-overlay" style="display:none;position:fixed;inset:0;background:rgba(8,10,15,.88);backdrop-filter:blur(8px);z-index:500;overflow-y:auto;padding:16px 0" onclick="if(event.target===this)closeRotarModal()">
+  <div style="max-width:520px;margin:0 auto;padding:0 14px">
     <div style="background:var(--s1);border:1px solid var(--border2);border-radius:14px;overflow:hidden">
 
       <!-- Header -->
-      <div style="background:var(--s2);border-bottom:1px solid var(--border);padding:16px 20px;display:flex;align-items:center;justify-content:space-between">
+      <div style="background:var(--s2);border-bottom:1px solid var(--border);padding:14px 18px;display:flex;align-items:center;justify-content:space-between">
         <div>
-          <div style="font-family:var(--fh);font-weight:700;font-size:.95rem;color:var(--yellow)">↔ Rotar posición</div>
-          <div style="font-size:.65rem;color:var(--muted);margin-top:2px">Venta y compra de CEDEARs</div>
+          <div style="font-family:var(--fh);font-weight:700;font-size:.95rem;color:var(--yellow)">📋 Registrar operaciones</div>
+          <div style="font-size:.63rem;color:var(--muted);margin-top:2px">Compras y ventas del día — podés agregar varias</div>
         </div>
         <button onclick="closeRotarModal()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.1rem;padding:4px 8px">✕</button>
       </div>
 
-      <!-- Steps tabs -->
-      <div style="display:flex;border-bottom:1px solid var(--border)">
-        <button id="rotar-tab-venta" onclick="rotarSetStep('venta')" style="flex:1;padding:11px;background:none;border:none;font-family:var(--fm);font-size:.72rem;cursor:pointer;border-bottom:2px solid var(--red);color:var(--red);font-weight:600">① VENTA</button>
-        <button id="rotar-tab-compra" onclick="rotarSetStep('compra')" style="flex:1;padding:11px;background:none;border:none;font-family:var(--fm);font-size:.72rem;cursor:pointer;border-bottom:2px solid transparent;color:var(--muted)">② COMPRA</button>
-        <button id="rotar-tab-confirmar" onclick="rotarSetStep('confirmar')" style="flex:1;padding:11px;background:none;border:none;font-family:var(--fm);font-size:.72rem;cursor:pointer;border-bottom:2px solid transparent;color:var(--muted)">③ CONFIRMAR</button>
-      </div>
+      <!-- Formulario nueva operación -->
+      <div style="padding:16px 18px;border-bottom:1px solid var(--border)">
+        <div style="font-size:.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Nueva operación</div>
 
-      <!-- Paso VENTA -->
-      <div id="rotar-step-venta" style="padding:20px">
-        <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:14px">¿Qué CEDEAR vendés?</div>
-
-        <div class="field">
-          <label>CEDEAR vendido</label>
-          <select id="rt-venta-cedear" class="fi" onchange="rotarUpdateVentaPreview()">
-            <option value="">— seleccioná —</option>
-          </select>
-        </div>
-
-        <div style="background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:14px;font-size:.72rem;color:var(--muted2)" id="rt-venta-info">
-          Seleccioná un activo para ver tu posición actual.
-        </div>
-
-        <div class="r2" style="margin-bottom:12px">
-          <div class="field" style="margin-bottom:0">
-            <label>Total vendido ARS $</label>
-            <input type="number" id="rt-venta-monto" class="fi" placeholder="ej: 950000" style="color:var(--red);font-weight:600;text-align:right" oninput="rotarUpdateVentaPreview()">
+        <!-- Fila 1: Tipo + Ticker -->
+        <div style="display:grid;grid-template-columns:100px 1fr;gap:8px;margin-bottom:8px">
+          <div>
+            <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">TIPO</div>
+            <select id="op-tipo" class="fi" style="font-size:.75rem;padding:8px 6px" onchange="opTipoChange()">
+              <option value="compra">Compra</option>
+              <option value="venta">Venta</option>
+            </select>
           </div>
-          <div class="field" style="margin-bottom:0">
-            <label>Cotización de venta $</label>
-            <input type="number" id="rt-venta-cotiz" class="fi" placeholder="ej: 5200" style="text-align:right" oninput="rotarUpdateVentaPreview()">
+          <div>
+            <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">TICKER / CEDEAR</div>
+            <select id="op-ticker-sel" class="fi" style="font-size:.75rem;padding:8px 6px" onchange="opTickerChange()">
+              <option value="">— seleccioná —</option>
+            </select>
           </div>
         </div>
 
-        <div id="rt-venta-resultado" style="display:none;border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:.75rem"></div>
-
-        <div style="display:flex;gap:8px">
-          <label style="display:flex;align-items:center;gap:6px;font-size:.72rem;color:var(--muted2);cursor:pointer">
-            <input type="checkbox" id="rt-venta-total" onchange="rotarVentaTotal()" style="accent-color:var(--red)"> Venta total (eliminar posición)
-          </label>
-        </div>
-
-        <button class="btn btn-full" onclick="rotarGoCompra()" style="margin-top:16px;background:var(--red);color:white">Siguiente → Compra</button>
-      </div>
-
-      <!-- Paso COMPRA -->
-      <div id="rotar-step-compra" style="padding:20px;display:none">
-        <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:14px">¿Qué CEDEAR comprás?</div>
-
-        <div class="field">
-          <label>CEDEAR comprado</label>
-          <select id="rt-compra-cedear" class="fi" onchange="rotarUpdateCompraPreview()">
-            <option value="">— seleccioná —</option>
-          </select>
-        </div>
-
-        <div id="rt-compra-nuevo-wrap" style="display:none">
-          <div class="r2" style="margin-bottom:12px">
-            <div class="field" style="margin-bottom:0">
-              <label>Ticker (nuevo)</label>
-              <input type="text" id="rt-compra-nuevo-ticker" class="fi" placeholder="ej: MSFT" style="text-transform:uppercase">
+        <!-- Ticker nuevo (solo si elige "nuevo") -->
+        <div id="op-nuevo-wrap" style="display:none;margin-bottom:8px">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div>
+              <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">TICKER (nuevo)</div>
+              <input type="text" id="op-nuevo-ticker" class="fi" placeholder="ej: MSFT" style="font-size:.75rem;text-transform:uppercase">
             </div>
-            <div class="field" style="margin-bottom:0">
-              <label>Nota / nombre</label>
-              <input type="text" id="rt-compra-nuevo-nota" class="fi" placeholder="ej: Microsoft Corp">
+            <div>
+              <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">DESCRIPCIÓN</div>
+              <input type="text" id="op-nuevo-desc" class="fi" placeholder="ej: Microsoft Corp" style="font-size:.75rem">
             </div>
           </div>
         </div>
 
-        <div class="r2" style="margin-bottom:12px">
-          <div class="field" style="margin-bottom:0">
-            <label>Total comprado ARS $</label>
-            <input type="number" id="rt-compra-monto" class="fi" placeholder="ej: 930000" style="color:var(--green);font-weight:600;text-align:right" oninput="rotarUpdateCompraPreview()">
+        <!-- Fila 2: Nominales + Precio + Fecha -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 120px;gap:8px;margin-bottom:10px">
+          <div>
+            <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">NOMINALES</div>
+            <input type="number" id="op-cant" class="fi" placeholder="ej: 68" style="font-size:.82rem;text-align:right" oninput="opCalcMonto()">
           </div>
-          <div class="field" style="margin-bottom:0">
-            <label>Cotización de compra $</label>
-            <input type="number" id="rt-compra-cotiz" class="fi" placeholder="ej: 4100" style="text-align:right" oninput="rotarUpdateCompraPreview()">
+          <div>
+            <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">PRECIO UNIT. $</div>
+            <input type="number" id="op-precio" class="fi" placeholder="ej: 6430" style="font-size:.82rem;text-align:right" oninput="opCalcMonto()">
+          </div>
+          <div>
+            <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">FECHA</div>
+            <input type="date" id="op-fecha" class="fi" style="font-size:.72rem;padding:8px 6px">
           </div>
         </div>
 
-        <div id="rt-compra-resultado" style="display:none;border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:.75rem"></div>
+        <!-- Preview monto calculado -->
+        <div id="op-preview" style="display:none;background:var(--s2);border:1px solid var(--border);border-radius:7px;padding:10px 14px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:.65rem;color:var(--muted)">MONTO NETO</span>
+          <span id="op-preview-monto" style="font-family:var(--fh);font-size:1rem;font-weight:700"></span>
+        </div>
 
-        <div style="display:flex;gap:8px;justify-content:space-between">
-          <button class="btn btn-o" onclick="rotarSetStep('venta')" style="padding:9px 16px;font-size:.72rem">← Volver</button>
-          <button class="btn" onclick="rotarGoConfirmar()" style="background:var(--green);color:var(--bg);padding:9px 20px;font-size:.72rem;font-weight:700">Revisar rotación →</button>
+        <button onclick="opAgregar()" class="btn btn-full" style="background:var(--s2);border:1px solid var(--border2);color:var(--text);font-size:.75rem;padding:9px">＋ Agregar a la lista</button>
+      </div>
+
+      <!-- Lista de operaciones cargadas -->
+      <div id="op-lista-wrap" style="display:none;padding:14px 18px;border-bottom:1px solid var(--border)">
+        <div style="font-size:.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Operaciones del lote</div>
+        <div id="op-lista"></div>
+      </div>
+
+      <!-- Resumen totales -->
+      <div id="op-resumen-wrap" style="display:none;padding:12px 18px;border-bottom:1px solid var(--border);background:var(--s2)">
+        <div style="display:flex;justify-content:space-between;font-size:.75rem;margin-bottom:6px">
+          <span style="color:var(--muted)">Total vendido</span>
+          <span id="op-total-venta" style="color:var(--red);font-weight:600"></span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:.75rem;margin-bottom:6px">
+          <span style="color:var(--muted)">Total comprado</span>
+          <span id="op-total-compra" style="color:var(--green);font-weight:600"></span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:.75rem;padding-top:6px;border-top:1px solid var(--border)">
+          <span style="color:var(--muted)">Diferencia neta</span>
+          <span id="op-total-dif" style="font-weight:700"></span>
         </div>
       </div>
 
-      <!-- Paso CONFIRMAR -->
-      <div id="rotar-step-confirmar" style="padding:20px;display:none">
-        <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:14px">Resumen de la operación</div>
-        <div id="rt-resumen" style="margin-bottom:16px"></div>
-        <div style="display:flex;gap:8px;justify-content:space-between">
-          <button class="btn btn-o" onclick="rotarSetStep('compra')" style="padding:9px 16px;font-size:.72rem">← Volver</button>
-          <button class="btn" onclick="rotarEjecutar()" style="background:var(--yellow);color:var(--bg);padding:9px 20px;font-size:.78rem;font-weight:700">✓ Confirmar rotación</button>
-        </div>
+      <!-- Footer botones -->
+      <div style="padding:14px 18px;display:flex;gap:8px;justify-content:space-between">
+        <button onclick="closeRotarModal()" class="btn btn-o" style="font-size:.72rem;padding:9px 16px">Cancelar</button>
+        <button onclick="opEjecutar()" id="op-ejecutar-btn" class="btn" style="background:var(--yellow);color:var(--bg);font-size:.75rem;font-weight:700;padding:9px 20px;display:none">✓ Confirmar lote</button>
       </div>
 
     </div>
@@ -2802,18 +2793,21 @@ function saveInv() {
 }
 
 // ══════════════════════════════════════════════════════
-// ROTAR POSICIÓN
+// OPERACIONES CEDEAR (lote)
 // ══════════════════════════════════════════════════════
-let _rotarStep = 'venta';
+let _opLote = []; // array de operaciones pendientes
 
 function toggleRotarModal() {
   const overlay = document.getElementById('rotar-overlay');
   const isOpen  = overlay.style.display !== 'none';
   if (isOpen) { closeRotarModal(); return; }
-  // Populate selects
-  _rotarStep = 'venta';
-  rotarPopulateSelects();
-  rotarSetStep('venta');
+  _opLote = [];
+  opPopulateSelect();
+  opResetForm();
+  opRenderLista();
+  // Set today as default date
+  const hoy = new Date().toISOString().slice(0,10);
+  document.getElementById('op-fecha').value = hoy;
   overlay.style.display = 'block';
   document.body.style.overflow = 'hidden';
 }
@@ -2821,277 +2815,227 @@ function toggleRotarModal() {
 function closeRotarModal() {
   document.getElementById('rotar-overlay').style.display = 'none';
   document.body.style.overflow = '';
-  // Reset inputs
-  ['rt-venta-cedear','rt-venta-monto','rt-venta-cotiz',
-   'rt-compra-cedear','rt-compra-monto','rt-compra-cotiz',
-   'rt-compra-nuevo-ticker','rt-compra-nuevo-nota'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.value = '';
-  });
-  const cb = document.getElementById('rt-venta-total');
-  if (cb) cb.checked = false;
-  document.getElementById('rt-venta-resultado').style.display  = 'none';
-  document.getElementById('rt-compra-resultado').style.display = 'none';
-  document.getElementById('rt-venta-info').textContent = 'Seleccioná un activo para ver tu posición actual.';
+  _opLote = [];
 }
 
-function rotarPopulateSelects() {
-  const invs = getInv().filter(i => i.ars > 0 || i.costo > 0);
-  const ventaSel  = document.getElementById('rt-venta-cedear');
-  const compraSel = document.getElementById('rt-compra-cedear');
-  const opts = invs.map((inv, i) =>
-    `<option value="${i}">${inv.activo} — ${fmt(inv.ars)}</option>`
-  ).join('');
-  ventaSel.innerHTML  = '<option value="">— seleccioná —</option>' + opts;
-  compraSel.innerHTML = '<option value="">— seleccioná —</option>' + opts +
-    '<option value="nuevo">＋ Nuevo CEDEAR</option>';
-}
-
-function rotarSetStep(step) {
-  _rotarStep = step;
-  ['venta','compra','confirmar'].forEach(s => {
-    document.getElementById(`rotar-step-${s}`).style.display = s === step ? 'block' : 'none';
-    const tab = document.getElementById(`rotar-tab-${s}`);
-    tab.className = '';
-    tab.style.cssText = `flex:1;padding:11px;background:none;border:none;font-family:var(--fm);font-size:.72rem;cursor:pointer;border-bottom:2px solid transparent;color:var(--muted)`;
-  });
-  // Highlight active tab
-  const activeTab = document.getElementById(`rotar-tab-${step}`);
-  activeTab.style.color = step === 'venta' ? P.red : step === 'compra' ? P.green : P.yellow;
-  activeTab.style.borderBottomColor = step === 'venta' ? P.red : step === 'compra' ? P.green : P.yellow;
-  activeTab.style.fontWeight = '700';
-}
-
-function rotarUpdateVentaPreview() {
-  const invIdx = parseInt(document.getElementById('rt-venta-cedear').value);
-  const monto  = parseFloat(document.getElementById('rt-venta-monto').value) || 0;
-  const cotiz  = parseFloat(document.getElementById('rt-venta-cotiz').value) || 0;
-  const infoEl = document.getElementById('rt-venta-info');
-  const resEl  = document.getElementById('rt-venta-resultado');
-
-  if (isNaN(invIdx)) { infoEl.textContent = 'Seleccioná un activo para ver tu posición actual.'; resEl.style.display='none'; return; }
+function opPopulateSelect() {
   const invs = getInv();
-  const inv  = invs[invIdx];
-  if (!inv)  { resEl.style.display='none'; return; }
-
-  infoEl.innerHTML = `<span style="color:var(--text);font-weight:600">${inv.activo}</span>
-    &nbsp;·&nbsp; Valor actual: <span style="color:var(--green)">${fmt(inv.ars)}</span>
-    &nbsp;·&nbsp; Costo entrada: <span style="color:var(--blue)">${fmt(inv.costo||0)}</span>
-    &nbsp;·&nbsp; P&L: <span style="color:${(inv.ars-(inv.costo||0))>=0?P.green:P.red}">${fmt(inv.ars-(inv.costo||0))} (${inv.costo>0?(((inv.ars-inv.costo)/inv.costo)*100).toFixed(1):'—'}%)</span>`;
-
-  if (monto <= 0) { resEl.style.display='none'; return; }
-
-  const costoProporcion = (inv.costo||0) > 0 ? (monto / inv.ars) * inv.costo : monto;
-  const ganancia = monto - costoProporcion;
-  const gPct     = costoProporcion > 0 ? (ganancia / costoProporcion) * 100 : 0;
-  const esGan    = ganancia >= 0;
-  const color    = esGan ? P.green : P.red;
-  const signo    = esGan ? '+' : '';
-  const cantEst  = cotiz > 0 ? Math.round(monto / cotiz) : '—';
-
-  resEl.style.display = 'block';
-  resEl.style.background = esGan ? 'rgba(34,211,160,.07)' : 'rgba(244,63,94,.07)';
-  resEl.style.border = `1px solid ${esGan ? 'rgba(34,211,160,.2)' : 'rgba(244,63,94,.2)'}`;
-  resEl.innerHTML = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-      <div><div style="color:var(--muted);font-size:.6rem;margin-bottom:3px">MONTO VENDIDO</div><div style="font-family:var(--fh);font-size:1rem;font-weight:700;color:var(--red)">${fmt(monto)}</div></div>
-      <div><div style="color:var(--muted);font-size:.6rem;margin-bottom:3px">RESULTADO REALIZADO</div><div style="font-family:var(--fh);font-size:1rem;font-weight:700;color:${color}">${signo}${fmt(ganancia)}</div></div>
-      <div><div style="color:var(--muted);font-size:.6rem;margin-bottom:3px">RENDIMIENTO</div><div style="color:${color};font-weight:600">${signo}${gPct.toFixed(1)}%</div></div>
-      <div><div style="color:var(--muted);font-size:.6rem;margin-bottom:3px">LÁMINAS EST.</div><div style="color:var(--muted2)">${cantEst}</div></div>
-    </div>`;
+  const sel  = document.getElementById('op-ticker-sel');
+  const opts = invs.map((inv, i) => `<option value="${i}">${inv.activo}${inv.ars > 0 ? ' — ' + fmt(inv.ars) : ''}</option>`).join('');
+  sel.innerHTML = '<option value="">— seleccioná —</option>' + opts + '<option value="nuevo">＋ Nuevo ticker</option>';
 }
 
-function rotarVentaTotal() {
-  const cb    = document.getElementById('rt-venta-total');
-  const invIdx = parseInt(document.getElementById('rt-venta-cedear').value);
-  if (isNaN(invIdx)) return;
-  const inv = getInv()[invIdx];
-  if (!inv) return;
-  if (cb.checked) {
-    document.getElementById('rt-venta-monto').value = inv.ars;
-    rotarUpdateVentaPreview();
-  }
+function opResetForm() {
+  document.getElementById('op-tipo').value       = 'compra';
+  document.getElementById('op-ticker-sel').value = '';
+  document.getElementById('op-cant').value        = '';
+  document.getElementById('op-precio').value      = '';
+  document.getElementById('op-nuevo-ticker').value = '';
+  document.getElementById('op-nuevo-desc').value   = '';
+  document.getElementById('op-nuevo-wrap').style.display = 'none';
+  document.getElementById('op-preview').style.display    = 'none';
+  opTipoChange();
 }
 
-function rotarUpdateCompraPreview() {
-  const compraVal = document.getElementById('rt-compra-cedear').value;
-  const monto     = parseFloat(document.getElementById('rt-compra-monto').value) || 0;
-  const cotiz     = parseFloat(document.getElementById('rt-compra-cotiz').value) || 0;
-  const resEl     = document.getElementById('rt-compra-resultado');
-  const nuevoWrap = document.getElementById('rt-compra-nuevo-wrap');
-
-  nuevoWrap.style.display = compraVal === 'nuevo' ? 'block' : 'none';
-
-  if (monto <= 0 || compraVal === '') { resEl.style.display='none'; return; }
-
-  const cantEst = cotiz > 0 ? Math.round(monto / cotiz) : '—';
-  resEl.style.display = 'block';
-  resEl.style.background = 'rgba(34,211,160,.07)';
-  resEl.style.border = '1px solid rgba(34,211,160,.2)';
-  resEl.innerHTML = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-      <div><div style="color:var(--muted);font-size:.6rem;margin-bottom:3px">MONTO COMPRADO</div><div style="font-family:var(--fh);font-size:1rem;font-weight:700;color:var(--green)">${fmt(monto)}</div></div>
-      <div><div style="color:var(--muted);font-size:.6rem;margin-bottom:3px">LÁMINAS EST.</div><div style="font-family:var(--fh);font-size:.9rem;font-weight:700;color:var(--muted2)">${cantEst}</div></div>
-      <div><div style="color:var(--muted);font-size:.6rem;margin-bottom:3px">COTIZACIÓN ENTRADA</div><div style="color:var(--blue)">${cotiz > 0 ? fmt(cotiz) : '—'}</div></div>
-      <div><div style="color:var(--muted);font-size:.6rem;margin-bottom:3px">COSTO BASE</div><div style="color:var(--blue)">${fmt(monto)}</div></div>
-    </div>`;
+function opTipoChange() {
+  const tipo    = document.getElementById('op-tipo').value;
+  const precioEl = document.getElementById('op-precio');
+  precioEl.style.color = tipo === 'venta' ? P.red : P.green;
+  opCalcMonto();
 }
 
-function rotarGoCompra() {
-  const invIdx = parseInt(document.getElementById('rt-venta-cedear').value);
-  const monto  = parseFloat(document.getElementById('rt-venta-monto').value) || 0;
-  if (isNaN(invIdx)) { showToast('Seleccioná el CEDEAR vendido', P.red); return; }
-  if (monto <= 0)    { showToast('Ingresá el monto vendido', P.red); return; }
-  // Pre-fill compra monto with same value as suggestion
-  const compraMonto = document.getElementById('rt-compra-monto');
-  if (!compraMonto.value) compraMonto.value = monto;
-  rotarSetStep('compra');
-}
+function opTickerChange() {
+  const val = document.getElementById('op-ticker-sel').value;
+  document.getElementById('op-nuevo-wrap').style.display = val === 'nuevo' ? 'block' : 'none';
 
-function rotarGoConfirmar() {
-  const compraVal  = document.getElementById('rt-compra-cedear').value;
-  const compraMonto = parseFloat(document.getElementById('rt-compra-monto').value) || 0;
-  if (compraVal === '') { showToast('Seleccioná el CEDEAR comprado', P.red); return; }
-  if (compraMonto <= 0) { showToast('Ingresá el monto comprado', P.red); return; }
-
-  const invs     = getInv();
-  const ventaIdx = parseInt(document.getElementById('rt-venta-cedear').value);
-  const ventaMonto = parseFloat(document.getElementById('rt-venta-monto').value) || 0;
-  const ventaCotiz = parseFloat(document.getElementById('rt-venta-cotiz').value) || 0;
-  const compraCotiz = parseFloat(document.getElementById('rt-compra-cotiz').value) || 0;
-  const ventaTotal = document.getElementById('rt-venta-total').checked;
-  const invVenta   = invs[ventaIdx];
-
-  const costoProporcion = (invVenta.costo||0) > 0 ? (ventaMonto / invVenta.ars) * invVenta.costo : ventaMonto;
-  const ganancia = ventaMonto - costoProporcion;
-  const esGan    = ganancia >= 0;
-  const gColor   = esGan ? P.green : P.red;
-  const gSign    = esGan ? '+' : '';
-  const gPct     = costoProporcion > 0 ? (ganancia / costoProporcion) * 100 : 0;
-
-  let compraLabel = '';
-  if (compraVal === 'nuevo') {
-    const ticker = (document.getElementById('rt-compra-nuevo-ticker').value || 'NUEVO').toUpperCase();
-    compraLabel = ticker;
-  } else {
-    compraLabel = invs[parseInt(compraVal)]?.activo || '—';
-  }
-
-  const ventaCantEst  = ventaCotiz  > 0 ? Math.round(ventaMonto  / ventaCotiz)  : '—';
-  const compraCantEst = compraCotiz > 0 ? Math.round(compraMonto / compraCotiz) : '—';
-  const diferencia    = compraMonto - ventaMonto;
-
-  document.getElementById('rt-resumen').innerHTML = `
-    <!-- Venta -->
-    <div style="background:rgba(244,63,94,.06);border:1px solid rgba(244,63,94,.2);border-radius:8px;padding:14px;margin-bottom:10px">
-      <div style="font-size:.6rem;color:var(--red);text-transform:uppercase;letter-spacing:.1em;font-weight:600;margin-bottom:8px">📤 VENTA — ${invVenta.activo}</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:.75rem">
-        <div><span style="color:var(--muted)">Monto: </span><span style="color:var(--red);font-weight:600">${fmt(ventaMonto)}</span></div>
-        <div><span style="color:var(--muted)">Láminas: </span><span>${ventaCantEst}</span></div>
-        <div><span style="color:var(--muted)">Costo prorrat.: </span><span>${fmt(costoProporcion)}</span></div>
-        <div><span style="color:var(--muted)">Resultado: </span><span style="color:${gColor};font-weight:700">${gSign}${fmt(ganancia)} (${gSign}${gPct.toFixed(1)}%)</span></div>
-        ${ventaTotal ? `<div style="grid-column:1/-1"><span style="color:var(--yellow)">⚠ Venta total — posición eliminada del portafolio</span></div>` : ''}
-      </div>
-    </div>
-    <!-- Compra -->
-    <div style="background:rgba(34,211,160,.06);border:1px solid rgba(34,211,160,.2);border-radius:8px;padding:14px;margin-bottom:10px">
-      <div style="font-size:.6rem;color:var(--green);text-transform:uppercase;letter-spacing:.1em;font-weight:600;margin-bottom:8px">📥 COMPRA — ${compraLabel}</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:.75rem">
-        <div><span style="color:var(--muted)">Monto: </span><span style="color:var(--green);font-weight:600">${fmt(compraMonto)}</span></div>
-        <div><span style="color:var(--muted)">Láminas: </span><span>${compraCantEst}</span></div>
-        <div><span style="color:var(--muted)">Costo base: </span><span style="color:var(--blue)">${fmt(compraMonto)}</span></div>
-        <div><span style="color:var(--muted)">Cotización: </span><span>${compraCotiz > 0 ? fmt(compraCotiz) : '—'}</span></div>
-      </div>
-    </div>
-    <!-- Diferencia neta -->
-    <div style="background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:.75rem;display:flex;justify-content:space-between;align-items:center">
-      <span style="color:var(--muted)">Diferencia neta (compra − venta)</span>
-      <span style="font-weight:700;color:${diferencia>=0?P.green:P.red}">${diferencia>=0?'+':''}${fmt(diferencia)}</span>
-    </div>`;
-
-  rotarSetStep('confirmar');
-}
-
-function rotarEjecutar() {
-  const invs      = getInv();
-  const ventaIdx  = parseInt(document.getElementById('rt-venta-cedear').value);
-  const ventaMonto = parseFloat(document.getElementById('rt-venta-monto').value) || 0;
-  const ventaCotiz = parseFloat(document.getElementById('rt-venta-cotiz').value) || 0;
-  const ventaTotal = document.getElementById('rt-venta-total').checked;
-  const compraVal  = document.getElementById('rt-compra-cedear').value;
-  const compraMonto = parseFloat(document.getElementById('rt-compra-monto').value) || 0;
-  const compraCotiz = parseFloat(document.getElementById('rt-compra-cotiz').value) || 0;
-  const invVenta   = invs[ventaIdx];
-  const today      = new Date().toISOString().slice(0,10);
-  const todayLabel = new Date().toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'});
-
-  // ── Calcular P&L realizado ──
-  const costoProporcion = (invVenta.costo||0) > 0 ? (ventaMonto / invVenta.ars) * invVenta.costo : ventaMonto;
-  const ganancia = ventaMonto - costoProporcion;
-
-  // ── Actualizar posición de venta ──
-  if (ventaTotal || ventaMonto >= invVenta.ars * 0.99) {
-    invs[ventaIdx].ars      = 0;
-    invs[ventaIdx].costo    = 0;
-    invs[ventaIdx].cantidad = 0;
-    invs[ventaIdx].rend     = 0;
-    invs[ventaIdx].nota     = (invs[ventaIdx].nota ? invs[ventaIdx].nota + ' | ' : '') + `Vendido ${todayLabel}`;
-  } else {
-    // Venta parcial: reducir proporcionalmente
-    const pct = 1 - (ventaMonto / invVenta.ars);
-    invs[ventaIdx].ars   = Math.round(invVenta.ars   * pct);
-    invs[ventaIdx].costo = Math.round((invVenta.costo||0) * pct);
-    invs[ventaIdx].rend  = invs[ventaIdx].costo > 0 ? (invs[ventaIdx].ars - invs[ventaIdx].costo) / invs[ventaIdx].costo : 0;
-  }
-
-  // ── Actualizar posición de compra ──
-  if (compraVal === 'nuevo') {
-    const ticker  = (document.getElementById('rt-compra-nuevo-ticker').value || 'NUEVO').toUpperCase();
-    const nota    = document.getElementById('rt-compra-nuevo-nota').value || ticker;
-    invs.push({
-      activo: ticker, tipo: 'CEDEAR', moneda: 'ARS',
-      ars: compraMonto, costo: compraMonto, rend: 0,
-      cantidad: compraCotiz > 0 ? Math.round(compraMonto / compraCotiz) : 0,
-      ticker: ticker, nota: nota,
-      fechaEntrada: today, pos: '',
-    });
-  } else {
-    const compraIdx = parseInt(compraVal);
-    const invCompra = invs[compraIdx];
-    invCompra.ars   = (invCompra.ars||0) + compraMonto;
-    invCompra.costo = (invCompra.costo||0) + compraMonto;
-    invCompra.rend  = invCompra.costo > 0 ? (invCompra.ars - invCompra.costo) / invCompra.costo : 0;
-    if (compraCotiz > 0) {
-      const nuevasCant = Math.round(compraMonto / compraCotiz);
-      invCompra.cantidad = (invCompra.cantidad||0) + nuevasCant;
+  // Si es venta de una posición existente, sugerir precio actual
+  if (val !== '' && val !== 'nuevo') {
+    const inv = getInv()[parseInt(val)];
+    if (inv && inv.ars > 0 && inv.cantidad > 0) {
+      const precioUnit = Math.round(inv.ars / inv.cantidad);
+      if (precioUnit > 0) document.getElementById('op-precio').value = precioUnit;
     }
-    if (!invCompra.fechaEntrada) invCompra.fechaEntrada = today;
-    invCompra.nota = (invCompra.nota ? invCompra.nota + ' · ' : '') + `Rotación ${todayLabel}`;
+  }
+  opCalcMonto();
+}
+
+function opCalcMonto() {
+  const cant   = parseFloat(document.getElementById('op-cant').value)   || 0;
+  const precio = parseFloat(document.getElementById('op-precio').value) || 0;
+  const tipo   = document.getElementById('op-tipo').value;
+  const prev   = document.getElementById('op-preview');
+  const montoEl = document.getElementById('op-preview-monto');
+
+  if (cant > 0 && precio > 0) {
+    const monto = cant * precio;
+    prev.style.display = 'flex';
+    montoEl.textContent = fmt(monto);
+    montoEl.style.color = tipo === 'venta' ? P.red : P.green;
+  } else {
+    prev.style.display = 'none';
+  }
+}
+
+function opAgregar() {
+  const tipo    = document.getElementById('op-tipo').value;
+  const tickerVal = document.getElementById('op-ticker-sel').value;
+  const cant    = parseFloat(document.getElementById('op-cant').value)   || 0;
+  const precio  = parseFloat(document.getElementById('op-precio').value) || 0;
+  const fecha   = document.getElementById('op-fecha').value;
+
+  if (!tickerVal)    { showToast('Seleccioná el ticker', P.red); return; }
+  if (cant <= 0)     { showToast('Ingresá los nominales', P.red); return; }
+  if (precio <= 0)   { showToast('Ingresá el precio unitario', P.red); return; }
+  if (!fecha)        { showToast('Ingresá la fecha', P.red); return; }
+
+  let ticker = '', desc = '', invIdx = null;
+
+  if (tickerVal === 'nuevo') {
+    ticker = (document.getElementById('op-nuevo-ticker').value || '').toUpperCase().trim();
+    desc   = document.getElementById('op-nuevo-desc').value.trim();
+    if (!ticker) { showToast('Ingresá el ticker nuevo', P.red); return; }
+  } else {
+    invIdx = parseInt(tickerVal);
+    const inv = getInv()[invIdx];
+    ticker = inv.activo;
+    desc   = inv.nota || '';
   }
 
-  // ── Guardar ──
+  const monto = Math.round(cant * precio);
+  _opLote.push({ tipo, ticker, desc, cant, precio, monto, fecha, invIdx, esNuevo: tickerVal === 'nuevo' });
+
+  opRenderLista();
+  opResetForm();
+  // Mantener la fecha para la próxima operación del día
+  document.getElementById('op-fecha').value = fecha;
+  showToast(`✓ ${tipo === 'compra' ? 'Compra' : 'Venta'} de ${ticker} agregada`);
+}
+
+function opRenderLista() {
+  const listaWrap   = document.getElementById('op-lista-wrap');
+  const resumenWrap = document.getElementById('op-resumen-wrap');
+  const ejecutarBtn = document.getElementById('op-ejecutar-btn');
+  const listaEl     = document.getElementById('op-lista');
+
+  if (_opLote.length === 0) {
+    listaWrap.style.display   = 'none';
+    resumenWrap.style.display = 'none';
+    ejecutarBtn.style.display = 'none';
+    return;
+  }
+
+  listaWrap.style.display   = 'block';
+  resumenWrap.style.display = 'block';
+  ejecutarBtn.style.display = 'block';
+
+  listaEl.innerHTML = _opLote.map((op, i) => {
+    const color = op.tipo === 'venta' ? P.red : P.green;
+    const signo = op.tipo === 'venta' ? '📤' : '📥';
+    const fechaLabel = op.fecha ? new Date(op.fecha + 'T12:00:00').toLocaleDateString('es-AR', {day:'2-digit',month:'2-digit'}) : '';
+    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:.75rem">
+      <span style="font-size:.85rem">${signo}</span>
+      <div style="flex:1">
+        <span style="font-weight:700;color:${color}">${op.ticker}</span>
+        <span style="color:var(--muted);font-size:.65rem"> · ${op.cant} nom. × ${fmt(op.precio)} · ${fechaLabel}</span>
+      </div>
+      <span style="font-weight:700;color:${color};white-space:nowrap">${op.tipo === 'venta' ? '+' : '-'}${fmt(op.monto)}</span>
+      <button onclick="opRemover(${i})" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.8rem;padding:2px 5px">✕</button>
+    </div>`;
+  }).join('');
+
+  // Totales
+  const totalVenta  = _opLote.filter(o => o.tipo === 'venta').reduce((s, o) => s + o.monto, 0);
+  const totalCompra = _opLote.filter(o => o.tipo === 'compra').reduce((s, o) => s + o.monto, 0);
+  const dif = totalVenta - totalCompra;
+  document.getElementById('op-total-venta').textContent  = fmt(totalVenta);
+  document.getElementById('op-total-compra').textContent = fmt(totalCompra);
+  const difEl = document.getElementById('op-total-dif');
+  difEl.textContent = (dif >= 0 ? '+' : '') + fmt(dif);
+  difEl.style.color = dif >= 0 ? P.green : P.red;
+}
+
+function opRemover(i) {
+  _opLote.splice(i, 1);
+  opRenderLista();
+}
+
+function opEjecutar() {
+  if (_opLote.length === 0) { showToast('No hay operaciones cargadas', P.red); return; }
+
+  const invs    = getInv();
+  const allTxs  = DB.get('txs', {});
+  let   pnlTotal = 0;
+
+  _opLote.forEach(op => {
+    const hoy = op.fecha || new Date().toISOString().slice(0,10);
+    const fechaLabel = new Date(hoy + 'T12:00:00').toLocaleDateString('es-AR', {day:'2-digit',month:'2-digit',year:'numeric'});
+    const mesKey = hoy.slice(0,7);
+
+    if (op.tipo === 'compra') {
+      if (op.esNuevo) {
+        // Agregar nuevo activo al portafolio
+        invs.push({
+          activo: op.ticker, tipo: 'CEDEAR', moneda: 'ARS',
+          ars: op.monto, costo: op.monto, rend: 0,
+          cantidad: op.cant, ticker: op.ticker,
+          nota: op.desc || op.ticker,
+          fechaEntrada: hoy, pos: `${op.cant} acciones`,
+        });
+      } else {
+        // Sumar a posición existente
+        const inv = invs[op.invIdx];
+        inv.ars      = (inv.ars      || 0) + op.monto;
+        inv.costo    = (inv.costo    || 0) + op.monto;
+        inv.cantidad = (inv.cantidad || 0) + op.cant;
+        inv.rend     = inv.costo > 0 ? (inv.ars - inv.costo) / inv.costo : 0;
+        inv.pos      = `${inv.cantidad} acciones`;
+        if (!inv.fechaEntrada) inv.fechaEntrada = hoy;
+        inv.nota = (inv.nota ? inv.nota + ' · ' : '') + `Compra ${op.cant} nom. ${fechaLabel}`;
+      }
+    } else {
+      // VENTA
+      const inv = invs[op.invIdx];
+      if (inv) {
+        // P&L: proporcional al costo
+        const pct = inv.ars > 0 ? op.monto / inv.ars : 1;
+        const costoVendido = Math.round((inv.costo || 0) * pct);
+        const ganancia = op.monto - costoVendido;
+        pnlTotal += ganancia;
+
+        // Reducir posición
+        inv.ars      = Math.max(0, (inv.ars      || 0) - op.monto);
+        inv.costo    = Math.max(0, (inv.costo    || 0) - costoVendido);
+        inv.cantidad = Math.max(0, (inv.cantidad || 0) - op.cant);
+        inv.rend     = inv.costo > 0 ? (inv.ars - inv.costo) / inv.costo : 0;
+        inv.pos      = `${inv.cantidad} acciones`;
+        inv.nota     = (inv.nota ? inv.nota + ' · ' : '') + `Venta ${op.cant} nom. ${fechaLabel}`;
+
+        // Registrar P&L en txs
+        if (!allTxs[mesKey]) allTxs[mesKey] = [];
+        allTxs[mesKey].push({
+          ts: Date.now() + Math.random(), fecha: fechaLabel,
+          tipo: 'inversion', cat: 'Inversiones',
+          desc: `Venta ${op.ticker} · ${op.cant} nom. × ${fmt(op.precio)} · P&L: ${ganancia >= 0 ? '+' : ''}${fmt(ganancia)}`,
+          monto: Math.abs(ganancia),
+        });
+      }
+    }
+  });
+
   DB.set('inversiones', invs);
+  DB.set('txs', allTxs);
 
-  // ── Registrar en txs como movimiento de inversión (P&L) ──
-  if (Math.abs(ganancia) > 0) {
-    const allTxs = DB.get('txs', {});
-    const mesKey = today.slice(0,7);
-    if (!allTxs[mesKey]) allTxs[mesKey] = [];
-    allTxs[mesKey].push({
-      ts: Date.now(), fecha: todayLabel, tipo: 'inversion',
-      cat: 'Inversiones',
-      desc: `Rotación ${invVenta.activo} → ${compraVal === 'nuevo' ? document.getElementById('rt-compra-nuevo-ticker').value.toUpperCase() : invs[parseInt(compraVal)]?.activo || '?'} | P&L: ${ganancia >= 0 ? '+' : ''}${fmt(ganancia)}`,
-      monto: Math.abs(ganancia),
-    });
-    DB.set('txs', allTxs);
-  }
-
-  // ── UI ──
   closeRotarModal();
   renderInvList();
-  updatePatrimonio && updatePatrimonio();
-  const gSign = ganancia >= 0 ? '+' : '';
-  showToast(`✓ Rotación ejecutada · P&L realizado: ${gSign}${fmt(ganancia)}`, ganancia >= 0 ? P.green : P.red);
+  typeof updatePatrimonio === 'function' && updatePatrimonio();
+
+  const nOps = _opLote.length;
+  const pnlSign = pnlTotal >= 0 ? '+' : '';
+  const msg = pnlTotal !== 0
+    ? `✓ ${nOps} operaciones registradas · P&L: ${pnlSign}${fmt(pnlTotal)}`
+    : `✓ ${nOps} operaciones registradas`;
+  showToast(msg, pnlTotal >= 0 ? P.green : P.red);
+  _opLote = [];
 }
 
 // ══════════════════════════════════════════════════════
