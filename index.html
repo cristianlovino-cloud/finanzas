@@ -2688,16 +2688,26 @@ async function renderInvList() {
     });
   }
 
-  // Movimientos recientes (from transactions)
-  const allTxs = Object.values(DB.get('txs',{})).flat()
-    .filter(t => t.tipo === 'inversion' || (t.cat||'').toLowerCase().includes('invers') || (t.cat||'').toLowerCase().includes('fci') || (t.cat||'').toLowerCase().includes('cripto'))
-    .sort((a,b) => b.ts - a.ts).slice(0,5);
+  // Movimientos de inversión (desde inv_movimientos, no txs)
+  const invMovs = DB.get('inv_movimientos', []).slice(0, 10);
 
-  document.getElementById('inv-movs').innerHTML = allTxs.length
-    ? allTxs.map(tx => `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:.78rem">
-        <div><div style="color:var(--text)">${tx.desc}</div><div style="font-size:.65rem;color:var(--muted)">${tx.fecha}</div></div>
-        <div style="color:var(--purple);font-weight:700">-${fmt(tx.monto)}</div>
-      </div>`).join('')
+  document.getElementById('inv-movs').innerHTML = invMovs.length
+    ? invMovs.map(m => {
+        const esVenta  = m.tipo === 'venta';
+        const color    = esVenta ? P.red : P.green;
+        const icon     = esVenta ? '📤' : '📥';
+        const pnlStr   = (esVenta && m.pnl != null)
+          ? ` <span style="color:${m.pnl>=0?P.green:P.red};font-size:.65rem">${m.pnl>=0?'+':''}${fmt(m.pnl)}</span>`
+          : '';
+        return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:.75rem">
+          <span>${icon}</span>
+          <div style="flex:1">
+            <div style="color:var(--text);font-weight:600">${m.ticker} <span style="font-weight:400;color:var(--muted);font-size:.65rem">${m.cant} nom. × ${fmt(m.precio)}</span>${pnlStr}</div>
+            <div style="font-size:.63rem;color:var(--muted)">${m.fecha}</div>
+          </div>
+          <div style="color:${color};font-weight:700;white-space:nowrap">${esVenta?'+':'-'}${fmt(m.monto)}</div>
+        </div>`;
+      }).join('')
     : '<div style="color:var(--muted);font-size:.75rem;padding:16px 0;text-align:center">Sin movimientos registrados</div>';
 }
 
@@ -2962,18 +2972,16 @@ function opRemover(i) {
 function opEjecutar() {
   if (_opLote.length === 0) { showToast('No hay operaciones cargadas', P.red); return; }
 
-  const invs    = getInv();
-  const allTxs  = DB.get('txs', {});
+  const invs     = getInv();
+  const invMovs  = DB.get('inv_movimientos', []);
   let   pnlTotal = 0;
 
   _opLote.forEach(op => {
-    const hoy = op.fecha || new Date().toISOString().slice(0,10);
+    const hoy        = op.fecha || new Date().toISOString().slice(0,10);
     const fechaLabel = new Date(hoy + 'T12:00:00').toLocaleDateString('es-AR', {day:'2-digit',month:'2-digit',year:'numeric'});
-    const mesKey = hoy.slice(0,7);
 
     if (op.tipo === 'compra') {
       if (op.esNuevo) {
-        // Agregar nuevo activo al portafolio
         invs.push({
           activo: op.ticker, tipo: 'CEDEAR', moneda: 'ARS',
           ars: op.monto, costo: op.monto, rend: 0,
@@ -2982,57 +2990,56 @@ function opEjecutar() {
           fechaEntrada: hoy, pos: `${op.cant} acciones`,
         });
       } else {
-        // Sumar a posición existente
-        const inv = invs[op.invIdx];
+        const inv    = invs[op.invIdx];
         inv.ars      = (inv.ars      || 0) + op.monto;
         inv.costo    = (inv.costo    || 0) + op.monto;
         inv.cantidad = (inv.cantidad || 0) + op.cant;
         inv.rend     = inv.costo > 0 ? (inv.ars - inv.costo) / inv.costo : 0;
         inv.pos      = `${inv.cantidad} acciones`;
         if (!inv.fechaEntrada) inv.fechaEntrada = hoy;
-        inv.nota = (inv.nota ? inv.nota + ' · ' : '') + `Compra ${op.cant} nom. ${fechaLabel}`;
       }
+      // Registrar en inv_movimientos (sin tocar txs)
+      invMovs.unshift({
+        ts: Date.now() + Math.random(), fecha: fechaLabel, tipo: 'compra',
+        ticker: op.ticker, cant: op.cant, precio: op.precio, monto: op.monto, pnl: null,
+      });
+
     } else {
       // VENTA
       const inv = invs[op.invIdx];
       if (inv) {
-        // P&L: proporcional al costo
-        const pct = inv.ars > 0 ? op.monto / inv.ars : 1;
+        const pct          = inv.ars > 0 ? op.monto / inv.ars : 1;
         const costoVendido = Math.round((inv.costo || 0) * pct);
-        const ganancia = op.monto - costoVendido;
-        pnlTotal += ganancia;
+        const ganancia     = op.monto - costoVendido;
+        pnlTotal          += ganancia;
 
-        // Reducir posición
         inv.ars      = Math.max(0, (inv.ars      || 0) - op.monto);
         inv.costo    = Math.max(0, (inv.costo    || 0) - costoVendido);
         inv.cantidad = Math.max(0, (inv.cantidad || 0) - op.cant);
         inv.rend     = inv.costo > 0 ? (inv.ars - inv.costo) / inv.costo : 0;
         inv.pos      = `${inv.cantidad} acciones`;
-        inv.nota     = (inv.nota ? inv.nota + ' · ' : '') + `Venta ${op.cant} nom. ${fechaLabel}`;
 
-        // Registrar P&L en txs
-        if (!allTxs[mesKey]) allTxs[mesKey] = [];
-        allTxs[mesKey].push({
-          ts: Date.now() + Math.random(), fecha: fechaLabel,
-          tipo: 'inversion', cat: 'Inversiones',
-          desc: `Venta ${op.ticker} · ${op.cant} nom. × ${fmt(op.precio)} · P&L: ${ganancia >= 0 ? '+' : ''}${fmt(ganancia)}`,
-          monto: Math.abs(ganancia),
+        // Registrar en inv_movimientos (sin tocar txs)
+        invMovs.unshift({
+          ts: Date.now() + Math.random(), fecha: fechaLabel, tipo: 'venta',
+          ticker: op.ticker, cant: op.cant, precio: op.precio, monto: op.monto,
+          pnl: ganancia, costoVendido,
         });
       }
     }
   });
 
   DB.set('inversiones', invs);
-  DB.set('txs', allTxs);
+  DB.set('inv_movimientos', invMovs.slice(0, 200)); // max 200 registros
 
   closeRotarModal();
   renderInvList();
   typeof updatePatrimonio === 'function' && updatePatrimonio();
 
-  const nOps = _opLote.length;
+  const nOps   = _opLote.length;
   const pnlSign = pnlTotal >= 0 ? '+' : '';
   const msg = pnlTotal !== 0
-    ? `✓ ${nOps} operaciones registradas · P&L: ${pnlSign}${fmt(pnlTotal)}`
+    ? `✓ ${nOps} operaciones · P&L: ${pnlSign}${fmt(pnlTotal)}`
     : `✓ ${nOps} operaciones registradas`;
   showToast(msg, pnlTotal >= 0 ? P.green : P.red);
   _opLote = [];
@@ -3404,6 +3411,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Init flujo
   renderFlujo();
+
+  // Limpiar txs: eliminar entradas de tipo 'inversion' generadas por versiones anteriores
+  // (ahora los movimientos de inversión van a inv_movimientos, no a txs)
+  (function cleanInvTxs() {
+    const allTxs = DB.get('txs', {});
+    let changed = false;
+    Object.keys(allTxs).forEach(mes => {
+      const antes = allTxs[mes].length;
+      allTxs[mes] = allTxs[mes].filter(t => t.tipo !== 'inversion');
+      if (allTxs[mes].length !== antes) changed = true;
+    });
+    if (changed) { DB.set('txs', allTxs); console.log('txs: entradas de inversión eliminadas'); }
+  })();
 
   // Init inversiones
   renderInvList();
