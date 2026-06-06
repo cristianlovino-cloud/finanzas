@@ -2652,7 +2652,7 @@ async function renderInvList() {
 
   document.getElementById('inv-list').innerHTML = pnlBanner +
     `<div style="font-size:.62rem;color:var(--muted);margin-bottom:10px;text-align:right">Cotizaciones: ${tsLabel}</div>` +
-    invs.map((inv, i) => {
+    invs.filter(inv => (inv.ars || 0) > 0 || (inv.costo || 0) > 0).map((inv, i) => {
       const color   = colors[inv.tipo] || P.blue;
       const hasVal  = inv.ars > 0;
       const ganLoss = (hasVal && inv.costo > 0) ? inv.ars - inv.costo : 0;
@@ -3412,17 +3412,41 @@ document.addEventListener('DOMContentLoaded', () => {
   // Init flujo
   renderFlujo();
 
-  // Limpiar txs: eliminar entradas de tipo 'inversion' generadas por versiones anteriores
-  // (ahora los movimientos de inversión van a inv_movimientos, no a txs)
+  // Migrar + limpiar txs: mover entradas tipo 'inversion' a inv_movimientos
   (function cleanInvTxs() {
-    const allTxs = DB.get('txs', {});
+    const allTxs  = DB.get('txs', {});
+    const invMovs = DB.get('inv_movimientos', []);
     let changed = false;
     Object.keys(allTxs).forEach(mes => {
-      const antes = allTxs[mes].length;
-      allTxs[mes] = allTxs[mes].filter(t => t.tipo !== 'inversion');
-      if (allTxs[mes].length !== antes) changed = true;
+      const invEntries = allTxs[mes].filter(t => t.tipo === 'inversion');
+      if (invEntries.length > 0) {
+        // Convertir al formato de inv_movimientos y agregar si no existen ya
+        invEntries.forEach(t => {
+          // Parsear desc: "Venta XLK · 68 nom. × $6.430 · P&L: -$140.487"
+          const matchV = (t.desc||'').match(/^(Venta|Compra)\s+(\w+)\s·\s([\d,.]+)\snom\.\s×\s\$([\d.,]+)/);
+          if (matchV) {
+            const already = invMovs.some(m => m.ts === t.ts);
+            if (!already) {
+              invMovs.unshift({
+                ts: t.ts, fecha: t.fecha,
+                tipo: matchV[1].toLowerCase(),
+                ticker: matchV[2],
+                cant: parseFloat(matchV[3].replace(',','.')),
+                precio: parseFloat(matchV[4].replace(/\./g,'').replace(',','.')),
+                monto: t.monto || 0,
+                pnl: null,
+              });
+            }
+          }
+        });
+        allTxs[mes] = allTxs[mes].filter(t => t.tipo !== 'inversion');
+        changed = true;
+      }
     });
-    if (changed) { DB.set('txs', allTxs); console.log('txs: entradas de inversión eliminadas'); }
+    if (changed) {
+      DB.set('txs', allTxs);
+      DB.set('inv_movimientos', invMovs.slice(0, 200));
+    }
   })();
 
   // Init inversiones
