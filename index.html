@@ -3017,7 +3017,7 @@ async function buildMesAMesChart(year) {
   const canvasEl = document.getElementById('c-mesames');
   if (!canvasEl) return;
 
-  // ── Obtener datos de ingresos y gastos ──
+  // ── 1. Calcular datos locales (síncrono, instantáneo) ──
   let labels = [], ingArr = [], gasArr = [], netoArr = [];
 
   if (year === '2026') {
@@ -3027,7 +3027,7 @@ async function buildMesAMesChart(year) {
     const curMonthIdx = now.getFullYear() === 2026 ? now.getMonth() : 11;
 
     for (let idx = 0; idx <= curMonthIdx; idx++) {
-      const mes    = '2026-' + String(idx+1).padStart(2,'0');
+      const mes     = '2026-' + String(idx+1).padStart(2,'0');
       const hasPlan = !!savedPlans[mes];
       const hasTxs  = Array.isArray(savedTxs[mes]) && savedTxs[mes].length > 0;
       if (!hasPlan && !hasTxs) continue;
@@ -3044,153 +3044,119 @@ async function buildMesAMesChart(year) {
     const gArr = (HIST.gastos[year]   || []).filter(v => v != null);
     const iArr = (HIST.ingresos[year] || []).filter(v => v != null);
     const len  = Math.min(gArr.length, iArr.length);
-    labels   = MESES.slice(0, len);
-    ingArr   = iArr.slice(0, len).map(Math.round);
-    gasArr   = gArr.slice(0, len).map(Math.round);
-    netoArr  = ingArr.map((ing, i) => Math.round(ing - gasArr[i]));
+    labels  = MESES.slice(0, len);
+    ingArr  = iArr.slice(0, len).map(Math.round);
+    gasArr  = gArr.slice(0, len).map(Math.round);
+    netoArr = ingArr.map((ing, i) => Math.round(ing - gasArr[i]));
   }
 
   if (!labels.length) return;
 
-  // ── Fetch inflación INDEC ──
-  const inflMap = await fetchInflacionINDEC();
-
-  // Construir mesKeys reales para inflación
-  const mesKeys = labels.map((_, i) => year + '-' + String(i+1).padStart(2,'0'));
-  const inflIdx = buildInflIndex(inflMap, mesKeys); // índice acumulado [1.0, 1.20, 1.45 ...]
-
-  // Deflactar: valor_real = valor_nominal / índice_inflación
-  const ingReal  = inflIdx ? ingArr.map((v, i)  => Math.round(v / inflIdx[i])) : null;
-  const gasReal  = inflIdx ? gasArr.map((v, i)  => Math.round(v / inflIdx[i])) : null;
-
-  // ── Actualizar badge de inflación ──
-  const badge = document.getElementById('inflacion-badge');
-  if (badge && inflIdx) {
-    const inflTotal = ((inflIdx[inflIdx.length-1] - 1) * 100).toFixed(1);
-    badge.textContent = `📊 Inflación acum. ${year}: +${inflTotal}%`;
-    badge.style.color = 'var(--yellow)';
-  } else if (badge) {
-    badge.textContent = 'Sin datos INDEC';
-  }
-
-  // ── Datasets ──
-  const datasets = [
-    {
-      label: 'Ingresos nominales',
-      data: ingArr,
-      type: 'bar',
-      backgroundColor: 'rgba(34,211,160,.55)',
-      borderColor: P.green,
-      borderWidth: 1,
-      borderRadius: 4,
-      order: 3,
-    },
-    {
-      label: 'Gastos nominales',
-      data: gasArr,
-      type: 'bar',
-      backgroundColor: 'rgba(244,63,94,.55)',
-      borderColor: P.red,
-      borderWidth: 1,
-      borderRadius: 4,
-      order: 4,
-    },
-    {
-      label: 'Neto libre',
-      data: netoArr,
-      type: 'line',
-      borderColor: P.blue,
-      backgroundColor: 'rgba(56,189,248,.08)',
-      borderWidth: 2.5,
-      pointRadius: 4,
-      pointBackgroundColor: netoArr.map(v => v >= 0 ? P.green : P.red),
-      tension: .35,
-      fill: false,
-      order: 1,
-    },
-  ];
-
-  // Agregar líneas deflactadas si tenemos datos INDEC
-  if (ingReal && gasReal) {
-    datasets.push({
-      label: 'Ingresos reales (inflación)',
-      data: ingReal,
-      type: 'line',
-      borderColor: P.green,
-      borderWidth: 1.5,
-      borderDash: [5, 4],
-      pointRadius: 2,
-      tension: .35,
-      fill: false,
-      order: 2,
-    });
-    datasets.push({
-      label: 'Gastos reales (inflación)',
-      data: gasReal,
-      type: 'line',
-      borderColor: P.red,
-      borderWidth: 1.5,
-      borderDash: [5, 4],
-      pointRadius: 2,
-      tension: .35,
-      fill: false,
-      order: 2,
-    });
-  }
-
-  chartMesAMes = destroyChart(chartMesAMes);
-  chartMesAMes = new Chart(canvasEl.getContext('2d'), {
-    type: 'bar',
-    data: { labels, datasets },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { display: false }, // usamos leyenda custom abajo
-        tooltip: {
-          backgroundColor: '#0e1117',
-          borderColor: 'rgba(255,255,255,.1)',
-          borderWidth: 1,
-          callbacks: {
-            label: c => {
-              const isDash = c.dataset.borderDash?.length > 0;
-              const suffix = isDash ? ' (real)' : '';
-              return ` ${c.dataset.label.split(' ')[0]}${suffix}: ${fmtK(c.parsed.y)}`;
-            }
-          }
-        }
+  // ── 2. Render inmediato con datos nominales (sin esperar INDEC) ──
+  const renderChart = (ingReal, gasReal, inflIdx) => {
+    const datasets = [
+      {
+        label: 'Ingresos nominales', data: ingArr, type: 'bar',
+        backgroundColor: 'rgba(34,211,160,.55)', borderColor: P.green,
+        borderWidth: 1, borderRadius: 4, order: 3,
       },
-      scales: {
-        y: {
-          ticks: { callback: v => fmtK(v) },
-          grid: { color: 'rgba(255,255,255,.04)' }
+      {
+        label: 'Gastos nominales', data: gasArr, type: 'bar',
+        backgroundColor: 'rgba(244,63,94,.55)', borderColor: P.red,
+        borderWidth: 1, borderRadius: 4, order: 4,
+      },
+      {
+        label: 'Neto libre', data: netoArr, type: 'line',
+        borderColor: P.blue, backgroundColor: 'rgba(56,189,248,.08)',
+        borderWidth: 2.5, pointRadius: 4,
+        pointBackgroundColor: netoArr.map(v => v >= 0 ? P.green : P.red),
+        tension: .35, fill: false, order: 1,
+      },
+    ];
+
+    if (ingReal && gasReal) {
+      datasets.push({
+        label: 'Ingresos reales', data: ingReal, type: 'line',
+        borderColor: P.green, borderWidth: 1.5, borderDash: [5,4],
+        pointRadius: 2, tension: .35, fill: false, order: 2,
+      });
+      datasets.push({
+        label: 'Gastos reales', data: gasReal, type: 'line',
+        borderColor: P.red, borderWidth: 1.5, borderDash: [5,4],
+        pointRadius: 2, tension: .35, fill: false, order: 2,
+      });
+    }
+
+    chartMesAMes = destroyChart(chartMesAMes);
+    chartMesAMes = new Chart(canvasEl.getContext('2d'), {
+      type: 'bar',
+      data: { labels, datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#0e1117',
+            borderColor: 'rgba(255,255,255,.1)', borderWidth: 1,
+            callbacks: { label: c => ` ${c.dataset.label}: ${fmtK(c.parsed.y)}` }
+          }
         },
-        x: { grid: { display: false } }
+        scales: {
+          y: { ticks: { callback: v => fmtK(v) }, grid: { color: 'rgba(255,255,255,.04)' } },
+          x: { grid: { display: false } }
+        }
+      }
+    });
+
+    // Leyenda custom
+    const legEl = document.getElementById('mesames-legend');
+    if (legEl) {
+      const items = [
+        { color: P.green, label: 'Ingresos', dash: false },
+        { color: P.red,   label: 'Gastos',   dash: false },
+        { color: P.blue,  label: 'Neto',     dash: false },
+      ];
+      if (ingReal) {
+        items.push({ color: P.green, label: 'Ingresos reales', dash: true });
+        items.push({ color: P.red,   label: 'Gastos reales',   dash: true });
+      }
+      legEl.innerHTML = items.map(it => `
+        <div style="display:flex;align-items:center;gap:5px">
+          <div style="width:${it.dash?'16px':'8px'};height:${it.dash?'0':'8px'};flex-shrink:0;
+            ${it.dash ? `border-top:2px dashed ${it.color}` : `background:${it.color};border-radius:2px`}"></div>
+          <span>${it.label}</span>
+        </div>`).join('');
+    }
+
+    // Badge inflación
+    const badge = document.getElementById('inflacion-badge');
+    if (badge) {
+      if (inflIdx && inflIdx.length) {
+        const pct = ((inflIdx[inflIdx.length-1] - 1) * 100).toFixed(1);
+        badge.textContent = `📊 Inflación acum. ${year}: +${pct}%`;
+        badge.style.color = 'var(--yellow)';
+      } else {
+        badge.textContent = '';
       }
     }
-  });
+  };
 
-  // ── Leyenda custom ──
-  const legEl = document.getElementById('mesames-legend');
-  if (legEl) {
-    const items = [
-      { color: P.green,  label: 'Ingresos nominales', dash: false },
-      { color: P.red,    label: 'Gastos nominales',   dash: false },
-      { color: P.blue,   label: 'Neto libre',         dash: false },
-    ];
-    if (ingReal) {
-      items.push({ color: P.green, label: 'Ingresos reales', dash: true });
-      items.push({ color: P.red,   label: 'Gastos reales',   dash: true });
-    }
-    legEl.innerHTML = items.map(it => `
-      <div style="display:flex;align-items:center;gap:5px">
-        <div style="width:${it.dash?'14px':'8px'};height:${it.dash?'0':'8px'};
-          ${it.dash?`border-top:2px dashed ${it.color}`:`background:${it.color};border-radius:2px`}">
-        </div>
-        <span>${it.label}</span>
-      </div>`).join('');
-  }
+  // Render inmediato sin inflación
+  renderChart(null, null, null);
+
+  // ── 3. Fetch INDEC en background — si llega, re-render con líneas reales ──
+  // Si ya está en cache (_inflCache), se resuelve instantáneamente
+  const mesKeys = labels.map((_, i) => year + '-' + String(i+1).padStart(2,'0'));
+
+  fetchInflacionINDEC().then(inflMap => {
+    if (!inflMap) return; // sin datos, quedamos con el chart nominal
+    const inflIdx = buildInflIndex(inflMap, mesKeys);
+    if (!inflIdx) return;
+    const ingReal = ingArr.map((v, i) => Math.round(v / inflIdx[i]));
+    const gasReal = gasArr.map((v, i) => Math.round(v / inflIdx[i]));
+    renderChart(ingReal, gasReal, inflIdx);
+  }).catch(() => {}); // falla silenciosa — el chart nominal ya está visible
 }
 
 // Alias para compatibilidad con refreshUI
