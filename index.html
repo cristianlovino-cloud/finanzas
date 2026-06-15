@@ -386,7 +386,7 @@ nav::-webkit-scrollbar{display:none}
     </div>
   </div>
   <!-- Saldos de cuentas -->
-  <div class="kg" style="grid-template-columns:1fr 1fr;margin-bottom:16px">
+  <div class="kg" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:16px">
     <div class="kpi" style="--kc:var(--green);cursor:pointer" onclick="go('cuentas',Array.from(document.querySelectorAll('.nb')).find(b=>b.textContent.includes('Cuentas')))">
       <div class="kl">💵 Saldo ARS</div>
       <div class="kv pos" id="ov-saldo-ars">$0</div>
@@ -396,6 +396,11 @@ nav::-webkit-scrollbar{display:none}
       <div class="kl">🟡 Saldo USD</div>
       <div class="kv" style="color:var(--yellow)" id="ov-saldo-usd">U$S 0</div>
       <div class="ks" id="ov-saldo-usd-det">—</div>
+    </div>
+    <div class="kpi" style="--kc:var(--blue)">
+      <div class="kl">📊 Tasa ahorro</div>
+      <div class="kv" id="ov-tasa-ahorro" style="color:var(--blue)">—%</div>
+      <div class="ks" id="ov-tasa-ahorro-sub">ing − gastos / ing</div>
     </div>
   </div>
 
@@ -432,22 +437,7 @@ nav::-webkit-scrollbar{display:none}
     </div>
     <div style="display:flex;gap:8px;align-items:center">
       <select id="plan-sel-top" onchange="setGlobalMes(this.value)" class="fi" style="width:auto;padding:5px 10px;font-size:.7rem">
-        <option value="2026-12">Dic 2026</option>
-        <option value="2026-11">Nov 2026</option>
-        <option value="2026-10">Oct 2026</option>
-        <option value="2026-09">Sep 2026</option>
-        <option value="2026-08">Ago 2026</option>
-        <option value="2026-07">Jul 2026</option>
-        <option value="2026-06">Jun 2026</option>
-        <option value="2026-05">May 2026</option>
-        <option value="2026-04">Abr 2026</option>
-        <option value="2026-03">Mar 2026</option>
-        <option value="2026-02">Feb 2026</option>
-        <option value="2026-01">Ene 2026</option>
-        <option value="2025-12">Dic 2025</option>
-        <option value="2025-11">Nov 2025</option>
-        <option value="2025-10">Oct 2025</option>
-        <option value="2025-09">Sep 2025</option>
+        <!-- populated dynamically -->
       </select>
       <button onclick="copyPrevMonth()" style="padding:8px 14px;background:none;border:1px solid var(--border2);color:var(--muted2);border-radius:20px;font-family:var(--fh);font-size:.72rem;cursor:pointer;white-space:nowrap" title="Copiar variables del mes anterior">
         ↩ Copiar anterior
@@ -524,14 +514,7 @@ nav::-webkit-scrollbar{display:none}
       <div style="font-size:.72rem;color:var(--muted);margin-top:2px">Presupuestado vs Real — calculado desde tus gastos cargados</div>
     </div>
     <select id="flujo-sel" onchange="setGlobalMes(this.value)" class="fi" style="width:auto;padding:6px 12px">
-      <option value="2026-05">May 2026</option>
-      <option value="2026-04">Abr 2026</option>
-      <option value="2026-03">Mar 2026</option>
-      <option value="2026-02">Feb 2026</option>
-      <option value="2026-01">Ene 2026</option>
-      <option value="2025-12">Dic 2025</option>
-      <option value="2025-11">Nov 2025</option>
-      <option value="2025-10">Oct 2025</option>
+      <!-- populated dynamically -->
     </select>
   </div>
 
@@ -558,6 +541,12 @@ nav::-webkit-scrollbar{display:none}
         <tbody id="flujo-tbody"></tbody>
       </table>
     </div>
+  </div>
+
+  <!-- Comparativa interanual -->
+  <div class="card" style="margin-bottom:14px" id="flujo-interanual-card">
+    <div class="ct">📅 Mismo mes — año anterior</div>
+    <div id="flujo-interanual-content" style="font-size:.78rem;color:var(--muted);padding:8px 0">Cargando...</div>
   </div>
 
   <!-- Transacciones del mes -->
@@ -628,7 +617,7 @@ nav::-webkit-scrollbar{display:none}
           </div>
         </div>
       </div>
-      <div class="field"><label>Descripción</label><input type="text" id="tx-desc" class="fi" placeholder="ej: supermercado, nafta..."></div>
+      <div class="field"><label>Descripción</label><input type="text" id="tx-desc" class="fi" placeholder="ej: supermercado, nafta..." onkeydown="if(event.key==='Enter')submitTx()"></div>
       <div class="r2">
         <div class="field">
           <label>Categoría</label>
@@ -1431,7 +1420,7 @@ function go(id, btn) {
     updateOverview();
     setTimeout(() => buildEvolChart(overviewYear || '2026'), 100);
   }
-  if (id === 'cargar')    { updateMediosDePago(); populateCatDropdown(); }
+  if (id === 'cargar')    { updateMediosDePago(); populateCatDropdown(); setTimeout(()=>{ const m=document.getElementById('tx-monto'); if(m) m.focus(); },120); }
   if (id === 'flujo')       renderFlujo();
   if (id === 'patrimonio')  updatePatrimonio();
   if (id === 'cuentas')   { renderCuentas(); updateMediosDePago(); updateOverviewSaldos(); renderHistorialTransf(); }
@@ -1710,7 +1699,7 @@ function renderRecentTxs() {
   const allTxs = DB.get('txs', {});
   const recent = Object.values(allTxs).flat().sort((a,b) => b.ts - a.ts).slice(0, 8);
   if (!recent.length) { el.innerHTML = '<div style="color:var(--muted);font-size:.75rem;text-align:center;padding:20px 0">Sin registros aún</div>'; return; }
-  el.innerHTML = recent.map(tx => {
+  el.innerHTML = recent.map((tx, idx) => {
     const isIng = tx.tipo === 'ingreso';
     const color = isIng ? P.green : P.red;
     const icon  = isIng ? '💰' : tx.tipo === 'tc' ? '💳' : '💸';
@@ -1720,9 +1709,40 @@ function renderRecentTxs() {
         <div style="font-size:.78rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${tx.desc}</div>
         <div style="font-size:.65rem;color:var(--muted);margin-top:1px">${tx.fecha}${tx.cat ? ' · '+tx.cat : ''}</div>
       </div>
-      <div style="font-family:var(--fh);font-size:.9rem;font-weight:700;color:${color};flex-shrink:0">${isIng?'+':'-'}${fmt(tx.monto)}</div>
+      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <div style="font-family:var(--fh);font-size:.9rem;font-weight:700;color:${color}">${isIng?'+':'-'}${fmt(tx.monto)}</div>
+        <button onclick="duplicateTx(${idx})" title="Duplicar" style="background:rgba(148,163,184,.1);border:1px solid var(--border);border-radius:5px;color:var(--muted2);cursor:pointer;padding:3px 7px;font-size:.65rem;line-height:1">⎘</button>
+      </div>
     </div>`;
   }).join('');
+}
+
+function duplicateTx(recentIdx) {
+  const allTxs = DB.get('txs', {});
+  const recent = Object.values(allTxs).flat().sort((a,b) => b.ts - a.ts);
+  const tx = recent[recentIdx];
+  if (!tx) return;
+  // Pre-fill cargar form with this tx data
+  document.getElementById('tx-monto').value = tx.monto;
+  document.getElementById('tx-desc').value  = tx.desc;
+  if (document.getElementById('tx-notas')) document.getElementById('tx-notas').value = tx.notas || '';
+  // Set tipo
+  const tipoBtn = document.querySelector(`.tipo-btn[onclick*="'${tx.tipo}'"]`);
+  if (tipoBtn) { setTipo(tx.tipo, tipoBtn); }
+  // Set date to today
+  document.getElementById('tx-fecha').value = new Date().toISOString().split('T')[0];
+  // Navigate to cargar
+  const cargarBtn = Array.from(document.querySelectorAll('.nb')).find(b => b.textContent.includes('Cargar'));
+  if (cargarBtn) go('cargar', cargarBtn);
+  // Set cat and medio after dropdown is populated
+  setTimeout(() => {
+    const catSel = document.getElementById('tx-cat');
+    if (catSel && tx.cat) { catSel.value = tx.cat; }
+    const medioSel = document.getElementById('tx-medio');
+    if (medioSel && tx.medio) { medioSel.value = tx.medio; }
+    document.getElementById('tx-monto').focus();
+  }, 200);
+  showToast('⎘ Gasto duplicado — revisá y guardá');
 }
 
 // ══════════════════════════════════════════════════════
@@ -1849,6 +1869,50 @@ function renderFlujo() {
       <td><button onclick="openEditModal('${flujoMes2}',${i})" style="background:none;border:1px solid var(--border);border-radius:5px;color:var(--muted2);cursor:pointer;padding:3px 8px;font-size:.65rem">✏</button></td>
     </tr>`;
   }).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:16px">Sin transacciones en este mes</td></tr>';
+
+  // ── Comparativa interanual ──
+  (function renderInteranual() {
+    const card = document.getElementById('flujo-interanual-content');
+    if (!card) return;
+    const [yr, mo] = mes.split('-');
+    const prevYr = String(parseInt(yr) - 1);
+    const prevMes = prevYr + '-' + mo;
+    const prevPlan = getPlan(prevMes);
+    const prevPt   = planTotals(prevPlan);
+    const { total: prevRealTotal } = txTotals(prevMes);
+    const prevGas = prevRealTotal || prevPt.gastos;
+    const savedTxs = DB.get('txs', {});
+    const hasPrevData = !!savedTxs[prevMes] || !!DB.get('plans', {})[prevMes];
+
+    if (!hasPrevData && prevGas === 0) {
+      card.innerHTML = `<span style="color:var(--muted);font-size:.75rem">Sin datos para ${MESES[parseInt(mo)-1]} ${prevYr}</span>`;
+      return;
+    }
+
+    const difGas   = realTotal - prevGas;
+    const difPct   = prevGas > 0 ? ((realTotal - prevGas) / prevGas * 100) : null;
+    const difColor = difGas > 0 ? P.red : P.green;
+    const difSign  = difGas >= 0 ? '+' : '';
+
+    card.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;align-items:center">
+      <div>
+        <div style="font-size:.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">${MESES[parseInt(mo)-1]} ${prevYr}</div>
+        <div style="font-family:var(--fh);font-size:1rem;font-weight:700;color:var(--muted2)">${fmt(prevGas)}</div>
+        <div style="font-size:.65rem;color:var(--muted);margin-top:2px">gastos reales</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">${MESES[parseInt(mo)-1]} ${yr}</div>
+        <div style="font-family:var(--fh);font-size:1rem;font-weight:700;color:var(--text)">${fmt(realTotal)}</div>
+        <div style="font-size:.65rem;color:var(--muted);margin-top:2px">este mes</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Variación</div>
+        <div style="font-family:var(--fh);font-size:1rem;font-weight:700;color:${difColor}">${difSign}${fmt(Math.abs(difGas))}</div>
+        ${difPct !== null ? `<div style="font-size:.65rem;color:${difColor};margin-top:2px">${difSign}${difPct.toFixed(1)}% interanual</div>` : ''}
+      </div>
+    </div>`;
+  })();
 }
 
 // ══════════════════════════════════════════════════════
@@ -2262,25 +2326,60 @@ function updateOverview() {
   const yrSummary = document.getElementById('yr-summary');
   if (yrSummary) yrSummary.textContent = `${nMeses} ${nMeses===1?'mes':'meses'} acumulado${nMeses===1?'':'s'}`;
 
+  // ── Tasa de ahorro ──
+  const tasaEl    = document.getElementById('ov-tasa-ahorro');
+  const tasaSubEl = document.getElementById('ov-tasa-ahorro-sub');
+  if (tasaEl) {
+    if (totalIng > 0) {
+      const ahorroNeto = totalIng - totalGas; // sin inv: el ahorro real antes de invertir
+      const tasa = (ahorroNeto / totalIng) * 100;
+      tasaEl.textContent  = (tasa >= 0 ? '+' : '') + tasa.toFixed(1) + '%';
+      tasaEl.className    = 'kv ' + (tasa >= 20 ? 'pos' : tasa >= 0 ? 'warn' : 'neg');
+      if (tasaSubEl) tasaSubEl.textContent = tasa >= 30 ? '🔥 Excelente' : tasa >= 20 ? '✓ Saludable' : tasa >= 10 ? '⚠ Mejorable' : '⬇ Bajo';
+    } else {
+      tasaEl.textContent = '—%';
+      tasaEl.className   = 'kv';
+      if (tasaSubEl) tasaSubEl.textContent = 'sin ingresos cargados';
+    }
+  }
+
   // Patrimonio
   const invs = DB.get('inversiones', INV_DEFAULT);
   const totalPat = invs.reduce((s, i) => s + (i.ars||0), 0);
   document.getElementById('ov-pat').textContent = fmtK(totalPat);
 
-  // Alerts — based on current month only
+  // ── Alertas mejoradas ──
   const alerts = [];
   const curPlanNow = getPlan(getCurMes());
   const curPt = planTotals(curPlanNow);
-  const { totals: curRealTotals } = txTotals(curMesKey);
+  const { totals: curRealTotals, total: curRealTotal } = txTotals(curMesKey);
   const planMap = {};
   [...curPlanNow.fijos,...curPlanNow.vars].forEach(r => planMap[r.l]=(planMap[r.l]||0)+r.v);
+
+  // Regla 1: categorías al 80%+ del presupuesto (warn) o >100% (danger)
   Object.entries(curRealTotals).forEach(([cat, rv]) => {
     const pv = planMap[cat] || 0;
-    if (pv > 0 && rv > pv * 1.1) alerts.push({type:'danger', msg:`⚠ ${cat}: ${fmt(rv)} vs ${fmt(pv)} presupuestado (${Math.round(rv/pv*100)}%)`});
+    if (pv > 0 && rv >= pv * 1.05) alerts.push({type:'danger', msg:`⚠ ${cat}: ${fmt(rv)} vs ${fmt(pv)} presupuestado (${Math.round(rv/pv*100)}%)`});
+    else if (pv > 0 && rv >= pv * 0.80) alerts.push({type:'warn', msg:`⬆ ${cat}: ${fmt(rv)} — ya en ${Math.round(rv/pv*100)}% del presupuesto`});
   });
-  const netoMes = curPt.ing - totalGas/nMeses - curPt.inv;
+
+  // Regla 2: mes sin ingresos cargados
+  const ingresosDelMes = getTxs(curMesKey).filter(t => t.tipo === 'ingreso');
+  if (ingresosDelMes.length === 0 && curPt.ing > 0) {
+    alerts.push({type:'warn', msg:`💰 No hay ingresos cargados este mes — recordá registrarlos`});
+  }
+
+  // Regla 3: neto del mes proyectado negativo
+  const netoMesProyectado = curPt.ing - curRealTotal - curPt.inv;
+  if (curPt.ing > 0 && netoMesProyectado < 0) {
+    alerts.push({type:'danger', msg:`⬇ Neto proyectado negativo este mes: ${fmt(netoMesProyectado)}`});
+  }
+
+  // Regla 4: resumen anual positivo/negativo
   if (neto < 0 && yr === '2026') alerts.push({type:'danger', msg:`⬇ Acumulado negativo en ${yr}: ${fmt(neto)}`});
-  else if (neto >= 0 && yr === '2026') alerts.push({type:'ok', msg:`✓ Acumulado ${yr}: ${fmt(neto)} neto positivo en ${nMeses} ${nMeses===1?'mes':'meses'}`});
+  else if (neto > 0 && yr === '2026' && alerts.filter(a=>a.type==='danger').length===0) {
+    alerts.push({type:'ok', msg:`✓ Acumulado ${yr}: ${fmt(neto)} neto positivo en ${nMeses} ${nMeses===1?'mes':'meses'}`});
+  }
 
   document.getElementById('overview-alerts').innerHTML = alerts.map(a =>
     `<div class="alert ${a.type}">${a.msg}</div>`).join('');
@@ -3285,7 +3384,27 @@ function initTheme() {
 initTheme();
 
 // ══════════════════════════════════════════════════════
-// NAME NORMALIZATION MAP
+// DYNAMIC MONTH SELECTORS
+// Generates options from 18 months ago to 6 months ahead
+// ══════════════════════════════════════════════════════
+function buildMonthSelectors() {
+  const now      = new Date();
+  const options  = [];
+  // 18 months back, 6 forward
+  for (let delta = 6; delta >= -18; delta--) {
+    const d = new Date(now.getFullYear(), now.getMonth() + delta, 1);
+    const key = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+    const lbl = mesLabel(key);
+    options.push(`<option value="${key}">${lbl}</option>`);
+  }
+  const html = options.join('');
+  ['plan-sel-top','plan-sel','flujo-sel'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = html;
+  });
+}
+
+
 // Maps old names → canonical plan names
 // ══════════════════════════════════════════════════════
 const NAME_MAP = {
@@ -3366,18 +3485,26 @@ if ('serviceWorker' in navigator) {
 
 document.addEventListener('DOMContentLoaded', () => {
   // Migrate inversiones: replace if saved data has fewer CEDEARs than INV_DEFAULT
+  // Only run once per schema version
   (function() {
-    const saved = DB.get('inversiones', null);
-    const defaultCedears = INV_DEFAULT.filter(i => i.tipo === 'CEDEAR').length;
-    const savedCedears   = saved ? saved.filter(i => i.tipo === 'CEDEAR').length : 0;
-    if (savedCedears < defaultCedears) {
-      DB.set('inversiones', JSON.parse(JSON.stringify(INV_DEFAULT)));
-      console.log('Migrated: loaded full INVIU portfolio (' + defaultCedears + ' CEDEARs)');
+    const SCHEMA_V = 'schema_v4'; // bump this when INV_DEFAULT changes
+    if (!localStorage.getItem(SCHEMA_V)) {
+      const saved = DB.get('inversiones', null);
+      const defaultCedears = INV_DEFAULT.filter(i => i.tipo === 'CEDEAR').length;
+      const savedCedears   = saved ? saved.filter(i => i.tipo === 'CEDEAR').length : 0;
+      if (savedCedears < defaultCedears) {
+        DB.set('inversiones', JSON.parse(JSON.stringify(INV_DEFAULT)));
+        console.log('Migrated: loaded full INVIU portfolio (' + defaultCedears + ' CEDEARs)');
+      }
+      localStorage.setItem(SCHEMA_V, '1');
     }
   })();
 
-  // Migrate old tx category names to normalized names
-  migrateOldTxNames();
+  // Migrate old tx category names to normalized names (run once)
+  if (!localStorage.getItem('tx_names_migrated_v2')) {
+    migrateOldTxNames();
+    localStorage.setItem('tx_names_migrated_v2', '1');
+  }
 
   // Set today's date in cargar form
   const fechaEl = document.getElementById('tx-fecha');
@@ -3388,20 +3515,14 @@ document.addEventListener('DOMContentLoaded', () => {
   // Load TC
   document.getElementById('cfg-tc').value = TC;
 
+  // ── Build month selectors dynamically ──
+  buildMonthSelectors();
+
   // Init — set global month and sync all selectors
   const initMes = getCurMes();
-  // Ensure all selectors have current month as option
   ['plan-sel','plan-sel-top','flujo-sel'].forEach(selId => {
     const el = document.getElementById(selId);
-    if (!el) return;
-    let found = Array.from(el.options).some(o => o.value === initMes);
-    if (!found) {
-      const opt = document.createElement('option');
-      opt.value = initMes;
-      opt.text  = mesLabel(initMes);
-      el.insertBefore(opt, el.options[0]);
-    }
-    el.value = initMes;
+    if (el) el.value = initMes;
   });
   globalMes = initMes;
   curMes    = initMes;
@@ -3473,19 +3594,14 @@ document.addEventListener('DOMContentLoaded', () => {
     buildDonut();
   }, 100));
 
-  // Re-check overview: Firebase puede tardar en bajar datos
-  [1000, 2000, 3500, 5000].forEach(delay => {
-    setTimeout(() => {
-      const el = document.getElementById('ov-ing');
-      if (el && (el.textContent === '$0' || el.textContent === '$0k' || el.textContent === '$o')) {
-        updateOverview();
-        updateOverviewSaldos();
-        renderCuentas();
-        renderRecentTxs();
-        try { buildAnualChart(); } catch(e) {}
-      }
-    }, delay);
-  });
+  // Single deferred check in case Firebase was still loading at init
+  setTimeout(() => {
+    const el = document.getElementById('ov-ing');
+    if (el && (el.textContent === '$0' || el.textContent === '$0k')) {
+      updateOverview(); updateOverviewSaldos(); renderCuentas(); renderRecentTxs();
+      try { buildAnualChart(); } catch(e) {}
+    }
+  }, 2500);
 });
 </script>
 </body>
