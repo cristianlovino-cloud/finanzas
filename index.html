@@ -85,7 +85,7 @@ window.refreshUI = function() {
   run(updateOverviewSaldos); run(updatePatrimonio);
   // renderInvList NO se llama en refreshUI — los precios se actualizan solos al navegar a Inversiones
   setTimeout(() => {
-    try { buildAnualChart(); } catch(e) {}
+    try { buildMesAMesChart(_mesAMesYear); } catch(e) {}
     try { buildDonut(); } catch(e) {}
   }, 200);
 };
@@ -450,19 +450,17 @@ nav::-webkit-scrollbar{display:none}
   </div>
 
   <div class="g2">
-    <div class="card span2" style="display:none">
+    <div class="card span2">
       <div class="ct">Evolución mensual
-        <div style="display:flex;gap:6px">
-          <button class="chip neu" onclick="setEvolYear('2024',this)" style="cursor:pointer;border:none">2024</button>
-          <button class="chip neu" onclick="setEvolYear('2025',this)" style="cursor:pointer;border:none">2025</button>
-          <button class="chip dn"  onclick="setEvolYear('2026',this)" style="cursor:pointer;border:none" id="evol-active-btn">2026</button>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button onclick="setMesAMesYear('2024',this)" class="yr-btn-mm" style="padding:3px 10px;border-radius:14px;border:1px solid var(--border);background:var(--s2);color:var(--muted);font-family:var(--fm);font-size:.68rem;cursor:pointer">2024</button>
+          <button onclick="setMesAMesYear('2025',this)" class="yr-btn-mm" style="padding:3px 10px;border-radius:14px;border:1px solid var(--border);background:var(--s2);color:var(--muted);font-family:var(--fm);font-size:.68rem;cursor:pointer">2025</button>
+          <button onclick="setMesAMesYear('2026',this)" class="yr-btn-mm yr-mm-active" style="padding:3px 10px;border-radius:14px;border:1px solid var(--green);background:rgba(34,211,160,.1);color:var(--green);font-family:var(--fm);font-size:.68rem;cursor:pointer">2026</button>
+          <span id="inflacion-badge" style="font-size:.62rem;color:var(--muted);margin-left:4px"></span>
         </div>
       </div>
-      <canvas id="c-evol" height="65"></canvas>
-    </div>
-    <div class="card">
-      <div class="ct">Gastos vs Ingresos anuales</div>
-      <canvas id="c-anual" height="180"></canvas>
+      <canvas id="c-mesames" height="200"></canvas>
+      <div id="mesames-legend" style="display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:10px;font-size:.65rem;color:var(--muted)"></div>
     </div>
     <div class="card">
       <div class="ct">Composición del mes</div>
@@ -2944,37 +2942,261 @@ let chartAhorro = null;
 
 function destroyChart(ref) { try { if (ref) ref.destroy(); } catch(e) {} return null; }
 
-function buildAnualChart() {
-  // Calcular 2026 dinámicamente desde localStorage
-  const savedPlans = DB.get('plans', {});
-  const savedTxs   = DB.get('txs',   {});
-  let gas26=0, ing26=0;
-  for (let m=1; m<=12; m++) {
-    const mes='2026-'+String(m).padStart(2,'0');
-    const hasPlan=!!savedPlans[mes];
-    const hasTxs=Array.isArray(savedTxs[mes])&&savedTxs[mes].length>0;
-    if (!hasPlan && !hasTxs) continue;
-    const plan=getPlan(mes), pt=planTotals(plan);
-    ing26 += pt.ing;
-    if (hasTxs) {
-      const {total:txTotal,totals:realTotals}=txTotals(mes);
-      gas26 += txTotal + plan.fijos.filter(r=>!realTotals[r.l]).reduce((s,r)=>s+r.v,0);
-    } else { gas26 += pt.gastos; }
+// ══════════════════════════════════════════════════════
+// INFLACIÓN INDEC — cache en localStorage 24hs
+// ══════════════════════════════════════════════════════
+let _inflCache = null;
+
+async function fetchInflacionINDEC() {
+  const CACHE_KEY = 'indec_inflacion_v2';
+  const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 horas
+
+  // Intentar cache local
+  try {
+    const cached = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
+    if (cached && (Date.now() - cached.ts) < CACHE_TTL) {
+      _inflCache = cached.data;
+      return cached.data;
+    }
+  } catch(e) {}
+
+  // Fetch desde API ArgentinaDatos (IPC mensual INDEC)
+  try {
+    const res = await fetch('https://api.argentinadatos.com/v1/finanzas/indices/inflacion', { cache: 'no-cache' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const raw = await res.json();
+    // raw: [{fecha: "2024-01-01", valor: 20.6}, ...]  valor = % mensual
+    const data = {};
+    raw.forEach(item => {
+      const key = item.fecha?.slice(0, 7); // "2024-01"
+      if (key) data[key] = parseFloat(item.valor) / 100; // convertir a decimal
+    });
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data }));
+    _inflCache = data;
+    return data;
+  } catch(e) {
+    console.log('INDEC fetch error:', e.message);
+    return null;
   }
-  const canvasEl = document.getElementById('c-anual');
-  if (!canvasEl) return;
-  chartAnual = destroyChart(chartAnual);
-  chartAnual = new Chart(canvasEl.getContext('2d'), {
-    type:'bar',
-    data:{ labels:['2024','2025','2026*'],
-      datasets:[
-        {label:'Gastos',   data:[54054,151482,Math.round(gas26)], backgroundColor:'rgba(244,63,94,.7)',  borderColor:P.red,   borderWidth:1},
-        {label:'Ingresos', data:[76428,157466,Math.round(ing26)], backgroundColor:'rgba(34,211,160,.6)', borderColor:P.green, borderWidth:1},
-      ]},
-    options:{responsive:true,plugins:{legend:{position:'bottom',labels:{boxWidth:8}},tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${fmt(c.parsed.y)}`}}},
-      scales:{y:{ticks:{callback:v=>'$'+(v/1000).toFixed(0)+'k'},grid:{color:'rgba(255,255,255,.04)'}},x:{grid:{display:false}}}}
+}
+
+// ── Calcular índice acumulado desde mesInicio hasta cada mes ──
+function buildInflIndex(inflMap, mesKeys) {
+  if (!inflMap) return null;
+  let idx = 1;
+  return mesKeys.map(mes => {
+    const tasa = inflMap[mes];
+    if (tasa != null) idx *= (1 + tasa);
+    return idx;
   });
 }
+
+// ══════════════════════════════════════════════════════
+// CHART MES A MES — reemplaza buildAnualChart
+// ══════════════════════════════════════════════════════
+let _mesAMesYear = '2026';
+let chartMesAMes = null;
+
+function setMesAMesYear(yr, btn) {
+  _mesAMesYear = yr;
+  document.querySelectorAll('.yr-btn-mm').forEach(b => {
+    b.style.borderColor = 'var(--border)';
+    b.style.background  = 'var(--s2)';
+    b.style.color       = 'var(--muted)';
+    b.classList.remove('yr-mm-active');
+  });
+  btn.style.borderColor = 'var(--green)';
+  btn.style.background  = 'rgba(34,211,160,.1)';
+  btn.style.color       = 'var(--green)';
+  btn.classList.add('yr-mm-active');
+  buildMesAMesChart(yr);
+}
+
+async function buildMesAMesChart(year) {
+  year = year || _mesAMesYear;
+  const canvasEl = document.getElementById('c-mesames');
+  if (!canvasEl) return;
+
+  // ── Obtener datos de ingresos y gastos ──
+  let labels = [], ingArr = [], gasArr = [], netoArr = [];
+
+  if (year === '2026') {
+    const savedPlans = DB.get('plans', {});
+    const savedTxs   = DB.get('txs',   {});
+    const now        = new Date();
+    const curMonthIdx = now.getFullYear() === 2026 ? now.getMonth() : 11;
+
+    for (let idx = 0; idx <= curMonthIdx; idx++) {
+      const mes    = '2026-' + String(idx+1).padStart(2,'0');
+      const hasPlan = !!savedPlans[mes];
+      const hasTxs  = Array.isArray(savedTxs[mes]) && savedTxs[mes].length > 0;
+      if (!hasPlan && !hasTxs) continue;
+      const plan = getPlan(mes), pt = planTotals(plan);
+      const { total: txTotal, totals: realTotals } = txTotals(mes);
+      const fijosAuto = plan.fijos.filter(r => !realTotals[r.l]).reduce((s,r) => s+r.v, 0);
+      const gas = hasTxs ? txTotal + fijosAuto : pt.gastos;
+      labels.push(MESES[idx]);
+      ingArr.push(Math.round(pt.ing));
+      gasArr.push(Math.round(gas));
+      netoArr.push(Math.round(pt.ing - gas - pt.inv));
+    }
+  } else {
+    const gArr = (HIST.gastos[year]   || []).filter(v => v != null);
+    const iArr = (HIST.ingresos[year] || []).filter(v => v != null);
+    const len  = Math.min(gArr.length, iArr.length);
+    labels   = MESES.slice(0, len);
+    ingArr   = iArr.slice(0, len).map(Math.round);
+    gasArr   = gArr.slice(0, len).map(Math.round);
+    netoArr  = ingArr.map((ing, i) => Math.round(ing - gasArr[i]));
+  }
+
+  if (!labels.length) return;
+
+  // ── Fetch inflación INDEC ──
+  const inflMap = await fetchInflacionINDEC();
+
+  // Construir mesKeys reales para inflación
+  const mesKeys = labels.map((_, i) => year + '-' + String(i+1).padStart(2,'0'));
+  const inflIdx = buildInflIndex(inflMap, mesKeys); // índice acumulado [1.0, 1.20, 1.45 ...]
+
+  // Deflactar: valor_real = valor_nominal / índice_inflación
+  const ingReal  = inflIdx ? ingArr.map((v, i)  => Math.round(v / inflIdx[i])) : null;
+  const gasReal  = inflIdx ? gasArr.map((v, i)  => Math.round(v / inflIdx[i])) : null;
+
+  // ── Actualizar badge de inflación ──
+  const badge = document.getElementById('inflacion-badge');
+  if (badge && inflIdx) {
+    const inflTotal = ((inflIdx[inflIdx.length-1] - 1) * 100).toFixed(1);
+    badge.textContent = `📊 Inflación acum. ${year}: +${inflTotal}%`;
+    badge.style.color = 'var(--yellow)';
+  } else if (badge) {
+    badge.textContent = 'Sin datos INDEC';
+  }
+
+  // ── Datasets ──
+  const datasets = [
+    {
+      label: 'Ingresos nominales',
+      data: ingArr,
+      type: 'bar',
+      backgroundColor: 'rgba(34,211,160,.55)',
+      borderColor: P.green,
+      borderWidth: 1,
+      borderRadius: 4,
+      order: 3,
+    },
+    {
+      label: 'Gastos nominales',
+      data: gasArr,
+      type: 'bar',
+      backgroundColor: 'rgba(244,63,94,.55)',
+      borderColor: P.red,
+      borderWidth: 1,
+      borderRadius: 4,
+      order: 4,
+    },
+    {
+      label: 'Neto libre',
+      data: netoArr,
+      type: 'line',
+      borderColor: P.blue,
+      backgroundColor: 'rgba(56,189,248,.08)',
+      borderWidth: 2.5,
+      pointRadius: 4,
+      pointBackgroundColor: netoArr.map(v => v >= 0 ? P.green : P.red),
+      tension: .35,
+      fill: false,
+      order: 1,
+    },
+  ];
+
+  // Agregar líneas deflactadas si tenemos datos INDEC
+  if (ingReal && gasReal) {
+    datasets.push({
+      label: 'Ingresos reales (inflación)',
+      data: ingReal,
+      type: 'line',
+      borderColor: P.green,
+      borderWidth: 1.5,
+      borderDash: [5, 4],
+      pointRadius: 2,
+      tension: .35,
+      fill: false,
+      order: 2,
+    });
+    datasets.push({
+      label: 'Gastos reales (inflación)',
+      data: gasReal,
+      type: 'line',
+      borderColor: P.red,
+      borderWidth: 1.5,
+      borderDash: [5, 4],
+      pointRadius: 2,
+      tension: .35,
+      fill: false,
+      order: 2,
+    });
+  }
+
+  chartMesAMes = destroyChart(chartMesAMes);
+  chartMesAMes = new Chart(canvasEl.getContext('2d'), {
+    type: 'bar',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false }, // usamos leyenda custom abajo
+        tooltip: {
+          backgroundColor: '#0e1117',
+          borderColor: 'rgba(255,255,255,.1)',
+          borderWidth: 1,
+          callbacks: {
+            label: c => {
+              const isDash = c.dataset.borderDash?.length > 0;
+              const suffix = isDash ? ' (real)' : '';
+              return ` ${c.dataset.label.split(' ')[0]}${suffix}: ${fmtK(c.parsed.y)}`;
+            }
+          }
+        }
+      },
+      scales: {
+        y: {
+          ticks: { callback: v => fmtK(v) },
+          grid: { color: 'rgba(255,255,255,.04)' }
+        },
+        x: { grid: { display: false } }
+      }
+    }
+  });
+
+  // ── Leyenda custom ──
+  const legEl = document.getElementById('mesames-legend');
+  if (legEl) {
+    const items = [
+      { color: P.green,  label: 'Ingresos nominales', dash: false },
+      { color: P.red,    label: 'Gastos nominales',   dash: false },
+      { color: P.blue,   label: 'Neto libre',         dash: false },
+    ];
+    if (ingReal) {
+      items.push({ color: P.green, label: 'Ingresos reales', dash: true });
+      items.push({ color: P.red,   label: 'Gastos reales',   dash: true });
+    }
+    legEl.innerHTML = items.map(it => `
+      <div style="display:flex;align-items:center;gap:5px">
+        <div style="width:${it.dash?'14px':'8px'};height:${it.dash?'0':'8px'};
+          ${it.dash?`border-top:2px dashed ${it.color}`:`background:${it.color};border-radius:2px`}">
+        </div>
+        <span>${it.label}</span>
+      </div>`).join('');
+  }
+}
+
+// Alias para compatibilidad con refreshUI
+function buildAnualChart() { buildMesAMesChart(_mesAMesYear); }
+
+
 
 // Overview donut — composition of current month
 function buildDonut() {
@@ -4093,8 +4315,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Charts al final
   requestAnimationFrame(() => setTimeout(() => {
-    // buildEvolChart pausado
-    buildAnualChart();
+    buildMesAMesChart('2026');
     buildDonut();
   }, 100));
 
@@ -4103,7 +4324,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const el = document.getElementById('ov-ing');
     if (el && (el.textContent === '$0' || el.textContent === '$0k')) {
       updateOverview(); updateOverviewSaldos(); renderCuentas(); renderRecentTxs();
-      try { buildAnualChart(); } catch(e) {}
+      try { buildMesAMesChart(_mesAMesYear); } catch(e) {}
     }
   }, 2500);
 });
