@@ -359,7 +359,7 @@ nav::-webkit-scrollbar{display:none}
   <button class="nb" onclick="go('cargar',this)">＋ Cargar</button>
   <button class="nb" onclick="go('cuentas',this)">◈ Cuentas</button>
   <button class="nb" onclick="go('inversiones',this)">◈ Inversiones</button>
-  <button class="nb" onclick="go('patrimonio',this)" style="display:none">⬟ Patrimonio</button>
+  <button class="nb" onclick="go('patrimonio',this)">⬟ Patrimonio</button>
   <button class="nb" onclick="go('config',this)">⚙ Config</button>
 </nav>
 
@@ -633,7 +633,7 @@ nav::-webkit-scrollbar{display:none}
               <option value="ARS">ARS $</option>
               <option value="USD">USD U$S</option>
             </select>
-            <input type="number" id="tx-monto" class="fi" placeholder="0" step="0.01">
+            <input type="text" inputmode="numeric" id="tx-monto" class="fi" placeholder="0" autocomplete="off" oninput="fmtMontoInput(this)" style="text-align:right;font-family:var(--fh);font-size:1rem;font-weight:700;letter-spacing:.01em">
           </div>
         </div>
       </div>
@@ -1414,6 +1414,21 @@ const fmtK = n => {
 const fmtp = p => (p > 0 ? '+' : '') + (p * 100).toFixed(1) + '%';
 let TC = parseInt(DB.get('tc','1250')) || 1250;
 
+// ── Separador de miles en tiempo real ──
+function fmtMontoInput(el) {
+  // Guardamos cursor position
+  const raw = el.value.replace(/\./g, '').replace(/[^\d,]/g, '');
+  const parts = raw.split(',');
+  const intPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  el.value = parts.length > 1 ? intPart + ',' + parts[1].slice(0,2) : intPart;
+}
+
+function getRawMonto() {
+  const val = document.getElementById('tx-monto').value;
+  // Remove thousands separators (dots) and normalize decimal (comma → dot)
+  return parseFloat(val.replace(/\./g, '').replace(',', '.')) || 0;
+}
+
 function showToast(msg, color) {
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -1670,7 +1685,7 @@ function populateCatDropdown() {
 
 function submitTx() {
   const fecha = document.getElementById('tx-fecha').value;
-  const monto = parseFloat(document.getElementById('tx-monto').value);
+  const monto = getRawMonto();
   const desc  = document.getElementById('tx-desc').value.trim();
   const cat   = document.getElementById('tx-cat').value;
   const medio = document.getElementById('tx-medio').value;
@@ -1743,7 +1758,8 @@ function duplicateTx(recentIdx) {
   const tx = recent[recentIdx];
   if (!tx) return;
   // Pre-fill cargar form with this tx data
-  document.getElementById('tx-monto').value = tx.monto;
+  const montoEl = document.getElementById('tx-monto');
+  if (montoEl) { montoEl.value = Math.round(tx.monto).toLocaleString('es-AR'); }
   document.getElementById('tx-desc').value  = tx.desc;
   if (document.getElementById('tx-notas')) document.getElementById('tx-notas').value = tx.notas || '';
   // Set tipo
@@ -2549,6 +2565,14 @@ function setEvolYear(yr, btn) {
   buildEvolChart(yr);
 }
 
+let chartAnual = null;
+let chartDonut = null;
+let chartInvDonut = null;
+let chartPat = null;
+let chartAhorro = null;
+
+function destroyChart(ref) { try { if (ref) ref.destroy(); } catch(e) {} return null; }
+
 function buildAnualChart() {
   // Calcular 2026 dinámicamente desde localStorage
   const savedPlans = DB.get('plans', {});
@@ -2568,7 +2592,8 @@ function buildAnualChart() {
   }
   const canvasEl = document.getElementById('c-anual');
   if (!canvasEl) return;
-  new Chart(canvasEl.getContext('2d'), {
+  chartAnual = destroyChart(chartAnual);
+  chartAnual = new Chart(canvasEl.getContext('2d'), {
     type:'bar',
     data:{ labels:['2024','2025','2026*'],
       datasets:[
@@ -2584,7 +2609,8 @@ function buildAnualChart() {
 function buildDonut() {
   const plan = getPlan(getCurMes());
   const pt   = planTotals(plan);
-  new Chart(document.getElementById('c-donut').getContext('2d'), {
+  chartDonut = destroyChart(chartDonut);
+  chartDonut = new Chart(document.getElementById('c-donut').getContext('2d'), {
     type:'doughnut',
     data:{ labels:['Fijos','Variables','Inversiones'],
       datasets:[{data:[pt.fijos, pt.vars_, pt.inv], backgroundColor:[P.blue,P.orange,P.purple], borderColor:'#080a0f', borderWidth:3}]},
@@ -2859,7 +2885,8 @@ async function renderInvList() {
 
   // Donut
   if (total > 0) {
-    new Chart(document.getElementById('c-inv-donut').getContext('2d'), {
+    chartInvDonut = destroyChart(chartInvDonut);
+    chartInvDonut = new Chart(document.getElementById('c-inv-donut').getContext('2d'), {
       type:'doughnut',
       data:{labels:invs.map(i=>i.activo), datasets:[{data:invs.map(i=>i.ars),
         backgroundColor:[P.purple,'rgba(167,139,250,.6)',P.yellow,'rgba(251,191,36,.6)',P.blue,P.green],
@@ -3257,24 +3284,47 @@ function updatePatrimonio() {
 
   // Charts — mesKeys declarado ANTES del primer uso
   const now2 = new Date();
-  const curIdx = now2.getFullYear() === 2026 ? now2.getMonth() : 3;
+  const curIdx = now2.getFullYear() === 2026 ? now2.getMonth() : 11;
   const mesKeys = Array.from({length: curIdx+1}, (_,i) => '2026-'+String(i+1).padStart(2,'0'));
 
-  new Chart(document.getElementById('c-pat').getContext('2d'), {
-    type:'line',
-    data:{labels:mesKeys.map(k=>MESES[parseInt(k.split('-')[1])-1]),datasets:[{label:'Patrimonio',data:mesKeys.map((_,i)=>[215000,238000,259760,total][i]||total),borderColor:P.purple,backgroundColor:'rgba(167,139,250,.08)',fill:true,tension:.4,borderWidth:2.5}]},
-    options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${fmt(c.parsed.y)}`}}},
-      scales:{y:{ticks:{callback:v=>'$'+(v/1000).toFixed(0)+'k'},grid:{color:'rgba(255,255,255,.04)'}},x:{grid:{display:false}}}}
-  });
-
-  // Ahorro mensual
+  // Ahorro mensual real por mes
   const ahorros = mesKeys.map(mes => {
     const plan = getPlan(mes);
     const pt   = planTotals(plan);
     const { total: rt } = txTotals(mes);
     return pt.ing - (rt || pt.gastos) - pt.inv;
   });
-  new Chart(document.getElementById('c-ahorro').getContext('2d'), {
+
+  // Patrimonio estimado: retrocedemos desde el total actual restando ahorros futuros
+  const patEvol = mesKeys.map((_, i) => {
+    const ahorroPost = ahorros.slice(i + 1).reduce((s, v) => s + v, 0);
+    return Math.max(0, total - ahorroPost);
+  });
+
+  chartPat = destroyChart(chartPat);
+  chartPat = new Chart(document.getElementById('c-pat').getContext('2d'), {
+    type:'line',
+    data:{
+      labels: mesKeys.map(k => MESES[parseInt(k.split('-')[1])-1]),
+      datasets:[{
+        label:'Patrimonio estimado',
+        data: patEvol,
+        borderColor:P.purple, backgroundColor:'rgba(167,139,250,.08)',
+        fill:true, tension:.4, borderWidth:2.5, pointRadius:3
+      }]
+    },
+    options:{responsive:true,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${fmt(c.parsed.y)}`}}},
+      scales:{
+        y:{ticks:{callback:v=>v>=1000000?'$'+(v/1000000).toFixed(1)+'M':'$'+(v/1000).toFixed(0)+'k'},grid:{color:'rgba(255,255,255,.04)'}},
+        x:{grid:{display:false}}
+      }
+    }
+  });
+
+  // Ahorro mensual
+  chartAhorro = destroyChart(chartAhorro);
+  chartAhorro = new Chart(document.getElementById('c-ahorro').getContext('2d'), {
     type:'bar',
     data:{labels:mesKeys.map(k=>MESES[parseInt(k.split('-')[1])-1]),datasets:[{label:'Ahorro neto',data:ahorros,
       backgroundColor:ahorros.map(v=>v>=0?'rgba(34,211,160,.6)':'rgba(244,63,94,.6)'),
