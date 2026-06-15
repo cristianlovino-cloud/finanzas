@@ -314,7 +314,32 @@ nav::-webkit-scrollbar{display:none}
 .alert-dot.warn{background:var(--yellow)}
 .alert-dot.ok{background:var(--green)}
 
-/* ── INV TABLE ── */
+/* ── AI CARGA NATURAL ── */
+.ai-input-wrap{position:relative;margin-bottom:14px}
+.ai-input{width:100%;background:linear-gradient(135deg,rgba(167,139,250,.06),rgba(56,189,248,.06));border:1px solid rgba(167,139,250,.3);border-radius:12px;color:var(--text);font-family:var(--fm);font-size:.88rem;padding:14px 50px 14px 16px;outline:none;transition:border-color .2s,box-shadow .2s;resize:none;line-height:1.5}
+.ai-input:focus{border-color:rgba(167,139,250,.6);box-shadow:0 0 0 3px rgba(167,139,250,.08)}
+.ai-input::placeholder{color:var(--muted)}
+.ai-mic-btn{position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:1.2rem;padding:6px;border-radius:8px;transition:all .2s;color:var(--muted2)}
+.ai-mic-btn:hover{color:var(--purple);background:rgba(167,139,250,.1)}
+.ai-mic-btn.recording{color:var(--red);animation:pulse-mic .8s infinite}
+@keyframes pulse-mic{0%,100%{transform:translateY(-50%) scale(1)}50%{transform:translateY(-50%) scale(1.2)}}
+.ai-send-btn{width:100%;padding:13px;border-radius:10px;border:none;cursor:pointer;font-family:var(--fh);font-size:.82rem;font-weight:700;letter-spacing:.02em;transition:all .2s;background:linear-gradient(135deg,var(--purple),var(--blue));color:white;display:flex;align-items:center;justify-content:center;gap:8px}
+.ai-send-btn:hover{opacity:.9;transform:translateY(-1px)}
+.ai-send-btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.ai-preview{background:var(--s2);border:1px solid var(--border2);border-radius:10px;padding:14px 16px;margin-top:10px;display:none}
+.ai-preview.show{display:block;animation:fadeUp .2s ease}
+.ai-preview-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:.78rem}
+.ai-preview-row:last-child{border-bottom:none}
+.ai-preview-label{color:var(--muted);font-size:.68rem;text-transform:uppercase;letter-spacing:.06em}
+.ai-preview-val{color:var(--text);font-weight:600;text-align:right}
+.ai-preview-val.amount{font-family:var(--fh);font-size:1.1rem;color:var(--green)}
+.ai-confidence{display:inline-block;font-size:.62rem;padding:2px 7px;border-radius:4px;margin-left:6px;font-weight:500}
+.ai-confidence.high{background:rgba(34,211,160,.12);color:var(--green)}
+.ai-confidence.mid{background:rgba(251,191,36,.12);color:var(--yellow)}
+.ai-tab-btn{flex:1;padding:10px 8px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--muted);font-family:var(--fm);font-size:.72rem;cursor:pointer;text-align:center;transition:all .2s}
+.ai-tab-btn.active{border-color:var(--purple);background:rgba(167,139,250,.08);color:var(--purple)}
+.ai-spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:white;border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
 .inv-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
 .inv-row:last-child{border-bottom:none}
 .inv-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:.9rem;flex-shrink:0}
@@ -610,50 +635,126 @@ nav::-webkit-scrollbar{display:none}
 <div class="page" id="page-cargar">
   <div style="max-width:480px;margin:0 auto">
 
-    <!-- Tipo selector -->
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px" id="tipo-btns">
-      <button onclick="setTipo('gasto',this)" class="tipo-btn active-tipo" style="padding:12px 8px;border-radius:8px;border:1px solid var(--green);background:rgba(34,211,160,.08);color:var(--green);font-family:var(--fm);font-size:.72rem;cursor:pointer;text-align:center">
-        <div style="font-size:1.1rem;margin-bottom:4px">💸</div>Gasto directo
+    <!-- Mode switcher -->
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <button class="ai-tab-btn active" id="mode-ai" onclick="setCargarMode('ai',this)">
+        <div style="font-size:1rem;margin-bottom:3px">✨</div>Carga rápida IA
       </button>
-      <button onclick="setTipo('tc',this)" class="tipo-btn" style="padding:12px 8px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--muted);font-family:var(--fm);font-size:.72rem;cursor:pointer;text-align:center">
-        <div style="font-size:1.1rem;margin-bottom:4px">💳</div>Pago TC
-      </button>
-      <button onclick="setTipo('ingreso',this)" class="tipo-btn" style="padding:12px 8px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--muted);font-family:var(--fm);font-size:.72rem;cursor:pointer;text-align:center">
-        <div style="font-size:1.1rem;margin-bottom:4px">💰</div>Ingreso
+      <button class="ai-tab-btn" id="mode-manual" onclick="setCargarMode('manual',this)">
+        <div style="font-size:1rem;margin-bottom:3px">✏</div>Manual
       </button>
     </div>
 
-    <div class="card" style="margin-bottom:14px">
-      <div class="r2">
-        <div class="field"><label>Fecha</label><input type="date" id="tx-fecha" class="fi"></div>
-        <div class="field">
-          <label>Monto</label>
-          <div style="display:flex;gap:6px;align-items:center">
-            <select id="tx-moneda" class="fi" style="width:76px;flex-shrink:0;padding:9px 6px">
-              <option value="ARS">ARS $</option>
-              <option value="USD">USD U$S</option>
-            </select>
-            <input type="text" inputmode="numeric" id="tx-monto" class="fi" placeholder="0" autocomplete="off" oninput="fmtMontoInput(this)" style="text-align:right;font-family:var(--fh);font-size:1rem;font-weight:700;letter-spacing:.01em">
+    <!-- ── AI MODE ── -->
+    <div id="cargar-ai-mode">
+      <div class="card" style="margin-bottom:14px">
+        <div style="font-family:var(--fh);font-size:.75rem;font-weight:700;color:var(--purple);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">✨ Describí el gasto en tus palabras</div>
+
+        <div class="ai-input-wrap">
+          <textarea id="ai-input" class="ai-input" rows="2"
+            placeholder='ej: "gasté 15000 en supermercado con débito"&#10;"pagué tarjeta BSF 85000"&#10;"cobré el sueldo 450k"'
+            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();aiParseTx()}"
+          ></textarea>
+          <button class="ai-mic-btn" id="ai-mic" onclick="toggleMic()" title="Dictá por voz">🎤</button>
+        </div>
+
+        <button class="ai-send-btn" id="ai-send-btn" onclick="aiParseTx()">
+          <span id="ai-send-label">✨ Interpretar</span>
+        </button>
+
+        <!-- Preview de lo que parseó -->
+        <div class="ai-preview" id="ai-preview">
+          <div style="font-size:.65rem;color:var(--purple);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;font-weight:700">Interpretado por IA — confirmá o editá</div>
+          <div class="ai-preview-row">
+            <span class="ai-preview-label">Tipo</span>
+            <span class="ai-preview-val" id="prev-tipo">—</span>
+          </div>
+          <div class="ai-preview-row">
+            <span class="ai-preview-label">Monto</span>
+            <span class="ai-preview-val amount" id="prev-monto">—</span>
+          </div>
+          <div class="ai-preview-row">
+            <span class="ai-preview-label">Descripción</span>
+            <span class="ai-preview-val" id="prev-desc">—</span>
+          </div>
+          <div class="ai-preview-row">
+            <span class="ai-preview-label">Categoría</span>
+            <span class="ai-preview-val" id="prev-cat">—</span>
+          </div>
+          <div class="ai-preview-row">
+            <span class="ai-preview-label">Medio de pago</span>
+            <span class="ai-preview-val" id="prev-medio">—</span>
+          </div>
+          <div class="ai-preview-row">
+            <span class="ai-preview-label">Fecha</span>
+            <span class="ai-preview-val" id="prev-fecha">—</span>
+          </div>
+          <div style="margin-top:12px;display:flex;gap:8px">
+            <button onclick="aiConfirmar()" class="btn btn-g" style="flex:1;font-size:.8rem">✓ Confirmar y guardar</button>
+            <button onclick="aiEditar()" class="btn btn-o" style="padding:11px 14px;font-size:.78rem">✏ Editar</button>
+          </div>
+        </div>
+
+        <!-- Ejemplos rápidos -->
+        <div id="ai-ejemplos" style="margin-top:12px">
+          <div style="font-size:.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Ejemplos</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            <button onclick="aiEjemplo(this)" class="chip neu" style="cursor:pointer;border:none;padding:5px 10px;font-size:.68rem">gasté 8500 en nafta</button>
+            <button onclick="aiEjemplo(this)" class="chip neu" style="cursor:pointer;border:none;padding:5px 10px;font-size:.68rem">supermercado 22000 con débito BSF</button>
+            <button onclick="aiEjemplo(this)" class="chip neu" style="cursor:pointer;border:none;padding:5px 10px;font-size:.68rem">pagué TC BSF 85000</button>
+            <button onclick="aiEjemplo(this)" class="chip neu" style="cursor:pointer;border:none;padding:5px 10px;font-size:.68rem">cobré sueldo 450000</button>
           </div>
         </div>
       </div>
-      <div class="field"><label>Descripción</label><input type="text" id="tx-desc" class="fi" placeholder="ej: supermercado, nafta..." onkeydown="if(event.key==='Enter')submitTx()"></div>
-      <div class="r2">
-        <div class="field">
-          <label>Categoría</label>
-          <select id="tx-cat" class="fi">
-            <option value="">— elegir —</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Medio de pago</label>
-          <select id="tx-medio" class="fi" onfocus="updateMediosDePago()" onclick="updateMediosDePago()">
-            <option value="">— elegir —</option>
-          </select>
-        </div>
+    </div>
+
+    <!-- ── MANUAL MODE ── -->
+    <div id="cargar-manual-mode" style="display:none">
+      <!-- Tipo selector -->
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px" id="tipo-btns">
+        <button onclick="setTipo('gasto',this)" class="tipo-btn active-tipo" style="padding:12px 8px;border-radius:8px;border:1px solid var(--green);background:rgba(34,211,160,.08);color:var(--green);font-family:var(--fm);font-size:.72rem;cursor:pointer;text-align:center">
+          <div style="font-size:1.1rem;margin-bottom:4px">💸</div>Gasto directo
+        </button>
+        <button onclick="setTipo('tc',this)" class="tipo-btn" style="padding:12px 8px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--muted);font-family:var(--fm);font-size:.72rem;cursor:pointer;text-align:center">
+          <div style="font-size:1.1rem;margin-bottom:4px">💳</div>Pago TC
+        </button>
+        <button onclick="setTipo('ingreso',this)" class="tipo-btn" style="padding:12px 8px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--muted);font-family:var(--fm);font-size:.72rem;cursor:pointer;text-align:center">
+          <div style="font-size:1.1rem;margin-bottom:4px">💰</div>Ingreso
+        </button>
       </div>
-      <div class="field"><label>Notas (opcional)</label><textarea id="tx-notas" class="fi" rows="2" placeholder="detalle adicional..."></textarea></div>
-      <button class="btn btn-g btn-full" id="tx-submit" onclick="submitTx()">＋ Registrar gasto</button>
+
+      <div class="card" style="margin-bottom:14px">
+        <div class="r2">
+          <div class="field"><label>Fecha</label><input type="date" id="tx-fecha" class="fi"></div>
+          <div class="field">
+            <label>Monto</label>
+            <div style="display:flex;gap:6px;align-items:center">
+              <select id="tx-moneda" class="fi" style="width:76px;flex-shrink:0;padding:9px 6px">
+                <option value="ARS">ARS $</option>
+                <option value="USD">USD U$S</option>
+              </select>
+              <input type="text" inputmode="numeric" id="tx-monto" class="fi" placeholder="0" autocomplete="off" oninput="fmtMontoInput(this)" style="text-align:right;font-family:var(--fh);font-size:1rem;font-weight:700;letter-spacing:.01em">
+            </div>
+          </div>
+        </div>
+        <div class="field"><label>Descripción</label><input type="text" id="tx-desc" class="fi" placeholder="ej: supermercado, nafta..." onkeydown="if(event.key==='Enter')submitTx()"></div>
+        <div class="r2">
+          <div class="field">
+            <label>Categoría</label>
+            <select id="tx-cat" class="fi">
+              <option value="">— elegir —</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Medio de pago</label>
+            <select id="tx-medio" class="fi" onfocus="updateMediosDePago()" onclick="updateMediosDePago()">
+              <option value="">— elegir —</option>
+            </select>
+          </div>
+        </div>
+        <div class="field"><label>Notas (opcional)</label><textarea id="tx-notas" class="fi" rows="2" placeholder="detalle adicional..."></textarea></div>
+        <button class="btn btn-g btn-full" id="tx-submit" onclick="submitTx()">＋ Registrar gasto</button>
+      </div>
     </div>
 
     <!-- Últimas transacciones -->
@@ -1455,7 +1556,7 @@ function go(id, btn) {
     updateOverview();
     setTimeout(() => buildEvolChart(overviewYear || '2026'), 100);
   }
-  if (id === 'cargar')    { updateMediosDePago(); populateCatDropdown(); setTimeout(()=>{ const m=document.getElementById('tx-monto'); if(m) m.focus(); },120); }
+  if (id === 'cargar')    { updateMediosDePago(); populateCatDropdown(); setTimeout(()=>{ const a=document.getElementById('ai-input'); if(a) a.focus(); },120); }
   if (id === 'flujo')       renderFlujo();
   if (id === 'patrimonio')  updatePatrimonio();
   if (id === 'cuentas')   { renderCuentas(); updateMediosDePago(); updateOverviewSaldos(); renderHistorialTransf(); }
@@ -2426,7 +2527,277 @@ function updateOverview() {
 }
 
 // ══════════════════════════════════════════════════════
-// ALERTS BANNER — colapsable con badge numérico
+// ✨ AI — CARGA POR LENGUAJE NATURAL
+// ══════════════════════════════════════════════════════
+let _aiParsed = null; // último resultado parseado
+let _micRecognition = null;
+let _micActive = false;
+
+function setCargarMode(mode, btn) {
+  document.querySelectorAll('.ai-tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('cargar-ai-mode').style.display   = mode === 'ai'     ? 'block' : 'none';
+  document.getElementById('cargar-manual-mode').style.display = mode === 'manual' ? 'block' : 'none';
+  if (mode === 'manual') {
+    updateMediosDePago();
+    populateCatDropdown();
+    setTimeout(() => { const m = document.getElementById('tx-monto'); if(m) m.focus(); }, 120);
+  } else {
+    setTimeout(() => { const a = document.getElementById('ai-input'); if(a) a.focus(); }, 120);
+  }
+}
+
+function aiEjemplo(btn) {
+  const inp = document.getElementById('ai-input');
+  if (inp) { inp.value = btn.textContent; inp.focus(); }
+}
+
+// ── Build context prompt with real user data ──
+function buildAiContext() {
+  const mes    = getCurMes();
+  const plan   = getPlan(mes);
+  const cuentas = getCuentas();
+
+  const cats = [
+    ...plan.ing.map(r => r.l),
+    ...plan.fijos.map(r => r.l),
+    ...plan.vars.map(r => r.l),
+  ].filter(Boolean);
+
+  const medios = cuentas.length
+    ? cuentas.map(c => c.nombre)
+    : ['Efectivo','MP','BSF','BBVA'];
+
+  const hoy = new Date().toISOString().split('T')[0];
+
+  return `Sos un asistente de finanzas personales. Tu única tarea es parsear frases en español sobre transacciones financieras y devolver JSON estructurado. NUNCA respondas en texto libre — SOLO JSON válido.
+
+Contexto del usuario:
+- Mes actual: ${mesLabel(mes)}
+- Fecha de hoy: ${hoy}
+- Categorías disponibles: ${cats.join(', ')}
+- Medios de pago disponibles: ${medios.join(', ')}
+
+Reglas de mapeo:
+- "TC BSF", "tarjeta BSF", "visa BSF" → tipo: "tc", cat: "TC BSF"
+- "TC BBVA", "tarjeta BBVA" → tipo: "tc", cat: "TC BBVA"  
+- "TC Municipal" → tipo: "tc", cat: "TC Municipal"
+- "TC MP", "tarjeta MP" → tipo: "tc", cat: "TC MP"
+- "sueldo", "salario", "cobré" → tipo: "ingreso"
+- "supermercado", "super", "mercado" → cat: "Supermercado" o la más cercana de la lista
+- "nafta", "combustible", "YPF" → cat buscar en lista, si no existe usar "Nafta" o "Combustible"
+- "k" al final de número = × 1000 (ej: "15k" = 15000, "450k" = 450000)
+- Si no se menciona medio, dejarlo vacío
+- Si no se menciona fecha, usar hoy: ${hoy}
+- moneda: "ARS" por defecto, "USD" solo si se menciona explícitamente dólares/USD/u$s
+- confidence: "high" si entendiste todo claramente, "mid" si hay algo ambiguo
+
+Devolvé SOLO este JSON (sin backticks, sin texto extra):
+{
+  "tipo": "gasto" | "tc" | "ingreso",
+  "monto": número,
+  "moneda": "ARS" | "USD",
+  "desc": "descripción corta",
+  "cat": "categoría exacta de la lista o la más cercana",
+  "medio": "medio de pago exacto de la lista o vacío",
+  "fecha": "YYYY-MM-DD",
+  "confidence": "high" | "mid",
+  "razon": "explicación breve de 1 línea de cómo interpretaste"
+}`;
+}
+
+async function aiParseTx() {
+  const input = document.getElementById('ai-input')?.value?.trim();
+  if (!input) { showToast('Escribí o dictá el gasto primero', P.yellow); return; }
+
+  const btn   = document.getElementById('ai-send-btn');
+  const label = document.getElementById('ai-send-label');
+  btn.disabled = true;
+  label.innerHTML = '<span class="ai-spinner"></span> Interpretando...';
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 400,
+        system: buildAiContext(),
+        messages: [{ role: 'user', content: input }],
+      }),
+    });
+
+    if (!res.ok) throw new Error('API error ' + res.status);
+    const data = await res.json();
+    const raw  = data.content?.find(b => b.type === 'text')?.text || '';
+
+    // Strip any accidental markdown fences
+    const clean = raw.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(clean);
+
+    _aiParsed = parsed;
+    renderAiPreview(parsed);
+
+  } catch(e) {
+    console.error('AI parse error:', e);
+    showToast('Error al interpretar — probá el modo manual', P.red);
+  } finally {
+    btn.disabled = false;
+    label.textContent = '✨ Interpretar';
+  }
+}
+
+function renderAiPreview(p) {
+  const preview = document.getElementById('ai-preview');
+  const ejemplos = document.getElementById('ai-ejemplos');
+
+  const tipoLabel = { gasto:'💸 Gasto directo', tc:'💳 Pago TC', ingreso:'💰 Ingreso' }[p.tipo] || p.tipo;
+  const montoFmt  = p.moneda === 'USD'
+    ? 'U$S ' + (p.monto||0).toLocaleString('es-AR')
+    : '$' + Math.round(p.monto||0).toLocaleString('es-AR');
+  const confBadge = `<span class="ai-confidence ${p.confidence}">${p.confidence === 'high' ? '✓ seguro' : '? revisar'}</span>`;
+
+  document.getElementById('prev-tipo').innerHTML  = tipoLabel;
+  document.getElementById('prev-monto').innerHTML = montoFmt + confBadge;
+  document.getElementById('prev-desc').textContent  = p.desc   || '—';
+  document.getElementById('prev-cat').textContent   = p.cat    || '—';
+  document.getElementById('prev-medio').textContent = p.medio  || '— (sin medio)';
+  document.getElementById('prev-fecha').textContent = p.fecha  || new Date().toISOString().split('T')[0];
+
+  preview.classList.add('show');
+  preview.style.display = 'block';
+  if (ejemplos) ejemplos.style.display = 'none';
+}
+
+function aiConfirmar() {
+  if (!_aiParsed) return;
+  const p = _aiParsed;
+
+  // Build tx object directly and save
+  const mes    = (p.fecha || new Date().toISOString().split('T')[0]).slice(0, 7);
+  const tx     = {
+    fecha:  p.fecha || new Date().toISOString().split('T')[0],
+    monto:  parseFloat(p.monto) || 0,
+    desc:   p.desc  || '',
+    cat:    normalizeCat(p.cat || ''),
+    medio:  p.medio || '',
+    notas:  '',
+    tipo:   p.tipo  || 'gasto',
+    moneda: p.moneda || 'ARS',
+    ts:     Date.now(),
+    viaAI:  true,
+  };
+
+  if (!tx.monto || !tx.desc) { showToast('Faltan datos — editá antes de guardar', P.yellow); aiEditar(); return; }
+
+  const txsAll = DB.get('txs', {});
+  if (!txsAll[mes]) txsAll[mes] = [];
+  txsAll[mes].unshift(tx);
+  DB.set('txs', txsAll);
+
+  // Actualizar saldo de cuenta
+  if (tx.medio) {
+    if (tx.tipo === 'ingreso') acreditarACuenta(tx.medio, tx.monto, tx.moneda, tx.desc);
+    else descontarDeCuenta(tx.medio, tx.monto, tx.moneda, tx.desc);
+  }
+
+  renderRecentTxs();
+  updateOverview();
+
+  // Reset AI panel
+  document.getElementById('ai-input').value = '';
+  document.getElementById('ai-preview').style.display = 'none';
+  document.getElementById('ai-preview').classList.remove('show');
+  document.getElementById('ai-ejemplos').style.display = 'block';
+  _aiParsed = null;
+
+  const icon = tx.tipo === 'ingreso' ? '💰' : tx.tipo === 'tc' ? '💳' : '💸';
+  showToast(`${icon} ${tx.desc} — $${Math.round(tx.monto).toLocaleString('es-AR')} guardado`);
+}
+
+function aiEditar() {
+  if (!_aiParsed) return;
+  const p = _aiParsed;
+
+  // Switch to manual mode and pre-fill
+  const manualBtn = document.getElementById('mode-manual');
+  setCargarMode('manual', manualBtn);
+
+  // Set tipo
+  const tipoMap  = { gasto: 0, tc: 1, ingreso: 2 };
+  const tipoBtns = document.querySelectorAll('.tipo-btn');
+  const tipoIdx  = tipoMap[p.tipo] ?? 0;
+  if (tipoBtns[tipoIdx]) setTipo(p.tipo, tipoBtns[tipoIdx]);
+
+  // Set fields
+  setTimeout(() => {
+    const fechaEl = document.getElementById('tx-fecha');
+    if (fechaEl) fechaEl.value = p.fecha || new Date().toISOString().split('T')[0];
+    const montoEl = document.getElementById('tx-monto');
+    if (montoEl) montoEl.value = Math.round(p.monto || 0).toLocaleString('es-AR');
+    const descEl  = document.getElementById('tx-desc');
+    if (descEl)  descEl.value = p.desc || '';
+    const monedaEl = document.getElementById('tx-moneda');
+    if (monedaEl) monedaEl.value = p.moneda || 'ARS';
+    populateCatDropdown();
+    setTimeout(() => {
+      const catEl   = document.getElementById('tx-cat');
+      if (catEl && p.cat)   catEl.value = p.cat;
+      const medioEl = document.getElementById('tx-medio');
+      if (medioEl && p.medio) medioEl.value = p.medio;
+      if (montoEl) montoEl.focus();
+    }, 150);
+  }, 100);
+}
+
+// ── Dictado por voz (Web Speech API) ──
+function toggleMic() {
+  const btn = document.getElementById('ai-mic');
+  if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+    showToast('Tu navegador no soporta dictado por voz', P.yellow); return;
+  }
+  if (_micActive) {
+    if (_micRecognition) _micRecognition.stop();
+    _micActive = false;
+    btn.classList.remove('recording');
+    btn.textContent = '🎤';
+    return;
+  }
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  _micRecognition = new SR();
+  _micRecognition.lang = 'es-AR';
+  _micRecognition.continuous = false;
+  _micRecognition.interimResults = false;
+
+  _micRecognition.onstart = () => {
+    _micActive = true;
+    btn.classList.add('recording');
+    btn.textContent = '⏹';
+    showToast('🎤 Escuchando...', P.purple);
+  };
+  _micRecognition.onresult = (e) => {
+    const transcript = e.results[0][0].transcript;
+    const inp = document.getElementById('ai-input');
+    if (inp) { inp.value = transcript; inp.focus(); }
+  };
+  _micRecognition.onend = () => {
+    _micActive = false;
+    btn.classList.remove('recording');
+    btn.textContent = '🎤';
+    // Auto-parse if got something
+    const inp = document.getElementById('ai-input');
+    if (inp?.value?.trim()) setTimeout(aiParseTx, 300);
+  };
+  _micRecognition.onerror = (e) => {
+    _micActive = false;
+    btn.classList.remove('recording');
+    btn.textContent = '🎤';
+    if (e.error !== 'aborted') showToast('Error de micrófono: ' + e.error, P.red);
+  };
+  _micRecognition.start();
+}
+
+
 // ══════════════════════════════════════════════════════
 let _alertsBannerOpen = false; // persiste estado entre refreshes
 
