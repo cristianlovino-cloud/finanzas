@@ -456,11 +456,10 @@ nav::-webkit-scrollbar{display:none}
           <button onclick="setMesAMesYear('2024',this)" class="yr-btn-mm" style="padding:3px 10px;border-radius:14px;border:1px solid var(--border);background:var(--s2);color:var(--muted);font-family:var(--fm);font-size:.68rem;cursor:pointer">2024</button>
           <button onclick="setMesAMesYear('2025',this)" class="yr-btn-mm" style="padding:3px 10px;border-radius:14px;border:1px solid var(--border);background:var(--s2);color:var(--muted);font-family:var(--fm);font-size:.68rem;cursor:pointer">2025</button>
           <button onclick="setMesAMesYear('2026',this)" class="yr-btn-mm yr-mm-active" style="padding:3px 10px;border-radius:14px;border:1px solid var(--green);background:rgba(34,211,160,.1);color:var(--green);font-family:var(--fm);font-size:.68rem;cursor:pointer">2026</button>
-          <span id="inflacion-badge" style="font-size:.62rem;color:var(--muted);margin-left:4px"></span>
+          <span id="inflacion-badge" style="font-size:.62rem;color:var(--yellow);margin-left:4px"></span>
         </div>
       </div>
-      <canvas id="c-mesames" height="200"></canvas>
-      <div id="mesames-legend" style="display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:10px;font-size:.65rem;color:var(--muted)"></div>
+      <div id="mesames-tabla" style="overflow-x:auto"></div>
     </div>
     <div class="card">
       <div class="ct">Composición del mes</div>
@@ -3012,18 +3011,18 @@ function setMesAMesYear(yr, btn) {
   buildMesAMesChart(yr);
 }
 
-async function buildMesAMesChart(year) {
+function buildMesAMesChart(year) {
   year = year || _mesAMesYear;
-  const canvasEl = document.getElementById('c-mesames');
-  if (!canvasEl) return;
+  const el = document.getElementById('mesames-tabla');
+  if (!el) return;
 
-  // ── 1. Calcular datos locales (síncrono, instantáneo) ──
-  let labels = [], ingArr = [], gasArr = [], netoArr = [];
+  // ── Construir datos del año ──
+  let rows = [];
 
   if (year === '2026') {
-    const savedPlans = DB.get('plans', {});
-    const savedTxs   = DB.get('txs',   {});
-    const now        = new Date();
+    const savedPlans  = DB.get('plans', {});
+    const savedTxs    = DB.get('txs',   {});
+    const now         = new Date();
     const curMonthIdx = now.getFullYear() === 2026 ? now.getMonth() : 11;
 
     for (let idx = 0; idx <= curMonthIdx; idx++) {
@@ -3034,129 +3033,98 @@ async function buildMesAMesChart(year) {
       const plan = getPlan(mes), pt = planTotals(plan);
       const { total: txTotal, totals: realTotals } = txTotals(mes);
       const fijosAuto = plan.fijos.filter(r => !realTotals[r.l]).reduce((s,r) => s+r.v, 0);
-      const gas = hasTxs ? txTotal + fijosAuto : pt.gastos;
-      labels.push(MESES[idx]);
-      ingArr.push(Math.round(pt.ing));
-      gasArr.push(Math.round(gas));
-      netoArr.push(Math.round(pt.ing - gas - pt.inv));
+      const gas  = hasTxs ? txTotal + fijosAuto : pt.gastos;
+      const neto = pt.ing - gas - pt.inv;
+      rows.push({ label: MESES[idx], ing: pt.ing, gas, neto, inv: pt.inv });
     }
   } else {
     const gArr = (HIST.gastos[year]   || []).filter(v => v != null);
     const iArr = (HIST.ingresos[year] || []).filter(v => v != null);
     const len  = Math.min(gArr.length, iArr.length);
-    labels  = MESES.slice(0, len);
-    ingArr  = iArr.slice(0, len).map(Math.round);
-    gasArr  = gArr.slice(0, len).map(Math.round);
-    netoArr = ingArr.map((ing, i) => Math.round(ing - gasArr[i]));
+    for (let i = 0; i < len; i++) {
+      rows.push({ label: MESES[i], ing: iArr[i], gas: gArr[i], neto: iArr[i] - gArr[i], inv: 0 });
+    }
   }
 
-  if (!labels.length) return;
+  if (!rows.length) { el.innerHTML = '<div style="color:var(--muted);font-size:.75rem;padding:16px 0;text-align:center">Sin datos para ' + year + '</div>'; return; }
 
-  // ── 2. Render inmediato con datos nominales (sin esperar INDEC) ──
-  const renderChart = (ingReal, gasReal, inflIdx) => {
-    const datasets = [
-      {
-        label: 'Ingresos nominales', data: ingArr, type: 'bar',
-        backgroundColor: 'rgba(34,211,160,.55)', borderColor: P.green,
-        borderWidth: 1, borderRadius: 4, order: 3,
-      },
-      {
-        label: 'Gastos nominales', data: gasArr, type: 'bar',
-        backgroundColor: 'rgba(244,63,94,.55)', borderColor: P.red,
-        borderWidth: 1, borderRadius: 4, order: 4,
-      },
-      {
-        label: 'Neto libre', data: netoArr, type: 'line',
-        borderColor: P.blue, backgroundColor: 'rgba(56,189,248,.08)',
-        borderWidth: 2.5, pointRadius: 4,
-        pointBackgroundColor: netoArr.map(v => v >= 0 ? P.green : P.red),
-        tension: .35, fill: false, order: 1,
-      },
-    ];
+  // ── Totales ──
+  const totIng  = rows.reduce((s, r) => s + r.ing,  0);
+  const totGas  = rows.reduce((s, r) => s + r.gas,  0);
+  const totNeto = rows.reduce((s, r) => s + r.neto, 0);
+  const totInv  = rows.reduce((s, r) => s + r.inv,  0);
 
-    if (ingReal && gasReal) {
-      datasets.push({
-        label: 'Ingresos reales', data: ingReal, type: 'line',
-        borderColor: P.green, borderWidth: 1.5, borderDash: [5,4],
-        pointRadius: 2, tension: .35, fill: false, order: 2,
-      });
-      datasets.push({
-        label: 'Gastos reales', data: gasReal, type: 'line',
-        borderColor: P.red, borderWidth: 1.5, borderDash: [5,4],
-        pointRadius: 2, tension: .35, fill: false, order: 2,
-      });
-    }
-
-    chartMesAMes = destroyChart(chartMesAMes);
-    chartMesAMes = new Chart(canvasEl.getContext('2d'), {
-      type: 'bar',
-      data: { labels, datasets },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        interaction: { mode: 'index', intersect: false },
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            backgroundColor: '#0e1117',
-            borderColor: 'rgba(255,255,255,.1)', borderWidth: 1,
-            callbacks: { label: c => ` ${c.dataset.label}: ${fmtK(c.parsed.y)}` }
-          }
-        },
-        scales: {
-          y: { ticks: { callback: v => fmtK(v) }, grid: { color: 'rgba(255,255,255,.04)' } },
-          x: { grid: { display: false } }
-        }
-      }
-    });
-
-    // Leyenda custom
-    const legEl = document.getElementById('mesames-legend');
-    if (legEl) {
-      const items = [
-        { color: P.green, label: 'Ingresos', dash: false },
-        { color: P.red,   label: 'Gastos',   dash: false },
-        { color: P.blue,  label: 'Neto',     dash: false },
-      ];
-      if (ingReal) {
-        items.push({ color: P.green, label: 'Ingresos reales', dash: true });
-        items.push({ color: P.red,   label: 'Gastos reales',   dash: true });
-      }
-      legEl.innerHTML = items.map(it => `
-        <div style="display:flex;align-items:center;gap:5px">
-          <div style="width:${it.dash?'16px':'8px'};height:${it.dash?'0':'8px'};flex-shrink:0;
-            ${it.dash ? `border-top:2px dashed ${it.color}` : `background:${it.color};border-radius:2px`}"></div>
-          <span>${it.label}</span>
-        </div>`).join('');
-    }
-
-    // Badge inflación
-    const badge = document.getElementById('inflacion-badge');
-    if (badge) {
-      if (inflIdx && inflIdx.length) {
-        const pct = ((inflIdx[inflIdx.length-1] - 1) * 100).toFixed(1);
-        badge.textContent = `📊 Inflación acum. ${year}: +${pct}%`;
-        badge.style.color = 'var(--yellow)';
-      } else {
-        badge.textContent = '';
-      }
-    }
+  // ── Mini barra proporcional ──
+  const maxVal = Math.max(...rows.map(r => Math.max(r.ing, r.gas)));
+  const bar = (val, color) => {
+    const pct = maxVal > 0 ? Math.round(val / maxVal * 100) : 0;
+    return `<div style="height:4px;border-radius:2px;background:${color};width:${pct}%;min-width:${val>0?'2px':'0'};margin-top:3px"></div>`;
   };
 
-  // Render inmediato sin inflación
-  renderChart(null, null, null);
+  // ── Render tabla ──
+  el.innerHTML = `
+  <table class="tbl" style="font-size:.73rem">
+    <thead>
+      <tr>
+        <th style="width:38px"></th>
+        <th style="text-align:right">Ingresos</th>
+        <th style="text-align:right">Gastos</th>
+        <th style="text-align:right">Neto</th>
+        <th style="text-align:right;color:var(--muted)">Ahorro%</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rows.map((r, i) => {
+        const tasaPct = r.ing > 0 ? (r.neto / r.ing * 100) : 0;
+        const tasaColor = tasaPct >= 20 ? P.green : tasaPct >= 0 ? P.yellow : P.red;
+        const netoColor = r.neto >= 0 ? P.green : P.red;
+        // Variación respecto al mes anterior
+        const prev = rows[i-1];
+        const varGas = prev ? ((r.gas - prev.gas) / prev.gas * 100) : null;
+        const varChip = varGas !== null
+          ? `<span style="font-size:.58rem;color:${varGas>5?P.red:varGas<-5?P.green:P.yellow}">${varGas>=0?'▲':'▼'}${Math.abs(varGas).toFixed(0)}%</span>`
+          : '';
+        return `<tr>
+          <td style="font-weight:600;color:var(--muted2);padding-right:4px">${r.label}</td>
+          <td style="text-align:right">
+            <span style="color:var(--green)">${fmtK(r.ing)}</span>
+            ${bar(r.ing, P.green)}
+          </td>
+          <td style="text-align:right">
+            <div style="display:flex;align-items:center;justify-content:flex-end;gap:4px">
+              <span style="color:var(--red)">${fmtK(r.gas)}</span>${varChip}
+            </div>
+            ${bar(r.gas, P.red)}
+          </td>
+          <td style="text-align:right;font-weight:600;color:${netoColor}">${fmtK(r.neto)}</td>
+          <td style="text-align:right;font-weight:700;color:${tasaColor}">${tasaPct.toFixed(0)}%</td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+    <tfoot>
+      <tr style="border-top:2px solid var(--border2);background:var(--s2)">
+        <td style="font-family:var(--fh);font-weight:700;font-size:.72rem;color:var(--text)">Total</td>
+        <td style="text-align:right;font-weight:700;color:var(--green)">${fmtK(totIng)}</td>
+        <td style="text-align:right;font-weight:700;color:var(--red)">${fmtK(totGas)}</td>
+        <td style="text-align:right;font-weight:700;color:${totNeto>=0?P.green:P.red}">${fmtK(totNeto)}</td>
+        <td style="text-align:right;font-weight:700;color:${totIng>0&&(totNeto/totIng)>=.2?P.green:P.yellow}">
+          ${totIng > 0 ? (totNeto/totIng*100).toFixed(0)+'%' : '—'}
+        </td>
+      </tr>
+    </tfoot>
+  </table>`;
 
-  // ── 3. Fetch INDEC en background — si llega, re-render con líneas reales ──
-  // Si ya está en cache (_inflCache), se resuelve instantáneamente
-  const mesKeys = labels.map((_, i) => year + '-' + String(i+1).padStart(2,'0'));
-
+  // ── Fetch INDEC en background — solo actualiza el badge ──
+  const badge = document.getElementById('inflacion-badge');
+  if (badge) badge.textContent = '';
   fetchInflacionINDEC().then(inflMap => {
-    if (!inflMap) return; // sin datos, quedamos con el chart nominal
+    if (!inflMap || !badge) return;
+    const mesKeys = rows.map((_, i) => year + '-' + String(i+1).padStart(2,'0'));
     const inflIdx = buildInflIndex(inflMap, mesKeys);
-    if (!inflIdx) return;
-    const ingReal = ingArr.map((v, i) => Math.round(v / inflIdx[i]));
-    const gasReal = gasArr.map((v, i) => Math.round(v / inflIdx[i]));
-    renderChart(ingReal, gasReal, inflIdx);
-  }).catch(() => {}); // falla silenciosa — el chart nominal ya está visible
+    if (!inflIdx || !inflIdx.length) return;
+    const pct = ((inflIdx[inflIdx.length-1] - 1) * 100).toFixed(1);
+    badge.textContent = `Inflación acum. ${year}: +${pct}%`;
+  }).catch(() => {});
 }
 
 // Alias para compatibilidad con refreshUI
