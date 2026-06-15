@@ -289,11 +289,30 @@ nav::-webkit-scrollbar{display:none}
 .tbl .pos{color:var(--green)} .tbl .neg{color:var(--red)}
 .tag{display:inline-block;padding:2px 7px;border-radius:4px;font-size:.62rem;background:var(--s3);color:var(--muted2)}
 
-/* ── ALERTS ── */
-.alert{padding:10px 14px;border-radius:7px;font-size:.75rem;display:flex;align-items:center;gap:8px;margin-bottom:8px}
-.alert.warn{background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);color:var(--yellow)}
-.alert.danger{background:rgba(244,63,94,.08);border:1px solid rgba(244,63,94,.2);color:var(--red)}
-.alert.ok{background:rgba(34,211,160,.08);border:1px solid rgba(34,211,160,.2);color:var(--green)}
+/* ── ALERTS BANNER ── */
+.alerts-banner{border-radius:var(--r);overflow:hidden;margin-bottom:14px}
+.alerts-header{display:flex;align-items:center;justify-content:space-between;padding:11px 16px;cursor:pointer;user-select:none;transition:background .15s}
+.alerts-header:hover{filter:brightness(1.1)}
+.alerts-header.has-danger{background:rgba(244,63,94,.10);border:1px solid rgba(244,63,94,.22)}
+.alerts-header.has-warn{background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.20)}
+.alerts-header.all-ok{background:rgba(34,211,160,.07);border:1px solid rgba(34,211,160,.20)}
+.alerts-badge{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;border-radius:10px;font-size:.68rem;font-weight:700;padding:0 6px;margin-left:6px}
+.alerts-badge.danger{background:var(--red);color:#fff}
+.alerts-badge.warn{background:var(--yellow);color:#080a0f}
+.alerts-badge.ok{background:var(--green);color:#080a0f}
+.alerts-chevron{font-size:.75rem;color:var(--muted);transition:transform .22s;flex-shrink:0}
+.alerts-chevron.open{transform:rotate(180deg)}
+.alerts-body{display:none;border-left:1px solid var(--border2);border-right:1px solid var(--border2);border-bottom:1px solid var(--border2);border-radius:0 0 var(--r) var(--r);overflow:hidden}
+.alerts-body.open{display:block}
+.alert-item{display:flex;align-items:flex-start;gap:10px;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,.04);font-size:.75rem;line-height:1.45}
+.alert-item:last-child{border-bottom:none}
+.alert-item.danger{color:var(--red);background:rgba(244,63,94,.05)}
+.alert-item.warn{color:var(--yellow);background:rgba(251,191,36,.04)}
+.alert-item.ok{color:var(--green);background:rgba(34,211,160,.04)}
+.alert-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;margin-top:5px}
+.alert-dot.danger{background:var(--red)}
+.alert-dot.warn{background:var(--yellow)}
+.alert-dot.ok{background:var(--green)}
 
 /* ── INV TABLE ── */
 .inv-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
@@ -361,6 +380,7 @@ nav::-webkit-scrollbar{display:none}
     <div id="yr-summary" style="font-size:.72rem;color:var(--muted)"></div>
   </div>
 
+  <!-- ── ALERTS BANNER ── -->
   <div id="overview-alerts" style="margin-bottom:14px"></div>
 
   <div class="kg">
@@ -2359,30 +2379,30 @@ function updateOverview() {
   // Regla 1: categorías al 80%+ del presupuesto (warn) o >100% (danger)
   Object.entries(curRealTotals).forEach(([cat, rv]) => {
     const pv = planMap[cat] || 0;
-    if (pv > 0 && rv >= pv * 1.05) alerts.push({type:'danger', msg:`⚠ ${cat}: ${fmt(rv)} vs ${fmt(pv)} presupuestado (${Math.round(rv/pv*100)}%)`});
-    else if (pv > 0 && rv >= pv * 0.80) alerts.push({type:'warn', msg:`⬆ ${cat}: ${fmt(rv)} — ya en ${Math.round(rv/pv*100)}% del presupuesto`});
+    if (pv > 0 && rv >= pv * 1.05) alerts.push({type:'danger', msg:`${cat}: ${fmt(rv)} vs ${fmt(pv)} presupuestado (${Math.round(rv/pv*100)}%)`});
+    else if (pv > 0 && rv >= pv * 0.80) alerts.push({type:'warn', msg:`${cat}: ${fmt(rv)} — ya en ${Math.round(rv/pv*100)}% del presupuesto`});
   });
 
   // Regla 2: mes sin ingresos cargados
   const ingresosDelMes = getTxs(curMesKey).filter(t => t.tipo === 'ingreso');
   if (ingresosDelMes.length === 0 && curPt.ing > 0) {
-    alerts.push({type:'warn', msg:`💰 No hay ingresos cargados este mes — recordá registrarlos`});
+    alerts.push({type:'warn', msg:`No hay ingresos cargados este mes — recordá registrarlos`});
   }
 
   // Regla 3: neto del mes proyectado negativo
   const netoMesProyectado = curPt.ing - curRealTotal - curPt.inv;
   if (curPt.ing > 0 && netoMesProyectado < 0) {
-    alerts.push({type:'danger', msg:`⬇ Neto proyectado negativo este mes: ${fmt(netoMesProyectado)}`});
+    alerts.push({type:'danger', msg:`Neto proyectado negativo este mes: ${fmt(netoMesProyectado)}`});
   }
 
   // Regla 4: resumen anual positivo/negativo
-  if (neto < 0 && yr === '2026') alerts.push({type:'danger', msg:`⬇ Acumulado negativo en ${yr}: ${fmt(neto)}`});
+  if (neto < 0 && yr === '2026') alerts.push({type:'danger', msg:`Acumulado negativo en ${yr}: ${fmt(neto)}`});
   else if (neto > 0 && yr === '2026' && alerts.filter(a=>a.type==='danger').length===0) {
-    alerts.push({type:'ok', msg:`✓ Acumulado ${yr}: ${fmt(neto)} neto positivo en ${nMeses} ${nMeses===1?'mes':'meses'}`});
+    alerts.push({type:'ok', msg:`Acumulado ${yr}: ${fmt(neto)} neto positivo en ${nMeses} ${nMeses===1?'mes':'meses'}`});
   }
 
-  document.getElementById('overview-alerts').innerHTML = alerts.map(a =>
-    `<div class="alert ${a.type}">${a.msg}</div>`).join('');
+  // ── Render banner colapsable ──
+  renderAlertsBanner(alerts);
 
   buildDonut();
   if (typeof buildAnualChart     === 'function') buildAnualChart();
@@ -2390,8 +2410,71 @@ function updateOverview() {
 }
 
 // ══════════════════════════════════════════════════════
-// CHARTS
+// ALERTS BANNER — colapsable con badge numérico
 // ══════════════════════════════════════════════════════
+let _alertsBannerOpen = false; // persiste estado entre refreshes
+
+function renderAlertsBanner(alerts) {
+  const el = document.getElementById('overview-alerts');
+  if (!el) return;
+
+  if (!alerts.length) { el.innerHTML = ''; return; }
+
+  const nDanger = alerts.filter(a => a.type === 'danger').length;
+  const nWarn   = alerts.filter(a => a.type === 'warn').length;
+  const nOk     = alerts.filter(a => a.type === 'ok').length;
+
+  // Priority: danger > warn > ok
+  const headerClass = nDanger > 0 ? 'has-danger' : nWarn > 0 ? 'has-warn' : 'all-ok';
+  const headerIcon  = nDanger > 0 ? '⚠' : nWarn > 0 ? '↑' : '✓';
+  const headerColor = nDanger > 0 ? 'var(--red)' : nWarn > 0 ? 'var(--yellow)' : 'var(--green)';
+
+  // Summary label
+  const parts = [];
+  if (nDanger > 0) parts.push(`${nDanger} superada${nDanger>1?'s':''}`);
+  if (nWarn   > 0) parts.push(`${nWarn} al límite`);
+  if (nOk     > 0 && nDanger === 0 && nWarn === 0) parts.push(`todo en orden`);
+  const summary = parts.join(' · ');
+
+  // Badges
+  const badges = [
+    nDanger > 0 ? `<span class="alerts-badge danger">${nDanger}</span>` : '',
+    nWarn   > 0 ? `<span class="alerts-badge warn">${nWarn}</span>`   : '',
+    nOk     > 0 && nDanger === 0 && nWarn === 0 ? `<span class="alerts-badge ok">${nOk}</span>` : '',
+  ].join('');
+
+  const isOpen = _alertsBannerOpen;
+
+  el.innerHTML = `
+  <div class="alerts-banner">
+    <div class="alerts-header ${headerClass}" onclick="toggleAlertsBanner()">
+      <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
+        <span style="font-size:.9rem;color:${headerColor}">${headerIcon}</span>
+        <span style="font-family:var(--fh);font-size:.78rem;font-weight:700;color:${headerColor}">Alertas del mes</span>
+        ${badges}
+        <span style="font-size:.72rem;color:var(--muted);margin-left:4px">${summary}</span>
+      </div>
+      <span class="alerts-chevron${isOpen?' open':''}">▾</span>
+    </div>
+    <div class="alerts-body${isOpen?' open':''}">
+      ${alerts.map(a => `
+        <div class="alert-item ${a.type}">
+          <div class="alert-dot ${a.type}"></div>
+          <span>${a.msg}</span>
+        </div>`).join('')}
+    </div>
+  </div>`;
+}
+
+function toggleAlertsBanner() {
+  _alertsBannerOpen = !_alertsBannerOpen;
+  const body     = document.querySelector('.alerts-body');
+  const chevron  = document.querySelector('.alerts-chevron');
+  if (body)    body.classList.toggle('open',    _alertsBannerOpen);
+  if (chevron) chevron.classList.toggle('open', _alertsBannerOpen);
+}
+
+
 Chart.defaults.color = '#64748b';
 Chart.defaults.borderColor = 'rgba(255,255,255,0.06)';
 Chart.defaults.font.family = "'JetBrains Mono',monospace";
