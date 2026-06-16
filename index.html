@@ -1106,6 +1106,7 @@ nav::-webkit-scrollbar{display:none}
         <button onclick="abrirEditorImport()" class="btn btn-b" style="flex:1">✏ Revisar y editar</button>
         <button onclick="importarDesdeXlsx(true)" class="btn btn-o" style="padding:11px 14px;font-size:.72rem" title="Importar sin revisar">⚡ Importar directo</button>
       </div>
+      <button onclick="reimportarLimpio()" class="btn btn-o" style="width:100%;margin-top:8px;border-color:var(--red);color:var(--red);font-size:.72rem">🔄 Borrar importación vieja y reimportar limpio</button>
     </div>
 
     <div class="card" style="margin-bottom:14px">
@@ -4208,6 +4209,36 @@ function agregarFilaImport() {
     medio:'', notas:'', tipo:'gasto', moneda:'ARS', ts:Date.now(), fromXls:true
   });
   renderEditorMes();
+}
+
+function reimportarLimpio() {
+  if (!confirm('Esto borra TODAS las transacciones importadas previamente del xlsx (las marcadas como importadas) y las reemplaza con la versión más reciente. Tus transacciones cargadas manualmente NO se tocan. ¿Continuar?')) return;
+
+  const txsAll = DB.get('txs', {});
+  let cleaned = 0, imported = 0;
+
+  // 1. Limpiar TODAS las txs fromXls de TODOS los meses (incluso los que ya no están en EXCEL_TXS actual)
+  Object.keys(txsAll).forEach(mes => {
+    const before = (txsAll[mes] || []).length;
+    txsAll[mes] = (txsAll[mes] || []).filter(t => !t.fromXls);
+    if (txsAll[mes].length !== before) cleaned++;
+  });
+
+  // 2. Reimportar fresh desde EXCEL_TXS actual
+  Object.entries(EXCEL_TXS).forEach(([mes, txs]) => {
+    const existing = txsAll[mes] || []; // ya filtrado, solo quedan manuales
+    txsAll[mes] = [...txs, ...existing];
+    imported++;
+  });
+
+  DB.set('txs', txsAll);
+  if (window.FBsave) window.FBsave('txs', txsAll);
+
+  updateOverview(); renderRecentTxs(); buildMesAMesChart(_mesAMesYear);
+  const total = Object.values(EXCEL_TXS).flat().length;
+  showToast(`✓ Limpieza completa: ${cleaned} meses limpiados, ${imported} meses reimportados (${total} txs)`);
+  const st = document.getElementById('import-status');
+  if (st) st.innerHTML = `<span style="color:var(--green)">✓ Reimportación limpia completa: ${total} transacciones</span>`;
 }
 
 function confirmarImport() {
