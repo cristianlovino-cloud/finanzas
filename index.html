@@ -850,6 +850,8 @@ nav::-webkit-scrollbar{display:none}
             <option value="banco">Banco</option>
             <option value="billetera">Billetera digital</option>
             <option value="efectivo">Efectivo</option>
+            <option value="fci">FCI / Fondo</option>
+            <option value="cripto">Cuenta cripto</option>
           </select>
         </div>
       </div>
@@ -2228,19 +2230,26 @@ function renderCuentas() {
     el.innerHTML = '<div style="color:var(--muted);font-size:.75rem;text-align:center;padding:20px 0">Agregá tu primera cuenta arriba</div>';
   } else {
     el.innerHTML = cuentas.map((ct, i) => {
-      const colorMap = { banco:'var(--blue)', billetera:'var(--purple)', efectivo:'var(--green)' };
+      const colorMap = { banco:'var(--blue)', billetera:'var(--purple)', efectivo:'var(--green)', fci:'var(--yellow)', cripto:'var(--orange)' };
       const color = colorMap[ct.tipo] || 'var(--muted2)';
       const saldoFmt = ct.moneda === 'USD'
         ? 'U$S ' + fmt(ct.saldo).replace('$','')
         : fmt(ct.saldo);
       const saldoColor = ct.saldo >= 0 ? 'var(--green)' : 'var(--red)';
-      const tipoLabel = ct.tipo === 'banco' ? 'BANCO' : ct.tipo === 'billetera' ? 'BILLETERA' : 'EFECTIVO';
+      const tipoOpts = [
+        ['banco','BANCO'], ['billetera','BILLETERA'], ['efectivo','EFECTIVO'], ['fci','FCI / FONDO'], ['cripto','CRIPTO']
+      ];
       return `
       <div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid var(--border)">
         <div style="width:5px;height:42px;border-radius:3px;background:${color};flex-shrink:0"></div>
         <div style="flex:1;min-width:0">
           <div style="font-family:var(--fh);font-weight:700;font-size:.92rem;letter-spacing:.01em;text-transform:uppercase">${ct.nombre}</div>
-          <div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:2px">${tipoLabel} · ${ct.moneda}</div>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
+            <select onchange="cambiarTipoCuenta(${i}, this.value)" style="background:var(--s2);border:1px solid var(--border);border-radius:4px;color:var(--muted);padding:2px 4px;font-size:.65rem;text-transform:uppercase;letter-spacing:.04em;font-family:var(--fm)">
+              ${tipoOpts.map(([v,l]) => `<option value="${v}" ${ct.tipo===v?'selected':''}>${l}</option>`).join('')}
+            </select>
+            <span style="font-size:.68rem;color:var(--muted)">· ${ct.moneda}</span>
+          </div>
         </div>
         <div style="text-align:right;flex-shrink:0">
           <div style="font-family:var(--fh);font-weight:700;font-size:1.05rem;color:${saldoColor}">${saldoFmt}</div>
@@ -2284,6 +2293,17 @@ function ajustarSaldo(i) {
   document.getElementById('ajuste-'+i).value = '';
   const signo = ajuste >= 0 ? '+' : '';
   showToast('✓ Ajuste ' + cuentas[i].nombre + ': ' + signo + fmt(ajuste) + ' → nuevo saldo: ' + fmt(cuentas[i].saldo));
+}
+
+// ── Recategorizar una cuenta existente (ej: banco -> FCI) sin borrarla ──
+function cambiarTipoCuenta(i, nuevoTipo) {
+  const cuentas = getCuentas();
+  if (!cuentas[i]) return;
+  const anterior = cuentas[i].tipo;
+  cuentas[i].tipo = nuevoTipo;
+  saveCuentas(cuentas);
+  if (typeof renderPlataOciosa === 'function') renderPlataOciosa();
+  showToast(`✓ ${cuentas[i].nombre}: ${anterior} → ${nuevoTipo}`);
 }
 
 // ── Reconciliar saldo (setear saldo real) ──
