@@ -937,6 +937,12 @@ nav::-webkit-scrollbar{display:none}
       <canvas id="c-inv-donut" height="200"></canvas>
     </div>
 
+    <div class="card span2" style="margin-bottom:0">
+      <div class="ct">📊 Análisis de cartera — riesgo vs rendimiento</div>
+      <div id="inv-riesgo-resumen" style="margin-bottom:14px"></div>
+      <div id="inv-riesgo-detalle"></div>
+    </div>
+
     <div class="card">
       <div class="ct">Movimientos recientes</div>
       <div id="inv-movs"></div>
@@ -3415,6 +3421,123 @@ function getInv() {
   return DB.get('inversiones', INV_DEFAULT);
 }
 
+// ── Clasificación de riesgo para análisis de cartera ──
+// Alto: acciones individuales (sin diversificación) y ETFs sectoriales/regionales angostos
+// Medio: ETFs diversificados con sesgo (tech-heavy, value, sector amplio) y holdings diversificados
+// Bajo: ETFs ampliamente diversificados (mercado total) y oro/refugio
+const RIESGO_TICKERS = {
+  // Alto — acciones individuales
+  GOOGL:'alto', META:'alto', MELI:'alto', UNH:'alto', PEP:'alto', MCD:'alto', PG:'alto', VZ:'alto',
+  AAPL:'alto', MSFT:'alto', AMZN:'alto', NVDA:'alto', TSLA:'alto', KO:'alto', JNJ:'alto', JPM:'alto',
+  DIS:'alto', NFLX:'alto', BABA:'alto', V:'alto', MA:'alto', WMT:'alto', XOM:'alto', CVX:'alto',
+  // Alto — ETFs sectoriales/regionales angostos (concentración alta en un rubro o región chica)
+  CIBR:'alto', ILF:'alto', XLE:'alto', XLU:'alto', XME:'alto', XBI:'alto', ARKK:'alto', SOXX:'alto',
+  // Medio — ETFs diversificados con sesgo, o holdings diversificados que cotizan como acción única
+  QQQ:'medio', IVE:'medio', XLP:'medio', XLK:'medio', BRKB:'medio', BRK:'medio', DIA:'medio', IWM:'medio',
+  // Bajo — ETFs ampliamente diversificados (mercado total) y refugio
+  SPY:'bajo', VEA:'bajo', EEM:'bajo', GLD:'bajo', VOO:'bajo', VTI:'bajo', IEFA:'bajo', SLV:'bajo',
+};
+function clasificarRiesgo(inv) {
+  const t = (inv.ticker || inv.activo || '').toUpperCase();
+  if (RIESGO_TICKERS[t]) return RIESGO_TICKERS[t];
+  // Fallback heurístico por tipo/nota si el ticker no está en el diccionario
+  const tipo = (inv.tipo || '').toLowerCase();
+  const nota = (inv.nota || '').toLowerCase();
+  if (tipo === 'cripto') return 'alto';
+  if (tipo === 'stablecoin' || tipo === 'dólar') return 'bajo';
+  if (tipo === 'bono') return 'bajo';
+  if (tipo === 'fci') return 'medio'; // depende del FCI, asumimos medio sin más info
+  if (/cedear|acci[oó]n/.test(tipo) && !/etf|trust|select|shares|spdr|vanguard|fondo/.test(nota)) return 'alto';
+  if (/gold|oro/.test(nota)) return 'bajo';
+  if (/emerging|developed|s&p 500|total market/.test(nota)) return 'bajo';
+  return 'medio'; // default conservador-medio si no podemos determinar
+}
+
+// ── Análisis de cartera: riesgo vs rendimiento, tolerancia 1/3 alto riesgo ──
+const TOLERANCIA_ALTO_RIESGO = 1/3; // el usuario banca hasta 1/3 de la cartera en riesgo alto
+
+function renderAnalisisCartera() {
+  const resEl = document.getElementById('inv-riesgo-resumen');
+  const detEl = document.getElementById('inv-riesgo-detalle');
+  if (!resEl || !detEl) return;
+
+  const invs  = getInv().filter(i => (i.ars||0) > 0);
+  const total = invs.reduce((s,i) => s + (i.ars||0), 0);
+  if (total === 0) { resEl.innerHTML = '<div style="color:var(--muted);font-size:.75rem">Sin posiciones cargadas.</div>'; detEl.innerHTML=''; return; }
+
+  const conRiesgo = invs.map(i => ({ ...i, riesgo: clasificarRiesgo(i) }));
+  const porRiesgo = { alto:0, medio:0, bajo:0 };
+  conRiesgo.forEach(i => { porRiesgo[i.riesgo] += i.ars; });
+  const pctAlto  = porRiesgo.alto  / total;
+  const pctMedio = porRiesgo.medio / total;
+  const pctBajo  = porRiesgo.bajo  / total;
+
+  const sobreTolerancia = pctAlto > TOLERANCIA_ALTO_RIESGO;
+  const colorBar = { alto:P.red, medio:P.yellow, bajo:P.green };
+
+  // ── Resumen de tolerancia ──
+  resEl.innerHTML = `
+    <div style="display:flex;height:10px;border-radius:5px;overflow:hidden;margin-bottom:10px">
+      <div style="width:${(pctAlto*100).toFixed(1)}%;background:${colorBar.alto}"></div>
+      <div style="width:${(pctMedio*100).toFixed(1)}%;background:${colorBar.medio}"></div>
+      <div style="width:${(pctBajo*100).toFixed(1)}%;background:${colorBar.bajo}"></div>
+    </div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:.72rem;margin-bottom:10px">
+      <span style="color:${colorBar.alto}">● Alto: ${(pctAlto*100).toFixed(0)}% (${fmt(porRiesgo.alto)})</span>
+      <span style="color:${colorBar.medio}">● Medio: ${(pctMedio*100).toFixed(0)}% (${fmt(porRiesgo.medio)})</span>
+      <span style="color:${colorBar.bajo}">● Bajo: ${(pctBajo*100).toFixed(0)}% (${fmt(porRiesgo.bajo)})</span>
+    </div>
+    <div class="alert ${sobreTolerancia ? 'warn' : ''}" style="font-size:.73rem;line-height:1.5">
+      ${sobreTolerancia
+        ? `⚠ Tu tolerancia es hasta 1/3 (33%) en riesgo alto y estás en ${(pctAlto*100).toFixed(0)}%. Excediste por ${fmt(porRiesgo.alto - total*TOLERANCIA_ALTO_RIESGO)}. Mirá abajo qué posiciones de riesgo alto rinden peor para priorizar rotación.`
+        : `✓ Estás dentro de tu tolerancia de riesgo alto (máx. 33%). Margen disponible: ${fmt(total*TOLERANCIA_ALTO_RIESGO - porRiesgo.alto)} antes de exceder.`}
+    </div>`;
+
+  // ── Clasificación por acción sugerida ──
+  // ROTAR: riesgo alto + rinde mal (rend < -10%)
+  // VIGILAR: riesgo alto + rinde bien, pero contribuye a exceso de tolerancia
+  // OK: el resto
+  const conAccion = conRiesgo.map(i => {
+    const rend = i.rend || 0;
+    let accion, motivo, color;
+    if (i.riesgo === 'alto' && rend < -0.10) {
+      accion = 'ROTAR'; color = P.red;
+      motivo = `Riesgo alto y rindiendo ${(rend*100).toFixed(0)}% — candidato a vender y reasignar a algo más diversificado.`;
+    } else if (i.riesgo === 'alto' && sobreTolerancia && rend >= -0.10) {
+      accion = 'VIGILAR'; color = P.yellow;
+      motivo = `Riesgo alto rindiendo ${(rend*100).toFixed(0)}%. No está perdiendo, pero estás sobre tu límite de 1/3 en alto riesgo — es candidato a tomar ganancia parcial.`;
+    } else if (i.riesgo === 'alto') {
+      accion = 'OK por ahora'; color = P.green;
+      motivo = `Riesgo alto pero rindiendo ${(rend*100).toFixed(0)}% y dentro de tu tolerancia global.`;
+    } else {
+      accion = 'MANTENER'; color = 'var(--muted)';
+      motivo = `Riesgo ${i.riesgo}, rindiendo ${(rend*100).toFixed(0)}%.`;
+    }
+    return { ...i, accion, motivo, color, pct: i.ars/total };
+  }).sort((a,b) => {
+    const orden = { ROTAR:0, VIGILAR:1, 'OK por ahora':2, MANTENER:3 };
+    return orden[a.accion] - orden[b.accion] || (a.rend - b.rend);
+  });
+
+  const badgeRiesgo = { alto:'🔴 Alto', medio:'🟡 Medio', bajo:'🟢 Bajo' };
+
+  detEl.innerHTML = `
+    <div style="font-size:.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Detalle por posición</div>
+    <div style="display:flex;flex-direction:column;gap:6px">
+    ${conAccion.map(i => `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 10px;background:var(--s2);border-radius:8px;border-left:3px solid ${i.color}">
+        <div style="min-width:0">
+          <div style="font-weight:600;font-size:.78rem">${i.activo} <span style="font-size:.62rem;color:var(--muted);font-weight:400">${badgeRiesgo[i.riesgo]} · ${(i.pct*100).toFixed(1)}% cartera</span></div>
+          <div style="font-size:.66rem;color:var(--muted2);margin-top:2px">${i.motivo}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:.7rem;font-weight:700;color:${i.color}">${i.accion}</div>
+          <div style="font-size:.66rem;color:${(i.rend||0)>=0?P.green:P.red}">${(i.rend||0)>=0?'+':''}${((i.rend||0)*100).toFixed(1)}%</div>
+        </div>
+      </div>`).join('')}
+    </div>`;
+}
+
 async function renderInvList() {
   const invs = getInv();
 
@@ -3551,6 +3674,9 @@ async function renderInvList() {
         </div>`;
       }).join('')
     : '<div style="color:var(--muted);font-size:.75rem;padding:16px 0;text-align:center">Sin movimientos registrados</div>';
+
+  // Análisis de riesgo de cartera (se recalcula con los datos ya actualizados)
+  if (typeof renderAnalisisCartera === 'function') renderAnalisisCartera();
 }
 
 function toggleInvEditor() {
