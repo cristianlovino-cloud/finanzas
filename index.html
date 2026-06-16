@@ -422,7 +422,7 @@ nav::-webkit-scrollbar{display:none}
   <button class="nb" onclick="go('cargar',this)">＋ Cargar</button>
   <button class="nb" onclick="go('cuentas',this)">◈ Cuentas</button>
   <button class="nb" onclick="go('inversiones',this)">◈ Inversiones</button>
-  <button class="nb" onclick="go('patrimonio',this)">⬟ Patrimonio</button>
+  <button class="nb" onclick="go('patrimonio',this)" style="display:none">⬟ Patrimonio</button>
   <button class="nb" onclick="go('config',this)">⚙ Config</button>
 </nav>
 
@@ -685,18 +685,18 @@ nav::-webkit-scrollbar{display:none}
 <div class="page" id="page-cargar">
   <div style="max-width:480px;margin:0 auto">
 
-    <!-- Mode switcher -->
-    <div style="display:flex;gap:8px;margin-bottom:14px">
-      <button class="ai-tab-btn active" id="mode-ai" onclick="setCargarMode('ai',this)">
+    <!-- Mode switcher (oculto: solo modo manual disponible por ahora) -->
+    <div style="display:none;gap:8px;margin-bottom:14px">
+      <button class="ai-tab-btn" id="mode-ai" onclick="setCargarMode('ai',this)">
         <div style="font-size:1rem;margin-bottom:3px">✨</div>Carga rápida IA
       </button>
-      <button class="ai-tab-btn" id="mode-manual" onclick="setCargarMode('manual',this)">
+      <button class="ai-tab-btn active" id="mode-manual" onclick="setCargarMode('manual',this)">
         <div style="font-size:1rem;margin-bottom:3px">✏</div>Manual
       </button>
     </div>
 
     <!-- ── AI MODE ── -->
-    <div id="cargar-ai-mode">
+    <div id="cargar-ai-mode" style="display:none">
       <div class="card" style="margin-bottom:14px">
         <div style="font-family:var(--fh);font-size:.75rem;font-weight:700;color:var(--purple);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">✨ Describí el gasto en tus palabras</div>
 
@@ -759,7 +759,7 @@ nav::-webkit-scrollbar{display:none}
     </div>
 
     <!-- ── MANUAL MODE ── -->
-    <div id="cargar-manual-mode" style="display:none">
+    <div id="cargar-manual-mode" style="display:block">
       <!-- Tipo selector -->
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px" id="tipo-btns">
         <button onclick="setTipo('gasto',this)" class="tipo-btn active-tipo" style="padding:12px 8px;border-radius:8px;border:1px solid var(--green);background:rgba(34,211,160,.08);color:var(--green);font-family:var(--fm);font-size:.72rem;cursor:pointer;text-align:center">
@@ -930,7 +930,7 @@ nav::-webkit-scrollbar{display:none}
     <div class="card span2" style="margin-bottom:0">
       <div class="ct">Portafolio
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <button class="btn btn-o" onclick="toggleRotarModal()" id="inv-rotar-btn" style="padding:5px 12px;font-size:.7rem;color:var(--yellow);border-color:rgba(251,191,36,.3)">↔ Rotar</button>
+          <button class="btn btn-o" onclick="toggleRotarModal()" id="inv-rotar-btn" style="padding:5px 12px;font-size:.7rem;color:var(--yellow);border-color:rgba(251,191,36,.3)">＋ Agregar / Rotar</button>
           <button class="btn btn-o" onclick="toggleInvEditor()" id="inv-edit-btn" style="padding:5px 12px;font-size:.7rem">✏ Editar posiciones</button>
         </div>
       </div>
@@ -976,7 +976,7 @@ nav::-webkit-scrollbar{display:none}
       <div style="background:var(--s2);border-bottom:1px solid var(--border);padding:14px 18px;display:flex;align-items:center;justify-content:space-between">
         <div>
           <div style="font-family:var(--fh);font-weight:700;font-size:.95rem;color:var(--yellow)">📋 Registrar operaciones</div>
-          <div style="font-size:.63rem;color:var(--muted);margin-top:2px">Compras y ventas del día — podés agregar varias</div>
+          <div style="font-size:.63rem;color:var(--muted);margin-top:2px">Cargá instrumentos nuevos o rotá posiciones — agregá varios y guardá todo de una</div>
         </div>
         <button onclick="closeRotarModal()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.1rem;padding:4px 8px">✕</button>
       </div>
@@ -1004,7 +1004,7 @@ nav::-webkit-scrollbar{display:none}
 
         <!-- Ticker nuevo (solo si elige "nuevo") -->
         <div id="op-nuevo-wrap" style="display:none;margin-bottom:8px">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
             <div>
               <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">TICKER (nuevo)</div>
               <input type="text" id="op-nuevo-ticker" class="fi" placeholder="ej: MSFT" style="font-size:.75rem;text-transform:uppercase">
@@ -1013,6 +1013,18 @@ nav::-webkit-scrollbar{display:none}
               <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">DESCRIPCIÓN</div>
               <input type="text" id="op-nuevo-desc" class="fi" placeholder="ej: Microsoft Corp" style="font-size:.75rem">
             </div>
+          </div>
+          <div>
+            <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">TIPO DE INSTRUMENTO</div>
+            <select id="op-nuevo-tipo" class="fi" style="font-size:.75rem;padding:8px 6px">
+              <option value="CEDEAR">CEDEAR</option>
+              <option value="FCI">FCI</option>
+              <option value="Bono">Bono</option>
+              <option value="Acción">Acción</option>
+              <option value="Cripto">Cripto</option>
+              <option value="Stablecoin">Stablecoin</option>
+              <option value="Dólar">Dólar</option>
+            </select>
           </div>
         </div>
 
@@ -4066,6 +4078,7 @@ function opResetForm() {
   document.getElementById('op-precio').value      = '';
   document.getElementById('op-nuevo-ticker').value = '';
   document.getElementById('op-nuevo-desc').value   = '';
+  document.getElementById('op-nuevo-tipo').value   = 'CEDEAR';
   document.getElementById('op-nuevo-wrap').style.display = 'none';
   document.getElementById('op-preview').style.display    = 'none';
   opTipoChange();
@@ -4122,11 +4135,12 @@ function opAgregar() {
   if (precio <= 0)   { showToast('Ingresá el precio unitario', P.red); return; }
   if (!fecha)        { showToast('Ingresá la fecha', P.red); return; }
 
-  let ticker = '', desc = '', invIdx = null;
+  let ticker = '', desc = '', invIdx = null, tipoNuevo = '';
 
   if (tickerVal === 'nuevo') {
     ticker = (document.getElementById('op-nuevo-ticker').value || '').toUpperCase().trim();
     desc   = document.getElementById('op-nuevo-desc').value.trim();
+    tipoNuevo = document.getElementById('op-nuevo-tipo').value || 'CEDEAR';
     if (!ticker) { showToast('Ingresá el ticker nuevo', P.red); return; }
   } else {
     invIdx = parseInt(tickerVal);
@@ -4136,7 +4150,7 @@ function opAgregar() {
   }
 
   const monto = Math.round(cant * precio);
-  _opLote.push({ tipo, ticker, desc, cant, precio, monto, fecha, invIdx, esNuevo: tickerVal === 'nuevo' });
+  _opLote.push({ tipo, ticker, desc, cant, precio, monto, fecha, invIdx, esNuevo: tickerVal === 'nuevo', tipoInstrumento: tipoNuevo });
 
   opRenderLista();
   opResetForm();
@@ -4170,7 +4184,7 @@ function opRenderLista() {
       <span style="font-size:.85rem">${signo}</span>
       <div style="flex:1">
         <span style="font-weight:700;color:${color}">${op.ticker}</span>
-        <span style="color:var(--muted);font-size:.65rem"> · ${op.cant} nom. × ${fmt(op.precio)} · ${fechaLabel}</span>
+        <span style="color:var(--muted);font-size:.65rem"> · ${op.cant} nom. × ${fmt(op.precio)} · ${fechaLabel}${op.esNuevo ? ' · ' + (op.tipoInstrumento || 'CEDEAR') : ''}</span>
       </div>
       <span style="font-weight:700;color:${color};white-space:nowrap">${op.tipo === 'venta' ? '+' : '-'}${fmt(op.monto)}</span>
       <button onclick="opRemover(${i})" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.8rem;padding:2px 5px">✕</button>
@@ -4207,7 +4221,7 @@ function opEjecutar() {
     if (op.tipo === 'compra') {
       if (op.esNuevo) {
         invs.push({
-          activo: op.ticker, tipo: 'CEDEAR', moneda: 'ARS',
+          activo: op.ticker, tipo: op.tipoInstrumento || 'CEDEAR', moneda: 'ARS',
           ars: op.monto, costo: op.monto, rend: 0,
           cantidad: op.cant, ticker: op.ticker,
           nota: op.desc || op.ticker,
