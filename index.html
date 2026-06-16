@@ -1028,15 +1028,24 @@ nav::-webkit-scrollbar{display:none}
           </div>
         </div>
 
-        <!-- Fila 2: Nominales + Precio + Fecha -->
+        <!-- Fila 2: Nominales + Precio/Total + Fecha -->
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <span style="font-size:.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Ingresar por:</span>
+          <button type="button" id="op-modo-precio-btn" onclick="opToggleModoMonto('precio')" class="op-modo-btn op-modo-active" style="font-size:.65rem;padding:3px 9px;border-radius:5px;border:1px solid var(--border2);background:rgba(34,211,160,.1);color:var(--green);cursor:pointer">Precio unitario</button>
+          <button type="button" id="op-modo-total-btn" onclick="opToggleModoMonto('total')" class="op-modo-btn" style="font-size:.65rem;padding:3px 9px;border-radius:5px;border:1px solid var(--border);background:var(--s2);color:var(--muted);cursor:pointer">Total invertido</button>
+        </div>
         <div style="display:grid;grid-template-columns:1fr 1fr 120px;gap:8px;margin-bottom:10px">
           <div>
             <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">NOMINALES</div>
-            <input type="number" id="op-cant" class="fi" placeholder="ej: 68" style="font-size:.82rem;text-align:right" oninput="opCalcMonto()">
+            <input type="number" id="op-cant" class="fi" placeholder="ej: 68" style="font-size:.82rem;text-align:right" oninput="_opModoMonto==='total' ? opCalcDesdeTotal() : opCalcMonto()">
           </div>
-          <div>
+          <div id="op-precio-wrap">
             <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">PRECIO UNIT. $</div>
             <input type="number" id="op-precio" class="fi" placeholder="ej: 6430" style="font-size:.82rem;text-align:right" oninput="opCalcMonto()">
+          </div>
+          <div id="op-total-wrap" style="display:none">
+            <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">TOTAL INVERTIDO $</div>
+            <input type="number" id="op-total-input" class="fi" placeholder="ej: 1250000" style="font-size:.82rem;text-align:right" oninput="opCalcDesdeTotal()">
           </div>
           <div>
             <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">FECHA</div>
@@ -3887,11 +3896,12 @@ async function renderInvList() {
     invs.filter(inv => (inv.ars || 0) > 0 || (inv.costo || 0) > 0).map((inv, i) => {
       const color   = colors[inv.tipo] || P.blue;
       const hasVal  = inv.ars > 0;
-      const ganLoss = (hasVal && inv.costo > 0) ? inv.ars - inv.costo : 0;
-      const rendPct = (hasVal && inv.costo > 0) ? ((inv.ars - inv.costo) / inv.costo) : (hasVal ? (inv.rend || 0) : null);
+      const hasCosto = (inv.costo || 0) > 0;
+      const ganLoss = (hasVal && hasCosto) ? inv.ars - inv.costo : 0;
+      const rendPct = (hasVal && hasCosto) ? ((inv.ars - inv.costo) / inv.costo) : null;
       const rc      = rendPct === null ? P.yellow : rendPct > 0 ? P.green : rendPct < 0 ? P.red : P.yellow;
       const rendLabel = rendPct === null 
-        ? '<span style="font-size:.65rem;color:var(--muted)">— actualizar valor</span>'
+        ? '<span style="font-size:.65rem;color:var(--muted)">— falta costo de entrada</span>'
         : `<span style="color:${rc};font-size:.7rem;font-weight:600">${rendPct>=0?'+':''}${(rendPct*100).toFixed(1)}%${ganLoss!==0?' ('+fmt(Math.abs(ganLoss))+')':''}</span>`;
       const badge   = buildCotizBadge(inv, cotiz);
       return `<div class="inv-row">
@@ -4067,8 +4077,29 @@ function closeRotarModal() {
 function opPopulateSelect() {
   const invs = getInv();
   const sel  = document.getElementById('op-ticker-sel');
-  const opts = invs.map((inv, i) => `<option value="${i}">${inv.activo}${inv.ars > 0 ? ' — ' + fmt(inv.ars) : ''}</option>`).join('');
-  sel.innerHTML = '<option value="">— seleccioná —</option>' + opts + '<option value="nuevo">＋ Nuevo ticker</option>';
+
+  // Agrupar por tipo de instrumento para que sea fácil encontrar lo que buscás
+  const porTipo = {};
+  invs.forEach((inv, i) => {
+    const tipo = inv.tipo || 'Otros';
+    if (!porTipo[tipo]) porTipo[tipo] = [];
+    porTipo[tipo].push({ inv, i });
+  });
+
+  // Orden de grupos: lo más usado primero
+  const ordenTipos = ['CEDEAR', 'FCI', 'Bono', 'Acción', 'Cripto', 'Stablecoin', 'Dólar'];
+  const tiposPresentes = Object.keys(porTipo).sort((a, b) => {
+    const ia = ordenTipos.indexOf(a), ib = ordenTipos.indexOf(b);
+    return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+  });
+
+  const optgroups = tiposPresentes.map(tipo => {
+    const items = porTipo[tipo].sort((a, b) => a.inv.activo.localeCompare(b.inv.activo));
+    const opts  = items.map(({inv, i}) => `<option value="${i}">${inv.activo}${inv.ars > 0 ? ' — ' + fmt(inv.ars) : ''}</option>`).join('');
+    return `<optgroup label="${tipo}">${opts}</optgroup>`;
+  }).join('');
+
+  sel.innerHTML = '<option value="">— seleccioná —</option>' + optgroups + '<option value="nuevo">＋ Nuevo ticker</option>';
 }
 
 function opResetForm() {
@@ -4076,11 +4107,13 @@ function opResetForm() {
   document.getElementById('op-ticker-sel').value = '';
   document.getElementById('op-cant').value        = '';
   document.getElementById('op-precio').value      = '';
+  document.getElementById('op-total-input').value = '';
   document.getElementById('op-nuevo-ticker').value = '';
   document.getElementById('op-nuevo-desc').value   = '';
   document.getElementById('op-nuevo-tipo').value   = 'CEDEAR';
   document.getElementById('op-nuevo-wrap').style.display = 'none';
   document.getElementById('op-preview').style.display    = 'none';
+  opToggleModoMonto('precio');
   opTipoChange();
 }
 
@@ -4106,15 +4139,55 @@ function opTickerChange() {
   opCalcMonto();
 }
 
+let _opModoMonto = 'precio'; // 'precio' | 'total'
+
+function opToggleModoMonto(modo) {
+  _opModoMonto = modo;
+  const precioBtn = document.getElementById('op-modo-precio-btn');
+  const totalBtn  = document.getElementById('op-modo-total-btn');
+  const precioWrap = document.getElementById('op-precio-wrap');
+  const totalWrap  = document.getElementById('op-total-wrap');
+
+  if (modo === 'precio') {
+    precioBtn.style.background = 'rgba(34,211,160,.1)'; precioBtn.style.color = P.green; precioBtn.style.borderColor = 'var(--border2)';
+    totalBtn.style.background  = 'var(--s2)';            totalBtn.style.color  = 'var(--muted)'; totalBtn.style.borderColor = 'var(--border)';
+    precioWrap.style.display = 'block';
+    totalWrap.style.display  = 'none';
+  } else {
+    totalBtn.style.background  = 'rgba(34,211,160,.1)'; totalBtn.style.color  = P.green; totalBtn.style.borderColor = 'var(--border2)';
+    precioBtn.style.background = 'var(--s2)';            precioBtn.style.color = 'var(--muted)'; precioBtn.style.borderColor = 'var(--border)';
+    precioWrap.style.display = 'none';
+    totalWrap.style.display  = 'block';
+  }
+  opCalcMonto();
+}
+
+// Cuando se ingresa el total invertido directamente, calculamos el precio unitario implícito
+function opCalcDesdeTotal() {
+  const cant  = parseFloat(document.getElementById('op-cant').value) || 0;
+  const total = parseFloat(document.getElementById('op-total-input').value) || 0;
+  if (cant > 0 && total > 0) {
+    const precioUnit = total / cant;
+    document.getElementById('op-precio').value = precioUnit;
+  }
+  opCalcMonto();
+}
+
 function opCalcMonto() {
   const cant   = parseFloat(document.getElementById('op-cant').value)   || 0;
-  const precio = parseFloat(document.getElementById('op-precio').value) || 0;
   const tipo   = document.getElementById('op-tipo').value;
   const prev   = document.getElementById('op-preview');
   const montoEl = document.getElementById('op-preview-monto');
 
-  if (cant > 0 && precio > 0) {
-    const monto = cant * precio;
+  let monto = 0;
+  if (_opModoMonto === 'total') {
+    monto = parseFloat(document.getElementById('op-total-input').value) || 0;
+  } else {
+    const precio = parseFloat(document.getElementById('op-precio').value) || 0;
+    monto = cant * precio;
+  }
+
+  if (cant > 0 && monto > 0) {
     prev.style.display = 'flex';
     montoEl.textContent = fmt(monto);
     montoEl.style.color = tipo === 'venta' ? P.red : P.green;
@@ -4124,6 +4197,8 @@ function opCalcMonto() {
 }
 
 function opAgregar() {
+  if (_opModoMonto === 'total') opCalcDesdeTotal(); // asegurar que op-precio esté sincronizado
+
   const tipo    = document.getElementById('op-tipo').value;
   const tickerVal = document.getElementById('op-ticker-sel').value;
   const cant    = parseFloat(document.getElementById('op-cant').value)   || 0;
