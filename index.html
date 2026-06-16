@@ -623,6 +623,15 @@ nav::-webkit-scrollbar{display:none}
     </div>
   </div>
 
+  <!-- Detector de fugas -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="ct">🔍 Detector de fugas — vs tu propio promedio histórico</div>
+    <div style="font-size:.72rem;color:var(--muted2);margin-bottom:12px;line-height:1.5">
+      Compara cada categoría contra su promedio histórico, ajustado por inflación real (INDEC). Si gastás más de lo normal en una categoría, no es porque todo subió de precio — es un cambio de comportamiento real.
+    </div>
+    <div id="fugas-detalle"></div>
+  </div>
+
   <!-- Comparativa interanual -->
   <div class="card" style="margin-bottom:14px" id="flujo-interanual-card">
     <div class="ct">📅 Mismo mes — año anterior</div>
@@ -2136,6 +2145,9 @@ function renderFlujo() {
       </div>
     </div>`;
   })();
+
+  // Detector de fugas (async, no bloquea el resto del render)
+  if (typeof renderFugas === 'function') renderFugas();
 }
 
 // ══════════════════════════════════════════════════════
@@ -3077,6 +3089,110 @@ function buildInflIndex(inflMap, mesKeys) {
     if (tasa != null) idx *= (1 + tasa);
     return idx;
   });
+}
+
+// ══════════════════════════════════════════════════════
+// DETECTOR DE FUGAS — gasto actual vs promedio histórico
+// de la misma categoría, ajustado por inflación INDEC
+// ══════════════════════════════════════════════════════
+
+// Inflación acumulada entre dos meses "YYYY-MM" (mesDesde -> mesHasta), usando inflMap real.
+// Si no hay dato de algún mes en el medio, ese mes se trata como 0% (no inventamos tasa).
+function inflacionEntre(inflMap, mesDesde, mesHasta) {
+  if (!inflMap || mesDesde >= mesHasta) return 1;
+  let factor = 1;
+  let [y, m] = mesDesde.split('-').map(Number);
+  while (`${y}-${String(m).padStart(2,'0')}` < mesHasta) {
+    const key = `${y}-${String(m).padStart(2,'0')}`;
+    const tasa = inflMap[key];
+    if (tasa != null) factor *= (1 + tasa);
+    m++; if (m > 12) { m = 1; y++; }
+  }
+  return factor;
+}
+
+async function detectarFugas(mesObjetivo) {
+  const inflMap = await fetchInflacionINDEC().catch(() => null);
+  const txsAll  = DB.get('txs', {});
+  const mesesDisponibles = Object.keys(txsAll).filter(m => m < mesObjetivo).sort();
+  if (mesesDisponibles.length < 3) return { ok: false, motivo: 'Hace falta más historial (mínimo 3 meses previos) para comparar.' };
+
+  const { totals: totalesMesActual } = txTotals(mesObjetivo);
+
+  // Para cada categoría, juntar su gasto en cada mes histórico y ajustarlo a "precios de hoy"
+  const categorias = new Set();
+  mesesDisponibles.forEach(m => Object.keys(txTotals(m).totals).forEach(c => categorias.add(c)));
+  Object.keys(totalesMesActual).forEach(c => categorias.add(c));
+
+  const resultados = [];
+  categorias.forEach(cat => {
+    const valoresAjustados = [];
+    mesesDisponibles.forEach(m => {
+      const { totals } = txTotals(m);
+      const valor = totals[cat];
+      if (valor == null || valor === 0) return; // solo meses donde hubo gasto real en esa cat
+      const factor = inflMap ? inflacionEntre(inflMap, m, mesObjetivo) : 1;
+      valoresAjustados.push(valor * factor);
+    });
+    if (valoresAjustados.length === 0) return; // categoría nueva, sin historial — no comparable
+
+    const promedioAjustado = valoresAjustados.reduce((s,v)=>s+v,0) / valoresAjustados.length;
+    const actual = totalesMesActual[cat] || 0;
+    if (promedioAjustado <= 0) return;
+
+    const desvioPct = (actual - promedioAjustado) / promedioAjustado;
+    resultados.push({ cat, actual, promedioAjustado, desvioPct, nMeses: valoresAjustados.length });
+  });
+
+  // Fuga = gasta por encima de su propio promedio histórico ya ajustado por inflación real
+  // (es decir, el exceso ya no se explica por inflación — es un cambio de comportamiento)
+  const fugas = resultados
+    .filter(r => r.desvioPct > 0.01) // tolerancia mínima para no marcar ruido de centavos
+    .sort((a,b) => (b.actual - b.promedioAjustado) - (a.actual - a.promedioAjustado));
+
+  const totalFugaPesos = fugas.reduce((s,r) => s + (r.actual - r.promedioAjustado), 0);
+
+  return { ok: true, fugas, totalFugaPesos, sinInflacionReal: !inflMap };
+}
+
+async function renderFugas() {
+  const el = document.getElementById('fugas-detalle');
+  if (!el) return;
+  el.innerHTML = '<div style="color:var(--muted);font-size:.75rem;padding:10px 0">⟳ Analizando categorías...</div>';
+
+  const mes = getCurMes();
+  const r = await detectarFugas(mes);
+
+  if (!r.ok) {
+    el.innerHTML = `<div style="color:var(--muted);font-size:.75rem;padding:10px 0">${r.motivo}</div>`;
+    return;
+  }
+  if (r.fugas.length === 0) {
+    el.innerHTML = `<div class="alert" style="font-size:.73rem">✓ Ninguna categoría está gastando por encima de su propio promedio ajustado por inflación este mes. Todo en línea con tu comportamiento histórico.</div>`;
+    return;
+  }
+
+  const aviso = r.sinInflacionReal
+    ? `<div style="font-size:.62rem;color:var(--muted);margin-bottom:8px">⚠ No se pudo obtener la inflación INDEC en este momento — comparando contra el promedio histórico nominal, sin ajuste.</div>`
+    : '';
+
+  el.innerHTML = aviso + `
+    <div class="alert warn" style="font-size:.73rem;margin-bottom:10px">
+      ⚠ ${r.fugas.length} categoría${r.fugas.length>1?'s':''} gastando por encima de su promedio histórico (ya ajustado por inflación) — ${fmt(r.totalFugaPesos)} de exceso este mes.
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px">
+    ${r.fugas.map(f => `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 10px;background:var(--s2);border-radius:8px;border-left:3px solid ${P.red}">
+        <div style="min-width:0">
+          <div style="font-weight:600;font-size:.78rem">${f.cat}</div>
+          <div style="font-size:.66rem;color:var(--muted2);margin-top:2px">Promedio histórico (ajustado): ${fmt(f.promedioAjustado)} · basado en ${f.nMeses} mes${f.nMeses>1?'es':''}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:.78rem;font-weight:700;color:${P.red}">${fmt(f.actual)}</div>
+          <div style="font-size:.66rem;color:${P.red}">+${(f.desvioPct*100).toFixed(0)}%</div>
+        </div>
+      </div>`).join('')}
+    </div>`;
 }
 
 // ══════════════════════════════════════════════════════
