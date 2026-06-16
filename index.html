@@ -3888,12 +3888,22 @@ function opEjecutar() {
 function updatePatrimonio() {
   const invs  = getInv();
   const total = invs.reduce((s, i) => s + (i.ars||0), 0);
-  const items = [
-    {label:'FCI/Bonos', val:invs.filter(i=>i.tipo==='FCI'||i.tipo==='Bono').reduce((s,i)=>s+(i.ars||0),0), color:P.purple},
-    {label:'Cripto USD', val:invs.filter(i=>i.tipo==='Cripto').reduce((s,i)=>s+(i.ars||0),0), color:P.yellow},
-    {label:'Stablecoin', val:invs.filter(i=>i.tipo==='Stablecoin').reduce((s,i)=>s+(i.ars||0),0), color:P.blue},
-    {label:'Dólar/MEP',  val:invs.filter(i=>i.tipo==='Dólar').reduce((s,i)=>s+(i.ars||0),0), color:P.green},
-  ].filter(i => i.val > 0);
+
+  // Agrupar dinámicamente por tipo real (no una lista fija) para no perder ningún activo
+  const colorByTipo = {
+    'FCI': P.purple, 'Bono': P.purple, 'Cripto': P.yellow, 'Stablecoin': P.blue,
+    'Dólar': P.green, 'CEDEAR': P.orange, 'Acción': P.red,
+  };
+  const palette = [P.purple, P.yellow, P.blue, P.green, P.orange, P.red];
+  const totalsByTipo = {};
+  invs.forEach(i => {
+    const tipo = i.tipo || 'Otros';
+    totalsByTipo[tipo] = (totalsByTipo[tipo] || 0) + (i.ars || 0);
+  });
+  const items = Object.entries(totalsByTipo)
+    .filter(([,val]) => val > 0)
+    .sort((a,b) => b[1]-a[1])
+    .map(([label, val], idx) => ({ label, val, color: colorByTipo[label] || palette[idx % palette.length] }));
 
   document.getElementById('pat-activos').textContent = fmt(total);
   document.getElementById('pat-pasivos').textContent = fmt(0);
@@ -3915,7 +3925,7 @@ function updatePatrimonio() {
   const curIdx = now2.getFullYear() === 2026 ? now2.getMonth() : 11;
   const mesKeys = Array.from({length: curIdx+1}, (_,i) => '2026-'+String(i+1).padStart(2,'0'));
 
-  // Ahorro mensual real por mes
+  // Ahorro mensual real por mes (para el gráfico de barras de ahorro, no para patrimonio)
   const ahorros = mesKeys.map(mes => {
     const plan = getPlan(mes);
     const pt   = planTotals(plan);
@@ -3923,11 +3933,36 @@ function updatePatrimonio() {
     return pt.ing - (rt || pt.gastos) - pt.inv;
   });
 
-  // Patrimonio estimado: retrocedemos desde el total actual restando ahorros futuros
-  const patEvol = mesKeys.map((_, i) => {
-    const ahorroPost = ahorros.slice(i + 1).reduce((s, v) => s + v, 0);
-    return Math.max(0, total - ahorroPost);
+  // Patrimonio real reconstruido desde inv_movimientos (compras/ventas reales)
+  // Retrocedemos desde el total actual: cada compra restó capital aportado ese mes,
+  // cada venta liberó el monto vendido. Esto reconstruye el capital invertido acumulado,
+  // no la revalorización de mercado día a día (no tenemos snapshots de precio histórico).
+  const invMovsAll = DB.get('inv_movimientos', []);
+  const movsPorMes = {};
+  invMovsAll.forEach(m => {
+    // fecha viene en formato DD/MM/YYYY
+    const parts = (m.fecha||'').split('/');
+    if (parts.length !== 3) return;
+    const mesKey = parts[2] + '-' + parts[1].padStart(2,'0');
+    if (!movsPorMes[mesKey]) movsPorMes[mesKey] = { compras: 0, ventas: 0 };
+    if (m.tipo === 'compra') movsPorMes[mesKey].compras += (m.monto || 0);
+    else movsPorMes[mesKey].ventas += (m.monto || 0);
   });
+
+  const hasMovs = invMovsAll.length > 0;
+  let patEvol;
+  if (hasMovs) {
+    // Retroceder: patrimonio(mes_anterior) = patrimonio(mes) - compras(mes) + ventas(mes)
+    patEvol = new Array(mesKeys.length).fill(0);
+    patEvol[mesKeys.length - 1] = total;
+    for (let i = mesKeys.length - 1; i > 0; i--) {
+      const mov = movsPorMes[mesKeys[i]] || { compras: 0, ventas: 0 };
+      patEvol[i - 1] = Math.max(0, patEvol[i] - mov.compras + mov.ventas);
+    }
+  } else {
+    // Fallback: sin movimientos registrados, mostrar el total actual plano (sin inventar evolución)
+    patEvol = mesKeys.map(() => total);
+  }
 
   chartPat = destroyChart(chartPat);
   chartPat = new Chart(document.getElementById('c-pat').getContext('2d'), {
@@ -3935,7 +3970,7 @@ function updatePatrimonio() {
     data:{
       labels: mesKeys.map(k => MESES[parseInt(k.split('-')[1])-1]),
       datasets:[{
-        label:'Patrimonio estimado',
+        label: hasMovs ? 'Patrimonio (capital invertido)' : 'Patrimonio actual (sin histórico de movimientos)',
         data: patEvol,
         borderColor:P.purple, backgroundColor:'rgba(167,139,250,.08)',
         fill:true, tension:.4, borderWidth:2.5, pointRadius:3
@@ -3944,11 +3979,24 @@ function updatePatrimonio() {
     options:{responsive:true,
       plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${fmt(c.parsed.y)}`}}},
       scales:{
-        y:{ticks:{callback:v=>v>=1000000?'$'+(v/1000000).toFixed(1)+'M':'$'+(v/1000).toFixed(0)+'k'},grid:{color:'rgba(255,255,255,.04)'}},
+        y:{ticks:{callback:v=>v>=1000000?'$'+(v/1000000).toFixed(2)+'M':'$'+(v/1000).toFixed(0)+'k'},grid:{color:'rgba(255,255,255,.04)'}},
         x:{grid:{display:false}}
       }
     }
   });
+
+  // Aviso si no hay histórico de movimientos para reconstruir evolución real
+  const patChartCard = document.getElementById('c-pat')?.closest('.card');
+  const existingPatBanner = document.getElementById('pat-evol-banner');
+  if (existingPatBanner) existingPatBanner.remove();
+  if (!hasMovs && patChartCard) {
+    const banner = document.createElement('div');
+    banner.id = 'pat-evol-banner';
+    banner.className = 'alert warn';
+    banner.style.marginTop = '8px';
+    banner.innerHTML = '📊 Sin historial de compras/ventas registrado — el gráfico muestra el valor actual plano. Cargá operaciones en Inversiones para ver la evolución real.';
+    patChartCard.appendChild(banner);
+  }
 
   // Ahorro mensual
   chartAhorro = destroyChart(chartAhorro);
