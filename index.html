@@ -3121,11 +3121,29 @@ function buildMesAMesChart(year) {
       rows.push({ label: MESES[idx], ing: pt.ing, gas, neto, inv: pt.inv });
     }
   } else {
-    const gArr = (HIST.gastos[year]   || []).filter(v => v != null);
-    const iArr = (HIST.ingresos[year] || []).filter(v => v != null);
-    const len  = Math.min(gArr.length, iArr.length);
+    const savedTxs = DB.get('txs', {});
+    const gArr = (HIST.gastos[year]   || []);
+    const iArr = (HIST.ingresos[year] || []);
+    const len  = Math.max(gArr.length, iArr.length, 12);
     for (let i = 0; i < len; i++) {
-      rows.push({ label: MESES[i], ing: iArr[i], gas: gArr[i], neto: iArr[i] - gArr[i], inv: 0 });
+      const mes = year + '-' + String(i+1).padStart(2,'0');
+      const hasTxs = Array.isArray(savedTxs[mes]) && savedTxs[mes].length > 0;
+
+      if (hasTxs) {
+        // Usar datos reales de transacciones cargadas (xlsx importado o manual)
+        const txs = savedTxs[mes];
+        const gas = txs.filter(t => t.tipo === 'gasto').reduce((s,t) => s + (parseFloat(t.monto)||0), 0);
+        const ing = txs.filter(t => t.tipo === 'ingreso').reduce((s,t) => s + (parseFloat(t.monto)||0), 0);
+        if (gas > 0 || ing > 0) {
+          rows.push({ label: MESES[i], ing, gas, neto: ing - gas, inv: 0 });
+          continue;
+        }
+      }
+
+      // Fallback a HIST si no hay txs reales para ese mes
+      const g = gArr[i], ii = iArr[i];
+      if (g == null && ii == null) continue;
+      rows.push({ label: MESES[i], ing: ii||0, gas: g||0, neto: (ii||0)-(g||0), inv: 0 });
     }
   }
 
