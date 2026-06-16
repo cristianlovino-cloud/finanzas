@@ -3459,7 +3459,12 @@ async function renderInvList() {
   document.getElementById('inv-usd-kpi').textContent   = 'u$s ' + Math.round(usdVal).toLocaleString('es-AR');
   document.getElementById('inv-fci-kpi').textContent   = fmtK(fci);
   document.getElementById('inv-tc-kpi').textContent    = fmt(TC);
-  document.getElementById('ov-pat').textContent        = fmt(total);
+  // Nota: ov-pat (card Inversiones en Overview) se actualiza solo desde updateOverview()
+  // con fmtK para mantener consistencia de formato abreviado en esa pantalla.
+  if (typeof updateOverview === 'function') {
+    const ovPatEl = document.getElementById('ov-pat');
+    if (ovPatEl) ovPatEl.textContent = fmtK(total);
+  }
 
   const icons = {FCI:'📊',Cripto:'₿',Stablecoin:'💲',Dólar:'💵',Bono:'📋',Acciones:'📈'};
   const colors = {FCI:P.purple,Cripto:P.yellow,Stablecoin:P.blue,Dólar:P.green,Bono:P.orange};
@@ -3908,7 +3913,7 @@ function updatePatrimonio() {
   document.getElementById('pat-activos').textContent = fmt(total);
   document.getElementById('pat-pasivos').textContent = fmt(0);
   document.getElementById('pat-neto').textContent    = fmt(total);
-  document.getElementById('ov-pat').textContent      = fmt(total);
+  // Nota: ov-pat (Overview) usa fmtK y se actualiza desde updateOverview(), no desde aquí.
 
   // Bar
   const barEl = document.getElementById('pat-bar-wrap');
