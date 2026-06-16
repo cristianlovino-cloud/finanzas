@@ -487,6 +487,12 @@ nav::-webkit-scrollbar{display:none}
     </div>
   </div>
 
+  <!-- Calculadora de plata ociosa -->
+  <div class="card" style="margin-bottom:16px">
+    <div class="ct">💸 ¿Tu plata está rindiendo?</div>
+    <div id="ov-ociosa-detalle"></div>
+  </div>
+
   <div class="g2">
     <div class="card span2">
       <div class="ct">Evolución mensual
@@ -2622,6 +2628,7 @@ function updateOverview() {
   buildDonut();
   if (typeof buildAnualChart     === 'function') buildAnualChart();
   if (typeof updateOverviewSaldos=== 'function') updateOverviewSaldos();
+  if (typeof renderPlataOciosa   === 'function') renderPlataOciosa();
 }
 
 // ══════════════════════════════════════════════════════
@@ -3089,6 +3096,103 @@ function buildInflIndex(inflMap, mesKeys) {
     if (tasa != null) idx *= (1 + tasa);
     return idx;
   });
+}
+
+// ══════════════════════════════════════════════════════
+// TASA DE DEPÓSITOS A 30 DÍAS (BCRA) — cache 24hs, mismo patrón que inflación
+// ══════════════════════════════════════════════════════
+let _tasaDepoCache = null;
+
+async function fetchTasaDepositos30Dias() {
+  const CACHE_KEY = 'bcra_tasa_depo30_v1';
+  const CACHE_TTL = 24 * 60 * 60 * 1000;
+
+  try {
+    const cached = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
+    if (cached && (Date.now() - cached.ts) < CACHE_TTL) {
+      _tasaDepoCache = cached.data;
+      return cached.data;
+    }
+  } catch(e) {}
+
+  try {
+    const res = await fetch('https://api.argentinadatos.com/v1/finanzas/tasas/depositos30Dias', { cache: 'no-cache' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const raw = await res.json();
+    // raw: [{fecha:"2026-06-10", valor: 35.2}, ...] valor = TNA % — tomamos el más reciente
+    if (!Array.isArray(raw) || raw.length === 0) throw new Error('respuesta vacía');
+    const ultimo = raw[raw.length - 1];
+    const tna = parseFloat(ultimo.valor) / 100;
+    const data = { tna, fecha: ultimo.fecha };
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data }));
+    _tasaDepoCache = data;
+    return data;
+  } catch(e) {
+    console.log('BCRA tasa depósitos fetch error:', e.message);
+    return null;
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// CALCULADORA DE PLATA OCIOSA — cuánto perdés por no mover saldo en banco/billetera
+// ══════════════════════════════════════════════════════
+async function calcularPlataOciosa() {
+  const cuentas = getCuentas();
+  // Solo cuentas en ARS de tipo banco/billetera — efectivo no aplica (no se puede "invertir" así nomás)
+  const saldoOcioso = cuentas
+    .filter(c => c.moneda === 'ARS' && (c.tipo === 'banco' || c.tipo === 'billetera'))
+    .reduce((s, c) => s + (c.saldo || 0), 0);
+
+  const [inflMap, tasaDepo] = await Promise.all([
+    fetchInflacionINDEC().catch(() => null),
+    fetchTasaDepositos30Dias().catch(() => null),
+  ]);
+
+  if (saldoOcioso <= 0) return { ok: false, motivo: 'No hay saldo en cuentas banco/billetera para calcular.' };
+  if (!tasaDepo) return { ok: false, motivo: 'No se pudo obtener la tasa de depósitos del BCRA en este momento.' };
+
+  // Inflación del último mes disponible, como referencia mensual más reciente
+  const mesesInfl = inflMap ? Object.keys(inflMap).sort() : [];
+  const inflUltimoMes = mesesInfl.length > 0 ? inflMap[mesesInfl[mesesInfl.length - 1]] : null;
+
+  const tnaMensual = tasaDepo.tna / 12; // aproximación simple TNA/12 para tasa mensual
+  const gananciaPF = saldoOcioso * tnaMensual;
+  const perdidaInflacion = inflUltimoMes != null ? saldoOcioso * inflUltimoMes : null;
+  const rendimientoRealMensual = inflUltimoMes != null ? (gananciaPF - perdidaInflacion) : null;
+
+  return {
+    ok: true,
+    saldoOcioso, tnaAnual: tasaDepo.tna, tnaMensual,
+    gananciaPF, inflUltimoMes, perdidaInflacion, rendimientoRealMensual,
+    fechaTasa: tasaDepo.fecha,
+  };
+}
+
+async function renderPlataOciosa() {
+  const el = document.getElementById('ov-ociosa-detalle');
+  if (!el) return;
+  el.innerHTML = '<div style="color:var(--muted);font-size:.72rem">⟳ Calculando...</div>';
+
+  const r = await calcularPlataOciosa();
+  if (!r.ok) { el.innerHTML = `<div style="color:var(--muted);font-size:.72rem">${r.motivo}</div>`; return; }
+
+  const colorReal = r.rendimientoRealMensual == null ? 'var(--muted)' : (r.rendimientoRealMensual >= 0 ? P.green : P.red);
+
+  el.innerHTML = `
+    <div style="font-size:.72rem;color:var(--muted2);line-height:1.6;margin-bottom:8px">
+      Tenés ${fmt(r.saldoOcioso)} parado en banco/billetera (sin contar efectivo). Un plazo fijo a 30 días hoy rinde ${(r.tnaAnual*100).toFixed(1)}% TNA (~${(r.tnaMensual*100).toFixed(1)}% mensual).
+    </div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:.74rem">
+      <div><span style="color:var(--muted)">Ganarías en 30 días:</span> <b style="color:${P.green}">+${fmt(r.gananciaPF)}</b></div>
+      ${r.perdidaInflacion != null ? `<div><span style="color:var(--muted)">Inflación del mes:</span> <b style="color:${P.red}">-${fmt(r.perdidaInflacion)}</b></div>` : ''}
+    </div>
+    ${r.rendimientoRealMensual != null ? `
+    <div class="alert ${r.rendimientoRealMensual >= 0 ? '' : 'warn'}" style="font-size:.73rem;margin-top:10px">
+      ${r.rendimientoRealMensual >= 0
+        ? `✓ Poniendo ese saldo a plazo fijo, le ganás a la inflación por ${fmt(r.rendimientoRealMensual)} este mes. Dejarlo parado en cuenta es directamente plata perdida.`
+        : `⚠ Incluso a plazo fijo, ese saldo pierde ${fmt(Math.abs(r.rendimientoRealMensual))} de poder de compra este mes — la tasa no le gana a la inflación actual. Igual es mejor que tenerlo sin nada.`}
+    </div>` : ''}
+  `;
 }
 
 // ══════════════════════════════════════════════════════
