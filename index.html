@@ -534,6 +534,7 @@ nav::-webkit-scrollbar{display:none}
     </div>
   </div>
 
+  <div id="plan-autocompletado-aviso" style="display:none"></div>
 
 
   <!-- KPIs del plan -->
@@ -1244,6 +1245,32 @@ function setGlobalMes(mesKey) {
   renderPlanSections();
   renderFlujo();
   updateOverview();
+  actualizarAvisoAutocompletado();
+
+  // Si este mes no tiene presupuesto propio guardado, intentamos autocompletarlo
+  // en background con el promedio real ajustado por inflación (no bloquea el render inicial).
+  const yaTienePlanPropio = !!(DB.get('plans', {})[mesKey]);
+  if (!yaTienePlanPropio && typeof autocompletarPlanInteligente === 'function') {
+    autocompletarPlanInteligente(mesKey).then(planGenerado => {
+      if (planGenerado && curMes === mesKey) { // sigue siendo el mes activo cuando termina
+        curPlan = getPlan(mesKey);
+        renderPlanSections();
+        recalcPlanKPIs();
+        actualizarAvisoAutocompletado();
+      }
+    }).catch(() => {}); // si falla (sin red, poco historial), seguimos con PLAN_DEFAULT silenciosamente
+  }
+}
+
+function actualizarAvisoAutocompletado() {
+  const el = document.getElementById('plan-autocompletado-aviso');
+  if (!el) return;
+  if (curPlan && curPlan._autocompletado) {
+    el.style.display = 'block';
+    el.innerHTML = `<div class="alert" style="font-size:.72rem;margin-bottom:14px">✨ Este presupuesto se autocompletó con el promedio real reciente de cada categoría (ajustado por inflación) — todavía no lo guardaste a mano. Revisalo y tocá "💾 Guardar" para confirmarlo.</div>`;
+  } else {
+    el.style.display = 'none';
+  }
 }
 
 // ── Historical data pre-loaded from xlsx ──
@@ -1766,8 +1793,12 @@ function copyPrevMonth() {
 function savePlan() {
   if (!curPlan) { showToast('Sin datos para guardar', '#f43f5e'); return; }
   const plans = DB.get('plans', {});
-  plans[curMes] = JSON.parse(JSON.stringify(curPlan));
+  const planAGuardar = JSON.parse(JSON.stringify(curPlan));
+  delete planAGuardar._autocompletado; // una vez que el usuario lo guarda a mano, deja de ser "sugerencia automática"
+  plans[curMes] = planAGuardar;
   DB.set('plans', plans);
+  curPlan = planAGuardar;
+  document.getElementById('plan-autocompletado-aviso').style.display = 'none';
   updateOverview();
   renderFlujo();
   // Visual feedback en el botón
@@ -2655,7 +2686,10 @@ function updateOverview() {
   // Regla 1: categorías al 80%+ del presupuesto (warn) o >100% (danger)
   Object.entries(curRealTotals).forEach(([cat, rv]) => {
     const pv = planMap[cat] || 0;
-    if (pv > 0 && rv >= pv * 1.05) alerts.push({type:'danger', msg:`${cat}: ${fmt(rv)} vs ${fmt(pv)} presupuestado (${Math.round(rv/pv*100)}%)`});
+    if (pv > 0 && rv >= pv * 1.05) {
+      const excesoPct = Math.round((rv/pv - 1) * 100); // % por ENCIMA del presupuesto, no % del total consumido
+      alerts.push({type:'danger', msg:`${cat}: ${fmt(rv)} vs ${fmt(pv)} presupuestado (+${excesoPct}% de exceso)`});
+    }
     else if (pv > 0 && rv >= pv * 0.80) alerts.push({type:'warn', msg:`${cat}: ${fmt(rv)} — ya en ${Math.round(rv/pv*100)}% del presupuesto`});
   });
 
@@ -3328,6 +3362,76 @@ async function detectarFugas(mesObjetivo) {
   const totalFugaPesos = fugas.reduce((s,r) => s + (r.actual - r.promedioAjustado), 0);
 
   return { ok: true, fugas, totalFugaPesos, sinInflacionReal: !inflMap };
+}
+
+// ══════════════════════════════════════════════════════
+// AUTOCOMPLETADO DE PRESUPUESTO — promedio real ajustado por inflación
+// para meses nuevos sin presupuesto propio, en vez de copiar valores viejos fijos.
+// Reutiliza el mismo motor que el detector de fugas (promedio + corte de saltos).
+// ══════════════════════════════════════════════════════
+
+// Calcula, para cada categoría con historial real, el promedio ajustado por inflación
+// hasta mesObjetivo, descartando meses anteriores a un salto estructural grande.
+// Devuelve { categoria: promedioAjustado, ... } — no toca DB ni UI.
+async function calcularPromediosCategorias(mesObjetivo) {
+  const inflMap = await fetchInflacionINDEC().catch(() => null);
+  const UMBRAL_SALTO = 0.60;
+  const mesesDisponibles = Object.keys(DB.get('txs', {})).filter(m => m < mesObjetivo).sort();
+  if (mesesDisponibles.length < 3) return null; // poco historial — no forzamos un autocompletado pobre
+
+  const categorias = new Set();
+  mesesDisponibles.forEach(m => Object.keys(txTotals(m).totals).forEach(c => categorias.add(c)));
+
+  const promedios = {};
+  categorias.forEach(cat => {
+    const serie = [];
+    mesesDisponibles.forEach(m => {
+      const valor = txTotals(m).totals[cat];
+      if (valor == null || valor === 0) return;
+      const factor = inflMap ? inflacionEntre(inflMap, m, mesObjetivo) : 1;
+      serie.push({ mes: m, ajustado: valor * factor });
+    });
+    if (serie.length === 0) return;
+
+    let corteDesde = 0;
+    for (let k = 1; k < serie.length; k++) {
+      const anterior = serie[k-1].ajustado, actual = serie[k].ajustado;
+      if (anterior > 0 && (actual - anterior) / anterior > UMBRAL_SALTO) corteDesde = k;
+    }
+    const valoresRelevantes = serie.slice(corteDesde).map(x => x.ajustado);
+    const promedio = valoresRelevantes.reduce((s,v)=>s+v,0) / valoresRelevantes.length;
+    if (promedio > 0) promedios[cat] = Math.round(promedio);
+  });
+
+  return promedios;
+}
+
+// Clasifica una categoría como fija o variable, reutilizando la misma heurística
+// que ya separa el plan en "fijos" y "vars": si el último PLAN_DEFAULT (o un plan
+// guardado anterior) la tenía como fija, respetamos eso; si no, va a variables.
+function clasificarFijaOVariable(cat) {
+  const esFijaEnDefault = PLAN_DEFAULT.fijos.some(r => r.l === cat);
+  return esFijaEnDefault ? 'fijos' : 'vars';
+}
+
+// Genera (y GUARDA) un plan inteligente para mesObjetivo si todavía no tiene uno propio.
+// No pisa planes ya guardados ni el mes actual si el usuario ya lo editó a mano.
+async function autocompletarPlanInteligente(mesObjetivo) {
+  const saved = DB.get('plans', {});
+  if (saved[mesObjetivo]) return saved[mesObjetivo]; // ya existe un plan propio para ese mes — no tocar
+
+  const promedios = await calcularPromediosCategorias(mesObjetivo);
+  if (!promedios || Object.keys(promedios).length === 0) return null; // sin historial suficiente, no autocompletamos
+
+  const plan = { ing: [{l:'Sueldo', v:0}], fijos: [], vars: [], inv: [{l:'FCI Cocos', v:0}], _autocompletado: true };
+  Object.entries(promedios).forEach(([cat, valor]) => {
+    const seccion = clasificarFijaOVariable(cat);
+    plan[seccion].push({ l: cat, v: valor });
+  });
+
+  saved[mesObjetivo] = plan;
+  DB.set('plans', saved);
+  return plan;
 }
 
 async function renderFugas() {
@@ -5111,6 +5215,22 @@ document.addEventListener('DOMContentLoaded', () => {
   curPlan   = getPlan(initMes);
   document.getElementById('header-mes').textContent = mesLabel(initMes);
   renderPlanSections();
+  if (typeof actualizarAvisoAutocompletado === 'function') actualizarAvisoAutocompletado();
+
+  // Autocompletar presupuesto del mes actual si todavía no tiene uno propio (igual que en setGlobalMes)
+  (function initAutocompletadoPlan() {
+    const yaTienePlanPropio = !!(DB.get('plans', {})[initMes]);
+    if (!yaTienePlanPropio && typeof autocompletarPlanInteligente === 'function') {
+      autocompletarPlanInteligente(initMes).then(planGenerado => {
+        if (planGenerado && curMes === initMes) {
+          curPlan = getPlan(initMes);
+          renderPlanSections();
+          if (typeof recalcPlanKPIs === 'function') recalcPlanKPIs();
+          actualizarAvisoAutocompletado();
+        }
+      }).catch(() => {});
+    }
+  })();
 
   // Init flujo
   renderFlujo();
