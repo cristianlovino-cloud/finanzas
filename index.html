@@ -3564,6 +3564,36 @@ async function fetchCotizaciones() {
   } catch(e) { console.log('Letras error:', e.message); }
 
   try {
+    // Bonos soberanos en pesos (data912) — formato no documentado oficialmente,
+    // así que parseamos defensivamente y marcamos explícitamente si no entendemos la forma.
+    const bonRes = await fetch('https://data912.com/live/arg_bonds', {cache:'no-cache', signal: AbortSignal.timeout(6000)});
+    if (bonRes.ok) {
+      const raw = await bonRes.json();
+      const lista = Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : null);
+      if (lista) {
+        let parsedAny = false;
+        lista.forEach(b => {
+          // Probamos varios nombres de campo posibles para ticker y precio, sin asumir un único esquema.
+          const ticker = b.symbol || b.ticker || b.simbolo || b.especie;
+          const precio = b.px_bid ?? b.px_ask ?? b.px_last ?? b.last ?? b.price ?? b.precio ?? b.c;
+          if (ticker && precio != null && !isNaN(parseFloat(precio))) {
+            results['BONO_' + String(ticker).toUpperCase()] = parseFloat(precio);
+            parsedAny = true;
+          }
+        });
+        results._bonosOk = parsedAny;
+      } else {
+        results._bonosOk = false; // respuesta no tiene la forma esperada (ni array, ni {data:[]})
+      }
+    } else {
+      results._bonosOk = false;
+    }
+  } catch(e) {
+    console.log('Bonos (data912) error:', e.message);
+    results._bonosOk = false; // fuente caída, timeout, o bloqueada por CORS — no inventamos precio
+  }
+
+  try {
     // CEDEARs via Yahoo Finance with multiple proxy fallbacks
     const invs = getInv();
     const cedearTickers = invs
@@ -3651,6 +3681,14 @@ function getArsFromCotiz(inv, cotiz) {
     if (letra) return Math.round((inv.vn || inv.ars) * (1 + (letra.tna||0)/100/365*30));
     return inv.ars || 0;
   }
+  if (tipo === 'Bono') {
+    const key = 'BONO_' + (inv.ticker || inv.activo).toUpperCase();
+    const precioPor100 = cotiz[key]; // bonos suelen cotizar en $ por cada 100 de valor nominal
+    if (precioPor100 != null && inv.cantidad > 0) {
+      return Math.round((inv.cantidad / 100) * precioPor100);
+    }
+    return inv.ars || 0; // data912 no respondió o no tenemos este ticker — no inventamos precio
+  }
   return inv.ars || 0; // FCI, manual
 }
 
@@ -3671,6 +3709,16 @@ function buildCotizBadge(inv, cotiz) {
     const key = 'LETRA_' + (inv.ticker || inv.activo);
     const letra = cotiz[key];
     if (letra) return `<span style="font-size:.65rem;color:var(--yellow);background:rgba(251,191,36,.1);padding:1px 6px;border-radius:4px;margin-left:6px">TNA ${((letra.tna||0)*100).toFixed(1)}%</span>`;
+  }
+  if (tipo === 'Bono') {
+    const key = 'BONO_' + (inv.ticker || inv.activo).toUpperCase();
+    const precioPor100 = cotiz[key];
+    if (precioPor100 != null) {
+      return `<span style="font-size:.65rem;color:var(--orange);background:rgba(251,146,60,.1);padding:1px 6px;border-radius:4px;margin-left:6px">✓ $${precioPor100.toLocaleString('es-AR')} x100</span>`;
+    }
+    if (cotiz._bonosOk === false) {
+      return `<span style="font-size:.62rem;color:var(--muted);background:var(--s2);padding:1px 6px;border-radius:4px;margin-left:6px" title="No se pudo confirmar la cotización en este momento">— sin verificar</span>`;
+    }
   }
   return '';
 }
@@ -3829,7 +3877,8 @@ async function renderInvList() {
   let updatedPrices = false;
   invs.forEach(inv => {
     const live = getArsFromCotiz(inv, cotiz);
-    if (live > 0 && (inv.tipo === 'CEDEAR' || inv.tipo === 'Cripto' || inv.tipo === 'Stablecoin' || inv.tipo === 'Dólar')) {
+    const esBonoConfirmado = inv.tipo === 'Bono' && cotiz._bonosOk === true && cotiz['BONO_' + (inv.ticker || inv.activo).toUpperCase()] != null;
+    if (live > 0 && (inv.tipo === 'CEDEAR' || inv.tipo === 'Cripto' || inv.tipo === 'Stablecoin' || inv.tipo === 'Dólar' || esBonoConfirmado)) {
       if (live !== inv.ars) {
         inv.ars = live;
         inv.precioTs = Date.now();
