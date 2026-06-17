@@ -2581,12 +2581,26 @@ function updateOverview() {
       } else { totalGas += pt.gastos; }
     });
   } else {
-    // Use historical HIST data
+    // Para años anteriores: preferir transacciones reales mes por mes,
+    // y usar HIST solo como fallback en los meses sin datos reales cargados.
+    const savedTxs = DB.get('txs', {});
     const gArr = HIST.gastos[yr]  || [];
     const iArr = HIST.ingresos[yr]|| [];
-    const n = closedMonths.length;
-    totalGas = gArr.slice(0,n).reduce((s,v)=>s+(v||0),0);
-    totalIng = iArr.slice(0,n).reduce((s,v)=>s+(v||0),0);
+    closedMonths.forEach((mes, i) => {
+      const hasTxs = Array.isArray(savedTxs[mes]) && savedTxs[mes].length > 0;
+      if (hasTxs) {
+        const txs = savedTxs[mes];
+        const gas = txs.filter(t => t.tipo === 'gasto').reduce((s,t) => s + (parseFloat(t.monto)||0), 0);
+        const ing = txs.filter(t => t.tipo === 'ingreso').reduce((s,t) => s + (parseFloat(t.monto)||0), 0);
+        if (gas > 0 || ing > 0) {
+          totalGas += gas; totalIng += ing;
+          return;
+        }
+      }
+      // Fallback a HIST si no hay txs reales para ese mes
+      totalGas += gArr[i] || 0;
+      totalIng += iArr[i] || 0;
+    });
     totalInv = 0;
   }
 
