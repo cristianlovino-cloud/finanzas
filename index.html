@@ -3283,24 +3283,40 @@ async function detectarFugas(mesObjetivo) {
   mesesDisponibles.forEach(m => Object.keys(txTotals(m).totals).forEach(c => categorias.add(c)));
   Object.keys(totalesMesActual).forEach(c => categorias.add(c));
 
+  const UMBRAL_SALTO = 0.60; // un salto de +60% entre meses consecutivos ajustados sugiere cambio estructural (ej. renovación de contrato), no inflación normal
+
   const resultados = [];
   categorias.forEach(cat => {
-    const valoresAjustados = [];
+    const serie = []; // [{mes, ajustado}], en orden cronológico
     mesesDisponibles.forEach(m => {
       const { totals } = txTotals(m);
       const valor = totals[cat];
       if (valor == null || valor === 0) return; // solo meses donde hubo gasto real en esa cat
       const factor = inflMap ? inflacionEntre(inflMap, m, mesObjetivo) : 1;
-      valoresAjustados.push(valor * factor);
+      serie.push({ mes: m, ajustado: valor * factor });
     });
-    if (valoresAjustados.length === 0) return; // categoría nueva, sin historial — no comparable
+    if (serie.length === 0) return; // categoría nueva, sin historial — no comparable
 
+    // Detectar el último salto estructural grande y descartar todo lo anterior a él.
+    // Esto evita que valores viejos anómalos (ej. alquiler inicial bajo, antes de una
+    // renegociación de contrato) arrastren el promedio hacia abajo de forma irreal.
+    let corteDesde = 0;
+    for (let k = 1; k < serie.length; k++) {
+      const anterior = serie[k-1].ajustado, actualSerie = serie[k].ajustado;
+      if (anterior > 0 && (actualSerie - anterior) / anterior > UMBRAL_SALTO) {
+        corteDesde = k; // hay un salto grande en k: el promedio solo debe mirar desde aquí
+      }
+    }
+    const serieRelevante = serie.slice(corteDesde);
+    const huboCorte = corteDesde > 0;
+
+    const valoresAjustados = serieRelevante.map(x => x.ajustado);
     const promedioAjustado = valoresAjustados.reduce((s,v)=>s+v,0) / valoresAjustados.length;
     const actual = totalesMesActual[cat] || 0;
     if (promedioAjustado <= 0) return;
 
     const desvioPct = (actual - promedioAjustado) / promedioAjustado;
-    resultados.push({ cat, actual, promedioAjustado, desvioPct, nMeses: valoresAjustados.length });
+    resultados.push({ cat, actual, promedioAjustado, desvioPct, nMeses: valoresAjustados.length, huboCorte });
   });
 
   // Fuga = gasta por encima de su propio promedio histórico ya ajustado por inflación real
@@ -3344,7 +3360,7 @@ async function renderFugas() {
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 10px;background:var(--s2);border-radius:8px;border-left:3px solid ${P.red}">
         <div style="min-width:0">
           <div style="font-weight:600;font-size:.78rem">${f.cat}</div>
-          <div style="font-size:.66rem;color:var(--muted2);margin-top:2px">Promedio histórico (ajustado): ${fmt(f.promedioAjustado)} · basado en ${f.nMeses} mes${f.nMeses>1?'es':''}</div>
+          <div style="font-size:.66rem;color:var(--muted2);margin-top:2px">Promedio histórico (ajustado): ${fmt(f.promedioAjustado)} · basado en ${f.nMeses} mes${f.nMeses>1?'es':''}${f.huboCorte ? ' <span style="color:var(--yellow)" title="Se descartaron meses muy anteriores a un salto grande en esta categoría (ej. renovación de contrato), para que el promedio refleje tu situación actual">⚡ recalculado</span>' : ''}</div>
         </div>
         <div style="text-align:right;flex-shrink:0">
           <div style="font-size:.78rem;font-weight:700;color:${P.red}">${fmt(f.actual)}</div>
