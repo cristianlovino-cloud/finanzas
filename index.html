@@ -3010,19 +3010,38 @@ function renderGastosTarjetas() {
         ${grupo.gastos.sort((a,b)=>a.fecha.localeCompare(b.fecha)).map(g => {
           const esUSD = g.moneda === 'USD';
           const montoArs = esUSD ? (g.monto||0) * TC : (g.monto||0);
+          const montoDisplay = esUSD ? `U$S ${g.monto}` : fmt(g.monto);
+
+          // Badge de color por quién cargó el gasto
+          const quienColores = { 'Cris':'var(--blue)', 'Lara':'var(--purple)', 'Emma':'var(--green)', 'Recurrente automático':'var(--muted)' };
+          const quienColor = quienColores[g.cargadoPor] || 'var(--yellow)';
+          const quienBadge = `<span style="font-size:.6rem;font-weight:700;color:${quienColor};background:${quienColor}1a;padding:1px 6px;border-radius:4px;white-space:nowrap">${g.cargadoPor}</span>`;
+
           return `
-          <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:.74rem">
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
             <div style="flex:1;min-width:0">
-              <span style="font-weight:600">${g.tipo}</span>
-              <span style="color:var(--muted);font-size:.65rem"> · ${new Date(g.fecha+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'})} · ${g.cargadoPor}${esUSD ? ' · U$S '+g.monto : ''}</span>
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px">
+                <span style="font-weight:600;font-size:.76rem">${g.tipo}</span>
+                ${quienBadge}
+              </div>
+              <div style="font-size:.65rem;color:var(--muted)">${new Date(g.fecha+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'})}</div>
             </div>
-            <span style="font-weight:700;color:var(--red)">${fmt(montoArs)}</span>
-            ${!estaConciliado ? `<button onclick="eliminarGastoTarjeta('${g.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.8rem;padding:2px 5px">✕</button>` : ''}
+            <div style="text-align:right;flex-shrink:0">
+              <div style="font-weight:700;color:var(--red);font-size:.8rem">${montoDisplay}</div>
+              ${esUSD ? `<div style="font-size:.62rem;color:var(--muted)">≈ ${fmt(montoArs)}</div>` : ''}
+            </div>
+            ${!estaConciliado ? `<button onclick="eliminarGastoTarjeta('${g.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.8rem;padding:2px 5px;flex-shrink:0">✕</button>` : ''}
           </div>`;
         }).join('')}
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px solid var(--border2)">
-        <span style="font-size:.76rem;font-weight:700">Total período: ${fmt(total)}</span>
+        <div>
+          <div style="font-size:.76rem;font-weight:700">Total período: ${fmt(total)}</div>
+          ${(() => {
+            const totalUSD = grupo.gastos.filter(g=>g.moneda==='USD').reduce((s,g)=>s+(g.monto||0),0);
+            return totalUSD > 0 ? `<div style="font-size:.63rem;color:var(--muted)">incluye U$S ${totalUSD} convertido al TC ${fmt(TC)}</div>` : '';
+          })()}
+        </div>
         <button onclick="marcarPeriodoConciliado('${grupo.tarjeta.id}','${grupo.cierre}', ${!estaConciliado})" class="btn ${estaConciliado ? 'btn-o' : 'btn-g'}" style="padding:6px 14px;font-size:.7rem">
           ${estaConciliado ? '↺ Reabrir' : '✓ Marcar conciliado'}
         </button>
