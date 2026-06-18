@@ -1292,11 +1292,36 @@ nav::-webkit-scrollbar{display:none}
 <div class="page" id="page-tarjetas">
 
   <div class="card" style="margin-bottom:14px">
-    <div class="ct">💳 Gastos con tarjetas — Lara &amp; Emma</div>
+    <div class="ct">💳 Gastos con tarjetas — desglose del resumen</div>
     <p style="font-size:.75rem;color:var(--muted2);margin-bottom:12px;line-height:1.5">
-      Gastos cargados por Lara y Emma con tus tarjetas. No se suman a Flujo/Overview hasta que marqués un período como conciliado.
+      Acá vas mapeando todo el consumo del período (vos, Lara y Emma) por categoría y tipo de gasto, para totalizar y comparar contra el resumen real cuando lo emite el banco. No toca Flujo ni Overview en ningún momento — el pago del resumen lo seguís cargando vos, donde siempre, cuando vence.
     </p>
-    <button onclick="copiarLinkCargaFamiliar()" class="btn btn-g" style="width:100%">🔗 Copiar link para que carguen gastos</button>
+    <button onclick="copiarLinkCargaFamiliar()" class="btn btn-g" style="width:100%">🔗 Copiar link para Lara/Emma</button>
+  </div>
+
+  <div class="card" style="margin-bottom:14px">
+    <div class="ct">✏ Cargar mi propio consumo</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+      <div>
+        <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">TARJETA</div>
+        <select id="own-tj-tarjeta" class="fi" style="font-size:.78rem;padding:8px 6px"></select>
+      </div>
+      <div>
+        <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">FECHA</div>
+        <input type="date" id="own-tj-fecha" class="fi" style="font-size:.78rem;padding:8px 6px">
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+      <div>
+        <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">TIPO DE GASTO</div>
+        <input type="text" id="own-tj-tipo" class="fi" placeholder="ej: Nafta, Supermercado..." style="font-size:.78rem;padding:8px 9px">
+      </div>
+      <div>
+        <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">MONTO</div>
+        <input type="number" id="own-tj-monto" class="fi" placeholder="0" style="font-size:.78rem;padding:8px 9px;text-align:right">
+      </div>
+    </div>
+    <button onclick="ownCargarGastoTarjeta()" class="btn btn-g" style="width:100%">＋ Registrar mi gasto</button>
   </div>
 
   <div id="tarjetas-periodos-list"></div>
@@ -1883,7 +1908,12 @@ function go(id, btn) {
   if (id === 'patrimonio')  updatePatrimonio();
   if (id === 'cuentas')   { renderCuentas(); updateMediosDePago(); updateOverviewSaldos(); renderHistorialTransf(); }
   if (id === 'config')     { renderTarjetasCfg(); renderRecurrentesCfg(); }
-  if (id === 'tarjetas')    renderGastosTarjetas();
+  if (id === 'tarjetas')    {
+    renderGastosTarjetas();
+    renderOwnTarjetaSelector();
+    const fechaEl = document.getElementById('own-tj-fecha');
+    if (fechaEl && !fechaEl.value) fechaEl.value = new Date().toISOString().slice(0,10);
+  }
 }
 
 // ══════════════════════════════════════════════════════
@@ -2463,13 +2493,13 @@ function getTarjetas() {
   return DB.get('tarjetas_cfg', TARJETAS_DEFAULT);
 }
 
-function saveTarjetas(tarjetas) {
+function saveTarjetas(tarjetas, opts) {
   DB.set('tarjetas_cfg', tarjetas);
   if (window.FBsave) window.FBsave('tarjetas_cfg', tarjetas);
   // Si ya existe un PIN de carga familiar, mantenemos la lista de tarjetas sincronizada
   const pin = DB.get('pin_carga_familiar', null);
   if (pin && window.cfPublicarConfig) window.cfPublicarConfig(pin, tarjetas);
-  renderTarjetasCfg();
+  if (!opts || !opts.skipRender) renderTarjetasCfg();
 }
 
 function agregarTarjetaCfg() {
@@ -2488,7 +2518,16 @@ function actualizarTarjetaCfg(id, campo, valor) {
   const t = tarjetas.find(t => t.id === id);
   if (!t) return;
   t[campo] = campo === 'diaFijo' ? (parseInt(valor) || 1) : valor;
-  saveTarjetas(tarjetas);
+  // Los campos de texto/número se guardan sin re-renderizar (evita perder foco mientras se tipea).
+  // Solo 'tipoCierre' cambia la estructura visible (aparece/desaparece el input de día fijo), así que ese sí re-renderiza.
+  const requiereRerender = campo === 'tipoCierre';
+  saveTarjetas(tarjetas, { skipRender: !requiereRerender });
+
+  // Si cambió el día fijo (sin re-render completo), actualizamos solo el texto de "próximo cierre" in-place
+  if (campo === 'diaFijo') {
+    const cierreEl = document.getElementById('cierre-label-' + id);
+    if (cierreEl) cierreEl.textContent = calcularProximoCierre(t).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'});
+  }
 }
 
 function renderTarjetasCfg() {
@@ -2501,7 +2540,6 @@ function renderTarjetasCfg() {
   }
   el.innerHTML = tarjetas.map(t => {
     const proximoCierre = calcularProximoCierre(t);
-    const categoriasDisponibles = obtenerCategoriasUsadas();
     return `
     <div style="display:flex;flex-direction:column;gap:6px;padding:10px;background:var(--s2);border-radius:8px;margin-bottom:8px">
       <div style="display:flex;gap:6px;align-items:center">
@@ -2516,14 +2554,7 @@ function renderTarjetasCfg() {
         </select>
         ${t.tipoCierre === 'dia_fijo' ? `<input type="number" min="1" max="31" value="${t.diaFijo||20}" oninput="actualizarTarjetaCfg('${t.id}','diaFijo',this.value)" class="fi" style="width:60px;font-size:.72rem;padding:7px 6px;text-align:center">` : ''}
       </div>
-      <div>
-        <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">Categoría de Flujo asociada (tu propio gasto con esta tarjeta)</div>
-        <select onchange="actualizarTarjetaCfg('${t.id}','categoriaFlujo',this.value)" class="fi" style="width:100%;font-size:.72rem;padding:7px 6px">
-          <option value="">— ninguna (solo lo que carguen Lara/Emma) —</option>
-          ${categoriasDisponibles.map(c => `<option value="${c}" ${t.categoriaFlujo===c?'selected':''}>${c}</option>`).join('')}
-        </select>
-      </div>
-      <div style="font-size:.64rem;color:var(--muted)">Próximo cierre: <b style="color:var(--text)">${proximoCierre.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'})}</b></div>
+      <div style="font-size:.64rem;color:var(--muted)">Próximo cierre: <b id="cierre-label-${t.id}" style="color:var(--text)">${proximoCierre.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'})}</b></div>
     </div>`;
   }).join('');
 }
@@ -2545,10 +2576,10 @@ function getRecurrentes() {
   return DB.get('debitos_recurrentes', []);
 }
 
-function saveRecurrentes(lista) {
+function saveRecurrentes(lista, opts) {
   DB.set('debitos_recurrentes', lista);
   if (window.FBsave) window.FBsave('debitos_recurrentes', lista);
-  renderRecurrentesCfg();
+  if (!opts || !opts.skipRender) renderRecurrentesCfg();
 }
 
 function agregarRecurrenteCfg() {
@@ -2566,7 +2597,9 @@ function actualizarRecurrenteCfg(id, campo, valor) {
   const r = lista.find(r => r.id === id);
   if (!r) return;
   r[campo] = (campo === 'monto' || campo === 'diaDelMes') ? (parseFloat(valor) || 0) : valor;
-  saveRecurrentes(lista);
+  // Ningún campo acá cambia la estructura visual del card — siempre guardamos sin re-renderizar,
+  // para no perder el foco del input mientras se está tipeando.
+  saveRecurrentes(lista, { skipRender: true });
 }
 
 function renderRecurrentesCfg() {
@@ -2684,6 +2717,42 @@ function eliminarGastoTarjeta(id) {
   renderGastosTarjetas();
 }
 
+// ── Carga rápida del propio consumo (Cris), desde dentro de la sesión normal ──
+function renderOwnTarjetaSelector() {
+  const sel = document.getElementById('own-tj-tarjeta');
+  if (!sel) return;
+  const tarjetas = getTarjetas();
+  sel.innerHTML = tarjetas.length > 0
+    ? tarjetas.map(t => `<option value="${t.id}">${t.nombre}</option>`).join('')
+    : '<option value="">— configurá una tarjeta primero —</option>';
+}
+
+function ownCargarGastoTarjeta() {
+  const tarjetaId = document.getElementById('own-tj-tarjeta').value;
+  const fecha     = document.getElementById('own-tj-fecha').value;
+  const tipo      = document.getElementById('own-tj-tipo').value.trim();
+  const monto     = parseFloat(document.getElementById('own-tj-monto').value);
+
+  if (!tarjetaId)            { showToast('Elegí una tarjeta', '#f43f5e'); return; }
+  if (!fecha)                { showToast('Elegí la fecha', '#f43f5e'); return; }
+  if (!tipo)                 { showToast('Escribí el tipo de gasto', '#f43f5e'); return; }
+  if (!monto || monto <= 0)  { showToast('Ingresá un monto válido', '#f43f5e'); return; }
+
+  const lista = getGastosTarjetas();
+  lista.push({
+    id: 'gt_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+    tarjetaId, fecha, tipo, monto,
+    cargadoPor: 'Cris',
+    ts: Date.now(),
+  });
+  saveGastosTarjetas(lista);
+
+  document.getElementById('own-tj-tipo').value = '';
+  document.getElementById('own-tj-monto').value = '';
+  showToast('✓ Gasto registrado: ' + tipo + ' — ' + fmt(monto));
+  renderGastosTarjetas();
+}
+
 // Agrupa todos los gastos por tarjeta + período de resumen (cierre que les corresponde)
 function agruparGastosPorPeriodo() {
   const tarjetas = getTarjetas();
@@ -2697,28 +2766,6 @@ function agruparGastosPorPeriodo() {
     const key = tarjeta.id + '|' + cierre;
     if (!grupos[key]) grupos[key] = { tarjeta, cierre, gastos: [] };
     grupos[key].gastos.push(g);
-  });
-
-  // Sumar también el gasto propio (transacciones reales) de la categoría asociada a cada tarjeta
-  const todasLasTxs = Object.values(DB.get('txs', {})).flat();
-  tarjetas.forEach(tarjeta => {
-    if (!tarjeta.categoriaFlujo) return; // tarjeta sin categoría vinculada — no hay gasto propio que sumar
-    todasLasTxs
-      .filter(tx => tx.tipo === 'gasto' && normalizeCat(tx.cat) === normalizeCat(tarjeta.categoriaFlujo))
-      .forEach(tx => {
-        const cierre = periodoDeGasto(tarjeta, tx.fecha);
-        const key = tarjeta.id + '|' + cierre;
-        if (!grupos[key]) grupos[key] = { tarjeta, cierre, gastos: [] };
-        grupos[key].gastos.push({
-          id: 'propio_' + tx.ts,
-          tarjetaId: tarjeta.id,
-          fecha: tx.fecha,
-          tipo: tx.desc || tx.cat,
-          monto: parseFloat(tx.monto) || 0,
-          cargadoPor: 'Cris (propio)',
-          esPropio: true, // no se puede borrar desde este tab — vive en Flujo
-        });
-      });
   });
 
   return Object.values(grupos).sort((a,b) => b.cierre.localeCompare(a.cierre));
@@ -2775,7 +2822,7 @@ function renderGastosTarjetas() {
               <span style="color:var(--muted);font-size:.65rem"> · ${new Date(g.fecha+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'})} · ${g.cargadoPor}</span>
             </div>
             <span style="font-weight:700;color:var(--red)">${fmt(g.monto)}</span>
-            ${!estaConciliado && !g.esPropio ? `<button onclick="eliminarGastoTarjeta('${g.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.8rem;padding:2px 5px">✕</button>` : ''}
+            ${!estaConciliado ? `<button onclick="eliminarGastoTarjeta('${g.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.8rem;padding:2px 5px">✕</button>` : ''}
           </div>`).join('')}
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px solid var(--border2)">
