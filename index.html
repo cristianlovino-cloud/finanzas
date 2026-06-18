@@ -1308,6 +1308,15 @@ nav::-webkit-scrollbar{display:none}
   <div style="max-width:600px">
 
     <div class="card" style="margin-bottom:14px">
+      <div class="ct">🔁 Débitos automáticos recurrentes</div>
+      <p style="font-size:.75rem;color:var(--muted2);margin-bottom:12px;line-height:1.5">
+        Para gastos fijos que se debitan solos (seguros, suscripciones). La app los carga automáticamente cada mes con el monto que configurés acá — no lee tu banco, así que si el monto cambia, actualizalo vos.
+      </p>
+      <div id="cfg-recurrentes-list" style="margin-bottom:10px"></div>
+      <button onclick="agregarRecurrenteCfg()" class="btn btn-o" style="width:100%;font-size:.72rem">＋ Agregar débito recurrente</button>
+    </div>
+
+    <div class="card" style="margin-bottom:14px">
       <div class="ct">💳 Tarjetas de crédito — cierre de resumen</div>
       <p style="font-size:.75rem;color:var(--muted2);margin-bottom:12px;line-height:1.5">
         Configurá el día de cierre de cada tarjeta (no el vencimiento) para agrupar automáticamente los gastos por período de resumen.
@@ -1429,6 +1438,10 @@ function setGlobalMes(mesKey) {
   });
   // Update header badge
   document.getElementById('header-mes').textContent = mesLabel(mesKey);
+
+  // Insertar débitos recurrentes de este mes ANTES de renderizar (si todavía no se insertaron)
+  if (typeof aplicarDebitosRecurrentes === 'function') aplicarDebitosRecurrentes(mesKey);
+
   // Refresh all views
   curMes  = mesKey;
   curPlan = getPlan(mesKey);
@@ -1869,7 +1882,7 @@ function go(id, btn) {
   if (id === 'flujo')       renderFlujo();
   if (id === 'patrimonio')  updatePatrimonio();
   if (id === 'cuentas')   { renderCuentas(); updateMediosDePago(); updateOverviewSaldos(); renderHistorialTransf(); }
-  if (id === 'config')     renderTarjetasCfg();
+  if (id === 'config')     { renderTarjetasCfg(); renderRecurrentesCfg(); }
   if (id === 'tarjetas')    renderGastosTarjetas();
 }
 
@@ -2488,6 +2501,7 @@ function renderTarjetasCfg() {
   }
   el.innerHTML = tarjetas.map(t => {
     const proximoCierre = calcularProximoCierre(t);
+    const categoriasDisponibles = obtenerCategoriasUsadas();
     return `
     <div style="display:flex;flex-direction:column;gap:6px;padding:10px;background:var(--s2);border-radius:8px;margin-bottom:8px">
       <div style="display:flex;gap:6px;align-items:center">
@@ -2502,9 +2516,112 @@ function renderTarjetasCfg() {
         </select>
         ${t.tipoCierre === 'dia_fijo' ? `<input type="number" min="1" max="31" value="${t.diaFijo||20}" oninput="actualizarTarjetaCfg('${t.id}','diaFijo',this.value)" class="fi" style="width:60px;font-size:.72rem;padding:7px 6px;text-align:center">` : ''}
       </div>
+      <div>
+        <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">Categoría de Flujo asociada (tu propio gasto con esta tarjeta)</div>
+        <select onchange="actualizarTarjetaCfg('${t.id}','categoriaFlujo',this.value)" class="fi" style="width:100%;font-size:.72rem;padding:7px 6px">
+          <option value="">— ninguna (solo lo que carguen Lara/Emma) —</option>
+          ${categoriasDisponibles.map(c => `<option value="${c}" ${t.categoriaFlujo===c?'selected':''}>${c}</option>`).join('')}
+        </select>
+      </div>
       <div style="font-size:.64rem;color:var(--muted)">Próximo cierre: <b style="color:var(--text)">${proximoCierre.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'})}</b></div>
     </div>`;
   }).join('');
+}
+
+// ── Lista de categorías reales usadas en transacciones + plan, para mapear tarjetas ──
+function obtenerCategoriasUsadas() {
+  const cats = new Set();
+  Object.values(DB.get('txs', {})).flat().forEach(tx => { if (tx.cat) cats.add(tx.cat); });
+  const plan = getPlan(getCurMes());
+  [...plan.fijos, ...plan.vars].forEach(r => { if (r.l) cats.add(r.l); });
+  return [...cats].sort();
+}
+
+// ══════════════════════════════════════════════════════
+// DÉBITOS AUTOMÁTICOS RECURRENTES
+// ══════════════════════════════════════════════════════
+// Cada recurrente: { id, nombre, categoria, monto, diaDelMes }
+function getRecurrentes() {
+  return DB.get('debitos_recurrentes', []);
+}
+
+function saveRecurrentes(lista) {
+  DB.set('debitos_recurrentes', lista);
+  if (window.FBsave) window.FBsave('debitos_recurrentes', lista);
+  renderRecurrentesCfg();
+}
+
+function agregarRecurrenteCfg() {
+  const lista = getRecurrentes();
+  lista.push({ id: 'rec_' + Date.now(), nombre: 'Nuevo débito', categoria: '', monto: 0, diaDelMes: 1 });
+  saveRecurrentes(lista);
+}
+
+function eliminarRecurrenteCfg(id) {
+  saveRecurrentes(getRecurrentes().filter(r => r.id !== id));
+}
+
+function actualizarRecurrenteCfg(id, campo, valor) {
+  const lista = getRecurrentes();
+  const r = lista.find(r => r.id === id);
+  if (!r) return;
+  r[campo] = (campo === 'monto' || campo === 'diaDelMes') ? (parseFloat(valor) || 0) : valor;
+  saveRecurrentes(lista);
+}
+
+function renderRecurrentesCfg() {
+  const el = document.getElementById('cfg-recurrentes-list');
+  if (!el) return;
+  const lista = getRecurrentes();
+  if (lista.length === 0) {
+    el.innerHTML = '<div style="font-size:.72rem;color:var(--muted);padding:8px 0">No hay débitos recurrentes configurados.</div>';
+    return;
+  }
+  el.innerHTML = lista.map(r => `
+    <div style="display:flex;flex-direction:column;gap:6px;padding:10px;background:var(--s2);border-radius:8px;margin-bottom:8px">
+      <div style="display:flex;gap:6px;align-items:center">
+        <input type="text" value="${r.nombre}" oninput="actualizarRecurrenteCfg('${r.id}','nombre',this.value)" class="fi" style="flex:1;font-size:.78rem;padding:7px 9px" placeholder="ej: Seguro Taos">
+        <button onclick="eliminarRecurrenteCfg('${r.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.85rem;padding:4px 6px">✕</button>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <input type="text" value="${r.categoria}" oninput="actualizarRecurrenteCfg('${r.id}','categoria',this.value)" class="fi" style="flex:1;font-size:.72rem;padding:7px 8px" placeholder="Categoría (ej: Seguros)">
+        <input type="number" value="${r.monto||''}" oninput="actualizarRecurrenteCfg('${r.id}','monto',this.value)" class="fi" style="width:100px;font-size:.72rem;padding:7px 8px;text-align:right" placeholder="Monto">
+        <input type="number" min="1" max="31" value="${r.diaDelMes||1}" oninput="actualizarRecurrenteCfg('${r.id}','diaDelMes',this.value)" class="fi" style="width:55px;font-size:.72rem;padding:7px 6px;text-align:center" title="Día del mes">
+      </div>
+    </div>`).join('');
+}
+
+// ── Inserta automáticamente, una vez por mes, cada débito recurrente como transacción real ──
+// Se ejecuta al cambiar de mes / al iniciar la app. No duplica si ya fue insertado ese mes (marca tag 'recurrenteId').
+function aplicarDebitosRecurrentes(mes) {
+  const recurrentes = getRecurrentes();
+  if (recurrentes.length === 0) return;
+
+  const txsAll = DB.get('txs', {});
+  const txsDelMes = txsAll[mes] || [];
+  let huboCambios = false;
+
+  recurrentes.forEach(r => {
+    if (!r.categoria || !r.monto) return; // recurrente sin completar, no lo insertamos todavía
+    const yaExiste = txsDelMes.some(tx => tx.recurrenteId === r.id);
+    if (yaExiste) return;
+
+    const diaSeguro = Math.min(r.diaDelMes || 1, new Date(parseInt(mes.slice(0,4)), parseInt(mes.slice(5,7)), 0).getDate());
+    const fecha = mes + '-' + String(diaSeguro).padStart(2,'0');
+
+    txsDelMes.push({
+      fecha, monto: r.monto, desc: r.nombre, cat: r.categoria,
+      medio: '', notas: 'Débito automático recurrente', tipo: 'gasto', moneda: 'ARS',
+      ts: Date.now(), recurrenteId: r.id,
+    });
+    huboCambios = true;
+  });
+
+  if (huboCambios) {
+    txsAll[mes] = txsDelMes;
+    DB.set('txs', txsAll);
+    if (window.FBsave) window.FBsave('txs', txsAll);
+  }
 }
 
 // ── Calcula el N-ésimo jueves desde el final de un mes dado (year, monthIndex 0-based) ──
@@ -2570,16 +2687,38 @@ function eliminarGastoTarjeta(id) {
 // Agrupa todos los gastos por tarjeta + período de resumen (cierre que les corresponde)
 function agruparGastosPorPeriodo() {
   const tarjetas = getTarjetas();
-  const gastos   = getGastosTarjetas();
+  const gastosFamilia = getGastosTarjetas();
   const grupos = {}; // key: tarjetaId + '|' + cierreISO -> { tarjeta, cierre, gastos: [] }
 
-  gastos.forEach(g => {
+  gastosFamilia.forEach(g => {
     const tarjeta = tarjetas.find(t => t.id === g.tarjetaId);
     if (!tarjeta) return; // tarjeta borrada después de cargar el gasto — lo dejamos fuera del agrupado
     const cierre = periodoDeGasto(tarjeta, g.fecha);
     const key = tarjeta.id + '|' + cierre;
     if (!grupos[key]) grupos[key] = { tarjeta, cierre, gastos: [] };
     grupos[key].gastos.push(g);
+  });
+
+  // Sumar también el gasto propio (transacciones reales) de la categoría asociada a cada tarjeta
+  const todasLasTxs = Object.values(DB.get('txs', {})).flat();
+  tarjetas.forEach(tarjeta => {
+    if (!tarjeta.categoriaFlujo) return; // tarjeta sin categoría vinculada — no hay gasto propio que sumar
+    todasLasTxs
+      .filter(tx => tx.tipo === 'gasto' && normalizeCat(tx.cat) === normalizeCat(tarjeta.categoriaFlujo))
+      .forEach(tx => {
+        const cierre = periodoDeGasto(tarjeta, tx.fecha);
+        const key = tarjeta.id + '|' + cierre;
+        if (!grupos[key]) grupos[key] = { tarjeta, cierre, gastos: [] };
+        grupos[key].gastos.push({
+          id: 'propio_' + tx.ts,
+          tarjetaId: tarjeta.id,
+          fecha: tx.fecha,
+          tipo: tx.desc || tx.cat,
+          monto: parseFloat(tx.monto) || 0,
+          cargadoPor: 'Cris (propio)',
+          esPropio: true, // no se puede borrar desde este tab — vive en Flujo
+        });
+      });
   });
 
   return Object.values(grupos).sort((a,b) => b.cierre.localeCompare(a.cierre));
@@ -2636,7 +2775,7 @@ function renderGastosTarjetas() {
               <span style="color:var(--muted);font-size:.65rem"> · ${new Date(g.fecha+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'})} · ${g.cargadoPor}</span>
             </div>
             <span style="font-weight:700;color:var(--red)">${fmt(g.monto)}</span>
-            ${!estaConciliado ? `<button onclick="eliminarGastoTarjeta('${g.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.8rem;padding:2px 5px">✕</button>` : ''}
+            ${!estaConciliado && !g.esPropio ? `<button onclick="eliminarGastoTarjeta('${g.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.8rem;padding:2px 5px">✕</button>` : ''}
           </div>`).join('')}
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px solid var(--border2)">
@@ -5640,9 +5779,11 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   globalMes = initMes;
   curMes    = initMes;
+  if (typeof aplicarDebitosRecurrentes === 'function') aplicarDebitosRecurrentes(initMes);
   curPlan   = getPlan(initMes);
   document.getElementById('header-mes').textContent = mesLabel(initMes);
   renderPlanSections();
+  if (typeof renderRecurrentesCfg === 'function') renderRecurrentesCfg();
   if (typeof actualizarAvisoAutocompletado === 'function') actualizarAvisoAutocompletado();
 
   // Autocompletar presupuesto del mes actual si todavía no tiene uno propio (igual que en setGlobalMes)
