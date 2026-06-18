@@ -2597,9 +2597,18 @@ function actualizarRecurrenteCfg(id, campo, valor) {
   const r = lista.find(r => r.id === id);
   if (!r) return;
   r[campo] = (campo === 'monto' || campo === 'diaDelMes') ? (parseFloat(valor) || 0) : valor;
-  // Ningún campo acá cambia la estructura visual del card — siempre guardamos sin re-renderizar,
-  // para no perder el foco del input mientras se está tipeando.
-  saveRecurrentes(lista, { skipRender: true });
+
+  // 'moneda' viene de un <select onchange> (evento discreto): re-renderizar es seguro y necesario,
+  // porque muestra/oculta la línea de conversión aproximada a ARS.
+  const requiereRerender = campo === 'moneda';
+  saveRecurrentes(lista, { skipRender: !requiereRerender });
+
+  // Si el monto cambia mientras la moneda es USD, actualizamos el texto de conversión in-place
+  // (sin re-renderizar todo) para no perder el foco del input mientras se tipea.
+  if (campo === 'monto' && r.moneda === 'USD') {
+    const convEl = document.getElementById('conv-label-' + id);
+    if (convEl) convEl.textContent = `≈ ${fmt((r.monto||0) * TC)} al TC actual (${fmt(TC)})`;
+  }
 }
 
 function renderRecurrentesCfg() {
@@ -2618,9 +2627,14 @@ function renderRecurrentesCfg() {
       </div>
       <div style="display:flex;gap:6px;align-items:center">
         <input type="text" value="${r.categoria}" oninput="actualizarRecurrenteCfg('${r.id}','categoria',this.value)" class="fi" style="flex:1;font-size:.72rem;padding:7px 8px" placeholder="Categoría (ej: Seguros)">
-        <input type="number" value="${r.monto||''}" oninput="actualizarRecurrenteCfg('${r.id}','monto',this.value)" class="fi" style="width:100px;font-size:.72rem;padding:7px 8px;text-align:right" placeholder="Monto">
-        <input type="number" min="1" max="31" value="${r.diaDelMes||1}" oninput="actualizarRecurrenteCfg('${r.id}','diaDelMes',this.value)" class="fi" style="width:55px;font-size:.72rem;padding:7px 6px;text-align:center" title="Día del mes">
+        <select onchange="actualizarRecurrenteCfg('${r.id}','moneda',this.value)" class="fi" style="width:62px;font-size:.72rem;padding:7px 4px">
+          <option value="ARS" ${(r.moneda||'ARS')==='ARS'?'selected':''}>ARS</option>
+          <option value="USD" ${r.moneda==='USD'?'selected':''}>USD</option>
+        </select>
+        <input type="number" value="${r.monto||''}" oninput="actualizarRecurrenteCfg('${r.id}','monto',this.value)" class="fi" style="width:90px;font-size:.72rem;padding:7px 8px;text-align:right" placeholder="Monto">
+        <input type="number" min="1" max="31" value="${r.diaDelMes||1}" oninput="actualizarRecurrenteCfg('${r.id}','diaDelMes',this.value)" class="fi" style="width:50px;font-size:.72rem;padding:7px 6px;text-align:center" title="Día del mes">
       </div>
+      ${r.moneda==='USD' ? `<div id="conv-label-${r.id}" style="font-size:.62rem;color:var(--muted)">≈ ${fmt((r.monto||0) * TC)} al TC actual (${fmt(TC)})</div>` : ''}
     </div>`).join('');
 }
 
@@ -2642,9 +2656,18 @@ function aplicarDebitosRecurrentes(mes) {
     const diaSeguro = Math.min(r.diaDelMes || 1, new Date(parseInt(mes.slice(0,4)), parseInt(mes.slice(5,7)), 0).getDate());
     const fecha = mes + '-' + String(diaSeguro).padStart(2,'0');
 
+    // El resto de Flujo/Overview suma montos asumiendo ARS, así que un recurrente en USD
+    // se convierte a ARS al TC vigente en el momento de insertarse, dejando una nota auditable
+    // del monto original y la tasa usada (por si el TC cambió mucho para cuando se revise).
+    const esUSD = r.moneda === 'USD';
+    const montoFinal = esUSD ? Math.round(r.monto * TC) : r.monto;
+    const notaFinal = esUSD
+      ? `Débito automático recurrente — U$S ${r.monto} convertido a TC ${TC} (al insertarse)`
+      : 'Débito automático recurrente';
+
     txsDelMes.push({
-      fecha, monto: r.monto, desc: r.nombre, cat: r.categoria,
-      medio: '', notas: 'Débito automático recurrente', tipo: 'gasto', moneda: 'ARS',
+      fecha, monto: montoFinal, desc: r.nombre, cat: r.categoria,
+      medio: '', notas: notaFinal, tipo: 'gasto', moneda: 'ARS',
       ts: Date.now(), recurrenteId: r.id,
     });
     huboCambios = true;
