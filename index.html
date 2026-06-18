@@ -60,7 +60,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, addDoc, query, where, getDocs }
+import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, addDoc, query, where, getDocs, deleteDoc }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 const firebaseConfig = {
@@ -223,7 +223,17 @@ window.fbLogin = async function() {
   }
 };
 
-// ── Exponer para uso desde el resto del app ──
+// ── Exponer delete de gastos familiares desde Firestore (por nuestro campo id, no el doc ID de Firestore) ──
+window.cfEliminarGastoFirestore = async function(gastoId) {
+  try {
+    const q = query(CF_COL_GASTOS, where('id', '==', gastoId));
+    const snap = await getDocs(q);
+    snap.forEach(async d => { await deleteDoc(d.ref); });
+  } catch(e) { console.error('cfEliminarGastoFirestore error:', e); }
+};
+
+
+
 window.fbSignOut = () => signOut(auth);
 
 window.addEventListener('online',  () => { if (_uid) setSyncStatus('ok');      });
@@ -280,8 +290,14 @@ window.cfToggleCuotas = function() {
   document.getElementById('cf-monto-label').textContent = checked ? 'Monto total de la compra' : 'Monto';
 };
 
+let _cfGuardando = false;
 window.cfGuardarGasto = async function() {
   if (!_cfPinValidado) return;
+  if (_cfGuardando) return; // anti-doble-tap: bloquea mientras hay una operación en vuelo
+  _cfGuardando = true;
+  const btn = document.querySelector('[onclick="cfGuardarGasto()"]');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Guardando...'; }
+
   const quien   = document.getElementById('cf-quien').value;
   const tarjetaId = document.getElementById('cf-tarjeta').value;
   const fecha   = document.getElementById('cf-fecha').value;
@@ -290,11 +306,16 @@ window.cfGuardarGasto = async function() {
   const enCuotas = document.getElementById('cf-cuotas-check').checked;
   const cantCuotas = enCuotas ? parseInt(document.getElementById('cf-cuotas-cant').value) : 1;
 
-  if (!tarjetaId)        { alert('Elegí una tarjeta'); return; }
-  if (!fecha)            { alert('Elegí la fecha'); return; }
-  if (!tipo)             { alert('Escribí el tipo de gasto'); return; }
-  if (!monto || monto <= 0) { alert('Ingresá un monto válido'); return; }
-  if (enCuotas && (!cantCuotas || cantCuotas < 2)) { alert('Ingresá una cantidad de cuotas válida (2 o más)'); return; }
+  const restaurarBtn = () => {
+    _cfGuardando = false;
+    if (btn) { btn.disabled = false; btn.textContent = '✓ Registrar gasto'; }
+  };
+
+  if (!tarjetaId)        { alert('Elegí una tarjeta'); restaurarBtn(); return; }
+  if (!fecha)            { alert('Elegí la fecha'); restaurarBtn(); return; }
+  if (!tipo)             { alert('Escribí el tipo de gasto'); restaurarBtn(); return; }
+  if (!monto || monto <= 0) { alert('Ingresá un monto válido'); restaurarBtn(); return; }
+  if (enCuotas && (!cantCuotas || cantCuotas < 2)) { alert('Ingresá una cantidad de cuotas válida (2 o más)'); restaurarBtn(); return; }
 
   const tarjeta = _cfTarjetasDisponibles.find(t => t.id === tarjetaId);
 
@@ -334,9 +355,11 @@ window.cfGuardarGasto = async function() {
     document.getElementById('cf-cuotas-cant').value = '';
     cfToggleCuotas();
     document.getElementById('cf-tipo').focus();
+    restaurarBtn();
   } catch(e) {
     console.error('cfGuardarGasto error:', e);
     alert('No se pudo guardar el gasto. Revisá tu conexión e intentá de nuevo.');
+    restaurarBtn();
   }
 };
 </script>
@@ -2669,53 +2692,74 @@ function renderRecurrentesCfg() {
   const categoriasDisponibles = obtenerCategoriasUsadas();
   const tarjetasDisponibles = getTarjetas();
 
-  el.innerHTML = lista.map(r => `
-    <div style="display:flex;flex-direction:column;gap:8px;padding:10px;background:var(--s2);border-radius:8px;margin-bottom:8px">
-      <div style="display:flex;gap:6px;align-items:center">
-        <input type="text" value="${r.nombre}" oninput="actualizarRecurrenteCfg('${r.id}','nombre',this.value)" class="fi" style="flex:1;font-size:.78rem;padding:7px 9px" placeholder="ej: Seguro Taos">
-        <button onclick="eliminarRecurrenteCfg('${r.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.85rem;padding:4px 6px">✕</button>
-      </div>
+  // Total mensual estimado (ARS, convirtiendo USD al TC)
+  const totalMensual = lista.reduce((s,r) => s + (r.moneda==='USD' ? (r.monto||0)*TC : (r.monto||0)), 0);
 
-      <div>
-        <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">CATEGORÍA</div>
-        <select id="cat-sel-${r.id}" onchange="recurrenteCategoriaChange('${r.id}', this)" class="fi" style="width:100%;font-size:.74rem;padding:7px 8px">
-          <option value="">— elegí una categoría —</option>
-          ${categoriasDisponibles.map(c => `<option value="${c}" ${r.categoria===c?'selected':''}>${c}</option>`).join('')}
-          <option value="__nueva__">＋ Nueva categoría...</option>
-        </select>
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;margin-bottom:8px;border-bottom:1px solid var(--border)">
+      <span style="font-size:.72rem;color:var(--muted)">Total mensual estimado</span>
+      <span style="font-weight:700;font-size:.85rem;color:var(--text)">${fmt(totalMensual)}</span>
+    </div>` +
+  lista.map(r => `
+    <div style="background:var(--s2);border-radius:8px;margin-bottom:8px;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:8px;padding:10px;cursor:pointer" onclick="toggleRecurrenteDetalle('${r.id}')">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:.78rem">${r.nombre || 'Sin nombre'}</div>
+          <div style="font-size:.64rem;color:var(--muted)">${r.categoria || '—'} · día ${r.diaDelMes||1}${r.tarjetaId ? ' · ' + (tarjetasDisponibles.find(t=>t.id===r.tarjetaId)?.nombre||'tarjeta') : ''}</div>
+        </div>
+        <span style="font-weight:700;font-size:.8rem;color:var(--text);white-space:nowrap">${r.moneda==='USD' ? 'U$S '+r.monto : fmt(r.monto||0)}</span>
+        <span id="rec-toggle-${r.id}" style="color:var(--muted);font-size:.75rem">▼</span>
       </div>
-
-      <div>
-        <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">TARJETA POR LA QUE SE DEBITA</div>
-        <select onchange="actualizarRecurrenteCfg('${r.id}','tarjetaId',this.value)" class="fi" style="width:100%;font-size:.74rem;padding:7px 8px">
-          <option value="">— ninguna (no es por tarjeta) —</option>
-          ${tarjetasDisponibles.map(t => `<option value="${t.id}" ${r.tarjetaId===t.id?'selected':''}>${t.nombre}</option>`).join('')}
-        </select>
-      </div>
-
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <div>
-          <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">MONEDA</div>
-          <select onchange="actualizarRecurrenteCfg('${r.id}','moneda',this.value)" class="fi" style="width:100%;font-size:.74rem;padding:7px 8px">
-            <option value="ARS" ${(r.moneda||'ARS')==='ARS'?'selected':''}>ARS</option>
-            <option value="USD" ${r.moneda==='USD'?'selected':''}>USD</option>
+      <div id="rec-detalle-${r.id}" style="padding:0 10px 10px;border-top:1px solid var(--border)">
+        <div style="display:flex;gap:6px;align-items:center;margin-top:8px">
+          <input type="text" value="${r.nombre}" oninput="actualizarRecurrenteCfg('${r.id}','nombre',this.value)" class="fi" style="flex:1;font-size:.78rem;padding:7px 9px" placeholder="ej: Seguro Taos">
+          <button onclick="eliminarRecurrenteCfg('${r.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.85rem;padding:4px 6px">✕</button>
+        </div>
+        <div style="margin-top:8px">
+          <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">CATEGORÍA</div>
+          <select id="cat-sel-${r.id}" onchange="recurrenteCategoriaChange('${r.id}', this)" class="fi" style="width:100%;font-size:.74rem;padding:7px 8px">
+            <option value="">— elegí una categoría —</option>
+            ${categoriasDisponibles.map(c => `<option value="${c}" ${r.categoria===c?'selected':''}>${c}</option>`).join('')}
+            <option value="__nueva__">＋ Nueva categoría...</option>
           </select>
         </div>
-        <div>
-          <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">MONTO</div>
-          <input type="number" value="${r.monto||''}" oninput="actualizarRecurrenteCfg('${r.id}','monto',this.value)" class="fi" style="width:100%;font-size:.74rem;padding:7px 8px;text-align:right" placeholder="0">
+        <div style="margin-top:8px">
+          <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">TARJETA POR LA QUE SE DEBITA</div>
+          <select onchange="actualizarRecurrenteCfg('${r.id}','tarjetaId',this.value)" class="fi" style="width:100%;font-size:.74rem;padding:7px 8px">
+            <option value="">— ninguna —</option>
+            ${tarjetasDisponibles.map(t => `<option value="${t.id}" ${r.tarjetaId===t.id?'selected':''}>${t.nombre}</option>`).join('')}
+          </select>
         </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+          <div>
+            <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">MONEDA</div>
+            <select onchange="actualizarRecurrenteCfg('${r.id}','moneda',this.value)" class="fi" style="width:100%;font-size:.74rem;padding:7px 8px">
+              <option value="ARS" ${(r.moneda||'ARS')==='ARS'?'selected':''}>ARS</option>
+              <option value="USD" ${r.moneda==='USD'?'selected':''}>USD</option>
+            </select>
+          </div>
+          <div>
+            <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">MONTO</div>
+            <input type="number" value="${r.monto||''}" oninput="actualizarRecurrenteCfg('${r.id}','monto',this.value)" class="fi" style="width:100%;font-size:.74rem;padding:7px 8px;text-align:right" placeholder="0">
+          </div>
+        </div>
+        <div style="margin-top:8px">
+          <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">DÍA DEL MES EN QUE SE DEBITA</div>
+          <input type="number" min="1" max="31" value="${r.diaDelMes||1}" oninput="actualizarRecurrenteCfg('${r.id}','diaDelMes',this.value)" class="fi" style="width:70px;font-size:.74rem;padding:7px 8px;text-align:center">
+        </div>
+        ${r.moneda==='USD' ? `<div id="conv-label-${r.id}" style="font-size:.64rem;color:var(--muted);margin-top:6px">≈ ${fmt((r.monto||0) * TC)} al TC actual (${fmt(TC)}) — al insertarse, se ajusta al TC vigente ese día.</div>` : ''}
       </div>
-
-      <div>
-        <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">DÍA DEL MES EN QUE SE DEBITA</div>
-        <input type="number" min="1" max="31" value="${r.diaDelMes||1}" oninput="actualizarRecurrenteCfg('${r.id}','diaDelMes',this.value)" class="fi" style="width:70px;font-size:.74rem;padding:7px 8px;text-align:center">
-      </div>
-
-      ${r.moneda==='USD' ? `<div id="conv-label-${r.id}" style="font-size:.64rem;color:var(--muted)">≈ ${fmt((r.monto||0) * TC)} al TC actual (${fmt(TC)}) — al insertarse, se ajusta al TC vigente ese día; después podés corregir el monto en pesos a mano si cambió.</div>` : ''}
     </div>`).join('');
 }
 
+function toggleRecurrenteDetalle(id) {
+  const el = document.getElementById('rec-detalle-' + id);
+  const icon = document.getElementById('rec-toggle-' + id);
+  if (!el) return;
+  const abierto = el.style.display !== 'none';
+  el.style.display = abierto ? 'none' : 'block';
+  if (icon) icon.textContent = abierto ? '▶' : '▼';
+}
 // ── Manejo del select de categoría: permite elegir una existente o crear una nueva al vuelo ──
 function recurrenteCategoriaChange(id, selectEl) {
   if (selectEl.value === '__nueva__') {
@@ -2877,6 +2921,8 @@ function eliminarGastoTarjeta(id) {
   const lista = getGastosTarjetas().filter(g => g.id !== id);
   saveGastosTarjetas(lista);
   renderGastosTarjetas();
+  // Borrar también de Firestore para que el listener onSnapshot no lo restaure
+  if (window.cfEliminarGastoFirestore) window.cfEliminarGastoFirestore(id);
 }
 
 // ── Carga rápida del propio consumo (Cris), desde dentro de la sesión normal ──
@@ -2993,7 +3039,23 @@ function renderGastosTarjetas() {
 
   const conciliaciones = DB.get('tarjetas_conciliadas', {});
 
-  el.innerHTML = grupos.map(grupo => {
+  // Total general de todos los períodos no conciliados
+  const granTotal = grupos
+    .filter(g => !conciliaciones[g.tarjeta.id + '|' + g.cierre])
+    .reduce((s, grupo) => s + grupo.gastos.reduce((ss,g) => ss + (g.moneda==='USD' ? (g.monto||0)*TC : (g.monto||0)), 0), 0);
+
+  const headerHtml = `
+    <div class="card" style="margin-bottom:14px;background:var(--s1);border:1px solid var(--border2)">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Total pendiente de conciliar</div>
+          <div style="font-family:var(--fh);font-weight:700;font-size:1.3rem;color:var(--orange)">${fmt(granTotal)}</div>
+        </div>
+        <div style="font-size:.7rem;color:var(--muted)">${grupos.filter(g=>!conciliaciones[g.tarjeta.id+'|'+g.cierre]).length} período${grupos.filter(g=>!conciliaciones[g.tarjeta.id+'|'+g.cierre]).length!==1?'s':''} abierto${grupos.filter(g=>!conciliaciones[g.tarjeta.id+'|'+g.cierre]).length!==1?'s':''}</div>
+      </div>
+    </div>`;
+
+  el.innerHTML = headerHtml + grupos.map(grupo => {
     const key = grupo.tarjeta.id + '|' + grupo.cierre;
     const estaConciliado = !!conciliaciones[key];
     // Convertimos a ARS lo que esté en USD para poder sumar todo junto correctamente.
@@ -3002,10 +3064,17 @@ function renderGastosTarjetas() {
 
     return `
     <div class="card" style="margin-bottom:14px;${estaConciliado ? 'opacity:.6' : ''}">
-      <div class="ct" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-        <span>💳 ${grupo.tarjeta.nombre} — cierre ${fechaCierreLabel}</span>
-        <span style="font-size:.7rem;font-weight:700;color:${estaConciliado ? 'var(--muted)' : 'var(--orange)'}">${estaConciliado ? '✓ Conciliado' : fmt(total)}</span>
+      <div class="ct" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;cursor:pointer" onclick="toggleGastosTarjetaDetalle('${key}')">
+        <div>
+          <div style="font-size:.75rem;font-weight:700">💳 ${grupo.tarjeta.nombre}</div>
+          <div style="font-size:.63rem;color:var(--muted)">cierre ${fechaCierreLabel}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:.8rem;font-weight:700;color:${estaConciliado ? 'var(--muted)' : 'var(--orange)'}">${estaConciliado ? '✓' : fmt(total)}</span>
+          <span id="toggle-icon-${key.replace(/[|.]/g,'_')}" style="color:var(--muted);font-size:.8rem">▼</span>
+        </div>
       </div>
+      <div id="detalle-${key.replace(/[|.]/g,'_')}">
       <div style="display:flex;flex-direction:column;gap:6px;margin:10px 0">
         ${grupo.gastos.sort((a,b)=>a.fecha.localeCompare(b.fecha)).map(g => {
           const esUSD = g.moneda === 'USD';
@@ -3046,8 +3115,19 @@ function renderGastosTarjetas() {
           ${estaConciliado ? '↺ Reabrir' : '✓ Marcar conciliado'}
         </button>
       </div>
+      </div><!-- /detalle -->
     </div>`;
   }).join('');
+}
+
+function toggleGastosTarjetaDetalle(key) {
+  const safeKey = key.replace(/[|.]/g,'_');
+  const el = document.getElementById('detalle-' + safeKey);
+  const icon = document.getElementById('toggle-icon-' + safeKey);
+  if (!el) return;
+  const abierto = el.style.display !== 'none';
+  el.style.display = abierto ? 'none' : 'block';
+  if (icon) icon.textContent = abierto ? '▶' : '▼';
 }
 
 // ── Generar y copiar el link de carga familiar (con PIN configurado) ──
