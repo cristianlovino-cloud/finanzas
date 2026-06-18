@@ -2621,6 +2621,7 @@ function renderRecurrentesCfg() {
     return;
   }
   const categoriasDisponibles = obtenerCategoriasUsadas();
+  const tarjetasDisponibles = getTarjetas();
 
   el.innerHTML = lista.map(r => `
     <div style="display:flex;flex-direction:column;gap:8px;padding:10px;background:var(--s2);border-radius:8px;margin-bottom:8px">
@@ -2635,6 +2636,14 @@ function renderRecurrentesCfg() {
           <option value="">— elegí una categoría —</option>
           ${categoriasDisponibles.map(c => `<option value="${c}" ${r.categoria===c?'selected':''}>${c}</option>`).join('')}
           <option value="__nueva__">＋ Nueva categoría...</option>
+        </select>
+      </div>
+
+      <div>
+        <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">TARJETA POR LA QUE SE DEBITA</div>
+        <select onchange="actualizarRecurrenteCfg('${r.id}','tarjetaId',this.value)" class="fi" style="width:100%;font-size:.74rem;padding:7px 8px">
+          <option value="">— ninguna (no es por tarjeta) —</option>
+          ${tarjetasDisponibles.map(t => `<option value="${t.id}" ${r.tarjetaId===t.id?'selected':''}>${t.nombre}</option>`).join('')}
         </select>
       </div>
 
@@ -2681,10 +2690,33 @@ function aplicarDebitosRecurrentes(mes) {
 
   const txsAll = DB.get('txs', {});
   const txsDelMes = txsAll[mes] || [];
-  let huboCambios = false;
+  const gastosTarjetas = getGastosTarjetas();
+  let huboCambiosTxs = false;
+  let huboCambiosTarjetas = false;
 
   recurrentes.forEach(r => {
     if (!r.categoria || !r.monto) return; // recurrente sin completar, no lo insertamos todavía
+
+    if (r.tarjetaId) {
+      // Tiene tarjeta asociada: va SOLO al desglose de gastos_tarjetas, nunca a Flujo.
+      // El pago real del resumen lo sigue cargando el usuario a mano cuando vence, como siempre.
+      const yaExisteEnTarjetas = gastosTarjetas.some(g => g.recurrenteId === r.id && g.fecha.slice(0,7) === mes);
+      if (yaExisteEnTarjetas) return;
+
+      const diaSeguro = Math.min(r.diaDelMes || 1, new Date(parseInt(mes.slice(0,4)), parseInt(mes.slice(5,7)), 0).getDate());
+      const fecha = mes + '-' + String(diaSeguro).padStart(2,'0');
+      // Dentro del desglose de tarjeta sí podemos guardar el monto en su moneda original
+      // (USD o ARS), porque ese desglose no se suma a los totales de Flujo.
+      gastosTarjetas.push({
+        id: 'gt_rec_' + r.id + '_' + mes,
+        tarjetaId: r.tarjetaId, fecha, tipo: r.nombre, monto: r.monto, moneda: r.moneda || 'ARS',
+        cargadoPor: 'Recurrente automático', ts: Date.now(), recurrenteId: r.id,
+      });
+      huboCambiosTarjetas = true;
+      return;
+    }
+
+    // Sin tarjeta asociada: comportamiento original, va directo a Flujo.
     const yaExiste = txsDelMes.some(tx => tx.recurrenteId === r.id);
     if (yaExiste) return;
 
@@ -2705,13 +2737,17 @@ function aplicarDebitosRecurrentes(mes) {
       medio: '', notas: notaFinal, tipo: 'gasto', moneda: 'ARS',
       ts: Date.now(), recurrenteId: r.id,
     });
-    huboCambios = true;
+    huboCambiosTxs = true;
   });
 
-  if (huboCambios) {
+  if (huboCambiosTxs) {
     txsAll[mes] = txsDelMes;
     DB.set('txs', txsAll);
     if (window.FBsave) window.FBsave('txs', txsAll);
+  }
+  if (huboCambiosTarjetas) {
+    saveGastosTarjetas(gastosTarjetas);
+    if (typeof renderGastosTarjetas === 'function') renderGastosTarjetas();
   }
 }
 
@@ -2863,7 +2899,8 @@ function renderGastosTarjetas() {
   el.innerHTML = grupos.map(grupo => {
     const key = grupo.tarjeta.id + '|' + grupo.cierre;
     const estaConciliado = !!conciliaciones[key];
-    const total = grupo.gastos.reduce((s,g) => s + (g.monto||0), 0);
+    // Convertimos a ARS lo que esté en USD para poder sumar todo junto correctamente.
+    const total = grupo.gastos.reduce((s,g) => s + (g.moneda === 'USD' ? (g.monto||0) * TC : (g.monto||0)), 0);
     const fechaCierreLabel = new Date(grupo.cierre + 'T00:00:00').toLocaleDateString('es-AR', {day:'2-digit', month:'long', year:'numeric'});
 
     return `
@@ -2873,15 +2910,19 @@ function renderGastosTarjetas() {
         <span style="font-size:.7rem;font-weight:700;color:${estaConciliado ? 'var(--muted)' : 'var(--orange)'}">${estaConciliado ? '✓ Conciliado' : fmt(total)}</span>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;margin:10px 0">
-        ${grupo.gastos.sort((a,b)=>a.fecha.localeCompare(b.fecha)).map(g => `
+        ${grupo.gastos.sort((a,b)=>a.fecha.localeCompare(b.fecha)).map(g => {
+          const esUSD = g.moneda === 'USD';
+          const montoArs = esUSD ? (g.monto||0) * TC : (g.monto||0);
+          return `
           <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:.74rem">
             <div style="flex:1;min-width:0">
               <span style="font-weight:600">${g.tipo}</span>
-              <span style="color:var(--muted);font-size:.65rem"> · ${new Date(g.fecha+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'})} · ${g.cargadoPor}</span>
+              <span style="color:var(--muted);font-size:.65rem"> · ${new Date(g.fecha+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'})} · ${g.cargadoPor}${esUSD ? ' · U$S '+g.monto : ''}</span>
             </div>
-            <span style="font-weight:700;color:var(--red)">${fmt(g.monto)}</span>
+            <span style="font-weight:700;color:var(--red)">${fmt(montoArs)}</span>
             ${!estaConciliado ? `<button onclick="eliminarGastoTarjeta('${g.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.8rem;padding:2px 5px">✕</button>` : ''}
-          </div>`).join('')}
+          </div>`;
+        }).join('')}
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px solid var(--border2)">
         <span style="font-size:.76rem;font-weight:700">Total período: ${fmt(total)}</span>
