@@ -1358,7 +1358,8 @@ nav::-webkit-scrollbar{display:none}
     <p style="font-size:.75rem;color:var(--muted2);margin-bottom:12px;line-height:1.5">
       Acá vas mapeando todo el consumo del período (vos, Lara y Emma) por categoría y tipo de gasto, para totalizar y comparar contra el resumen real cuando lo emite el banco. No toca Flujo ni Overview en ningún momento — el pago del resumen lo seguís cargando vos, donde siempre, cuando vence.
     </p>
-    <button onclick="copiarLinkCargaFamiliar()" class="btn btn-g" style="width:100%">🔗 Copiar link para Lara/Emma</button>
+    <button onclick="copiarLinkCargaFamiliar('Lara')" class="btn btn-g" style="width:100%;margin-bottom:6px">🔗 Link para Lara</button>
+    <button onclick="copiarLinkCargaFamiliar('Emma')" class="btn btn-g" style="width:100%">🔗 Link para Emma</button>
   </div>
 
   <div class="card" style="margin-bottom:14px">
@@ -1383,12 +1384,16 @@ nav::-webkit-scrollbar{display:none}
         <input type="number" id="own-tj-monto" class="fi" placeholder="0" style="font-size:.78rem;padding:8px 9px;text-align:right">
       </div>
     </div>
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
       <input type="checkbox" id="own-tj-cuotas-check" onchange="ownToggleCuotas()" style="width:16px;height:16px">
       <label for="own-tj-cuotas-check" style="font-size:.74rem;cursor:pointer">¿En cuotas?</label>
       <div id="own-tj-cuotas-wrap" style="display:none;margin-left:auto">
         <input type="number" id="own-tj-cuotas-cant" min="2" max="24" placeholder="6" class="fi" style="width:60px;font-size:.74rem;padding:6px 8px;text-align:center">
       </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <input type="checkbox" id="own-tj-cuota-en-curso" style="width:16px;height:16px">
+      <label for="own-tj-cuota-en-curso" style="font-size:.74rem;cursor:pointer">Cuota en curso <span style="font-size:.65rem;color:var(--muted)">(ya está en el resumen, no es compra nueva)</span></label>
     </div>
     <button onclick="ownCargarGastoTarjeta()" class="btn btn-g" style="width:100%">＋ Registrar mi gasto</button>
   </div>
@@ -2948,6 +2953,7 @@ function ownCargarGastoTarjeta() {
   const monto     = parseFloat(document.getElementById('own-tj-monto').value);
   const enCuotas  = document.getElementById('own-tj-cuotas-check').checked;
   const cantCuotas = enCuotas ? parseInt(document.getElementById('own-tj-cuotas-cant').value) : 1;
+  const esCuotaEnCurso = document.getElementById('own-tj-cuota-en-curso')?.checked || false;
 
   if (!tarjetaId)            { showToast('Elegí una tarjeta', '#f43f5e'); return; }
   if (!fecha)                { showToast('Elegí la fecha', '#f43f5e'); return; }
@@ -2974,10 +2980,10 @@ function ownCargarGastoTarjeta() {
     lista.push({
       id: 'gt_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
       tarjetaId, fecha, tipo, monto,
-      cargadoPor: 'Cris',
-      ts: Date.now(),
+      cargadoPor: 'Cris', ts: Date.now(),
+      ...(esCuotaEnCurso ? { esCuotaEnCurso: true } : {}),
     });
-    showToast('✓ Gasto registrado: ' + tipo + ' — ' + fmt(monto));
+    showToast('✓ ' + (esCuotaEnCurso ? 'Cuota en curso registrada: ' : 'Gasto registrado: ') + tipo + ' — ' + fmt(monto));
   }
 
   saveGastosTarjetas(lista);
@@ -2986,6 +2992,7 @@ function ownCargarGastoTarjeta() {
   document.getElementById('own-tj-monto').value = '';
   document.getElementById('own-tj-cuotas-check').checked = false;
   document.getElementById('own-tj-cuotas-cant').value = '';
+  if (document.getElementById('own-tj-cuota-en-curso')) document.getElementById('own-tj-cuota-en-curso').checked = false;
   ownToggleCuotas();
   renderGastosTarjetas();
 }
@@ -3039,27 +3046,33 @@ function renderGastosTarjetas() {
 
   const conciliaciones = DB.get('tarjetas_conciliadas', {});
 
-  // Total general de todos los períodos no conciliados
-  const granTotal = grupos
-    .filter(g => !conciliaciones[g.tarjeta.id + '|' + g.cierre])
-    .reduce((s, grupo) => s + grupo.gastos.reduce((ss,g) => ss + (g.moneda==='USD' ? (g.monto||0)*TC : (g.monto||0)), 0), 0);
+  // Totales separados ARS / USD — sin mezclar ni convertir
+  const gruposAbiertos = grupos.filter(g => !conciliaciones[g.tarjeta.id + '|' + g.cierre]);
+  const granTotalARS = gruposAbiertos.reduce((s, grupo) =>
+    s + grupo.gastos.filter(g => g.moneda !== 'USD').reduce((ss,g) => ss + (g.monto||0), 0), 0);
+  const granTotalUSD = gruposAbiertos.reduce((s, grupo) =>
+    s + grupo.gastos.filter(g => g.moneda === 'USD').reduce((ss,g) => ss + (g.monto||0), 0), 0);
 
   const headerHtml = `
     <div class="card" style="margin-bottom:14px;background:var(--s1);border:1px solid var(--border2)">
-      <div style="display:flex;justify-content:space-between;align-items:center">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
         <div>
-          <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Total pendiente de conciliar</div>
-          <div style="font-family:var(--fh);font-weight:700;font-size:1.3rem;color:var(--orange)">${fmt(granTotal)}</div>
+          <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Total pendiente de conciliar</div>
+          <div style="font-family:var(--fh);font-weight:700;font-size:1.2rem;color:var(--orange)">${fmt(granTotalARS)}</div>
+          ${granTotalUSD > 0 ? `<div style="font-family:var(--fh);font-weight:700;font-size:1.1rem;color:var(--yellow)">+ U$S ${granTotalUSD.toLocaleString('es-AR')}</div>` : ''}
         </div>
-        <div style="font-size:.7rem;color:var(--muted)">${grupos.filter(g=>!conciliaciones[g.tarjeta.id+'|'+g.cierre]).length} período${grupos.filter(g=>!conciliaciones[g.tarjeta.id+'|'+g.cierre]).length!==1?'s':''} abierto${grupos.filter(g=>!conciliaciones[g.tarjeta.id+'|'+g.cierre]).length!==1?'s':''}</div>
+        <div style="font-size:.7rem;color:var(--muted);text-align:right">${gruposAbiertos.length} período${gruposAbiertos.length!==1?'s':''} abierto${gruposAbiertos.length!==1?'s':''}</div>
       </div>
     </div>`;
 
   el.innerHTML = headerHtml + grupos.map(grupo => {
     const key = grupo.tarjeta.id + '|' + grupo.cierre;
     const estaConciliado = !!conciliaciones[key];
-    // Convertimos a ARS lo que esté en USD para poder sumar todo junto correctamente.
-    const total = grupo.gastos.reduce((s,g) => s + (g.moneda === 'USD' ? (g.monto||0) * TC : (g.monto||0)), 0);
+    const totalARS = grupo.gastos.filter(g => g.moneda !== 'USD').reduce((s,g) => s + (g.monto||0), 0);
+    const totalUSD = grupo.gastos.filter(g => g.moneda === 'USD').reduce((s,g) => s + (g.monto||0), 0);
+    const totalLabel = totalUSD > 0
+      ? (totalARS > 0 ? `${fmt(totalARS)} + U$S ${totalUSD}` : `U$S ${totalUSD}`)
+      : fmt(totalARS);
     const fechaCierreLabel = new Date(grupo.cierre + 'T00:00:00').toLocaleDateString('es-AR', {day:'2-digit', month:'long', year:'numeric'});
 
     return `
@@ -3070,7 +3083,7 @@ function renderGastosTarjetas() {
           <div style="font-size:.63rem;color:var(--muted)">cierre ${fechaCierreLabel}</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
-          <span style="font-size:.8rem;font-weight:700;color:${estaConciliado ? 'var(--muted)' : 'var(--orange)'}">${estaConciliado ? '✓' : fmt(total)}</span>
+          <span style="font-size:.8rem;font-weight:700;color:${estaConciliado ? 'var(--muted)' : 'var(--orange)'}">${estaConciliado ? '✓' : totalLabel}</span>
           <span id="toggle-icon-${key.replace(/[|.]/g,'_')}" style="color:var(--muted);font-size:.8rem">▼</span>
         </div>
       </div>
@@ -3092,12 +3105,12 @@ function renderGastosTarjetas() {
               <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px">
                 <span style="font-weight:600;font-size:.76rem">${g.tipo}</span>
                 ${quienBadge}
+                ${g.esCuotaEnCurso ? `<span style="font-size:.6rem;color:var(--muted);background:var(--s1);border:1px solid var(--border);padding:1px 5px;border-radius:4px">cuota en curso</span>` : ''}
               </div>
               <div style="font-size:.65rem;color:var(--muted)">${new Date(g.fecha+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'})}</div>
             </div>
             <div style="text-align:right;flex-shrink:0">
               <div style="font-weight:700;color:var(--red);font-size:.8rem">${montoDisplay}</div>
-              ${esUSD ? `<div style="font-size:.62rem;color:var(--muted)">≈ ${fmt(montoArs)}</div>` : ''}
             </div>
             ${!estaConciliado ? `<button onclick="eliminarGastoTarjeta('${g.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.8rem;padding:2px 5px;flex-shrink:0">✕</button>` : ''}
           </div>`;
@@ -3105,10 +3118,9 @@ function renderGastosTarjetas() {
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px solid var(--border2)">
         <div>
-          <div style="font-size:.76rem;font-weight:700">Total período: ${fmt(total)}</div>
+          <div style="font-size:.76rem;font-weight:700">Total período: ${totalLabel}</div>
           ${(() => {
-            const totalUSD = grupo.gastos.filter(g=>g.moneda==='USD').reduce((s,g)=>s+(g.monto||0),0);
-            return totalUSD > 0 ? `<div style="font-size:.63rem;color:var(--muted)">incluye U$S ${totalUSD} convertido al TC ${fmt(TC)}</div>` : '';
+            return totalUSD > 0 ? `<div style="font-size:.63rem;color:var(--muted)">U$S ${totalUSD} sin pesificar · ARS ${fmt(totalARS)}</div>` : '';
           })()}
         </div>
         <button onclick="marcarPeriodoConciliado('${grupo.tarjeta.id}','${grupo.cierre}', ${!estaConciliado})" class="btn ${estaConciliado ? 'btn-o' : 'btn-g'}" style="padding:6px 14px;font-size:.7rem">
@@ -3131,23 +3143,20 @@ function toggleGastosTarjetaDetalle(key) {
 }
 
 // ── Generar y copiar el link de carga familiar (con PIN configurado) ──
-function copiarLinkCargaFamiliar() {
+function copiarLinkCargaFamiliar(quien) {
   let pin = DB.get('pin_carga_familiar', null);
   if (!pin) {
-    pin = String(Math.floor(1000 + Math.random()*9000)); // PIN de 4 dígitos, generado una sola vez
+    pin = String(Math.floor(1000 + Math.random()*9000));
     DB.set('pin_carga_familiar', pin);
     if (window.FBsave) window.FBsave('pin_carga_familiar', pin);
   }
-  // Espejar PIN + tarjetas a la colección pública que lee el formulario sin login
   if (window.cfPublicarConfig) window.cfPublicarConfig(pin, getTarjetas());
-
   const base = location.origin + location.pathname;
-  const link = base + '?modo=carga-familiar';
+  const quienParam = quien ? '&quien=' + encodeURIComponent(quien) : '';
+  const link = base + '?modo=carga-familiar' + quienParam;
   navigator.clipboard?.writeText(link).then(() => {
-    showToast('✓ Link copiado — el PIN es ' + pin + ' (compartiselo por separado)');
-  }).catch(() => {
-    showToast('Link: ' + link + ' — PIN: ' + pin);
-  });
+    showToast('✓ Link' + (quien ? ' de '+quien : '') + ' copiado — PIN: ' + pin);
+  }).catch(() => { showToast('Link: ' + link + ' — PIN: ' + pin); });
 }
 
 // ── Agregar cuenta nueva ──
@@ -6076,7 +6085,23 @@ document.addEventListener('DOMContentLoaded', () => {
   if (new URLSearchParams(location.search).get('modo') === 'carga-familiar') {
     document.getElementById('carga-familiar-overlay').style.display = 'block';
     document.getElementById('cf-fecha').value = new Date().toISOString().slice(0,10);
-    return; // no inicializamos el resto de la app (overview, flujo, etc.) en este modo
+
+    // Si el link tiene &quien=Lara o &quien=Emma, preseleccionar y ocultar el selector
+    const quienUrl = new URLSearchParams(location.search).get('quien');
+    if (quienUrl) {
+      const quienSel = document.getElementById('cf-quien');
+      if (quienSel) {
+        // Agregar la opción si no existe (para personas fuera de la lista por default)
+        if (![...quienSel.options].some(o => o.value === quienUrl)) {
+          const opt = document.createElement('option');
+          opt.value = quienUrl; opt.textContent = quienUrl;
+          quienSel.appendChild(opt);
+        }
+        quienSel.value = quienUrl;
+        quienSel.closest('.card').style.display = 'none'; // oculta la card de "¿quién carga?"
+      }
+    }
+    return; // no inicializamos el resto de la app en este modo
   }
 
   // Migrate inversiones: replace if saved data has fewer CEDEARs than INV_DEFAULT
