@@ -2565,6 +2565,7 @@ function obtenerCategoriasUsadas() {
   Object.values(DB.get('txs', {})).flat().forEach(tx => { if (tx.cat) cats.add(tx.cat); });
   const plan = getPlan(getCurMes());
   [...plan.fijos, ...plan.vars].forEach(r => { if (r.l) cats.add(r.l); });
+  getRecurrentes().forEach(r => { if (r.categoria) cats.add(r.categoria); });
   return [...cats].sort();
 }
 
@@ -2619,23 +2620,57 @@ function renderRecurrentesCfg() {
     el.innerHTML = '<div style="font-size:.72rem;color:var(--muted);padding:8px 0">No hay débitos recurrentes configurados.</div>';
     return;
   }
+  const categoriasDisponibles = obtenerCategoriasUsadas();
+
   el.innerHTML = lista.map(r => `
-    <div style="display:flex;flex-direction:column;gap:6px;padding:10px;background:var(--s2);border-radius:8px;margin-bottom:8px">
+    <div style="display:flex;flex-direction:column;gap:8px;padding:10px;background:var(--s2);border-radius:8px;margin-bottom:8px">
       <div style="display:flex;gap:6px;align-items:center">
         <input type="text" value="${r.nombre}" oninput="actualizarRecurrenteCfg('${r.id}','nombre',this.value)" class="fi" style="flex:1;font-size:.78rem;padding:7px 9px" placeholder="ej: Seguro Taos">
         <button onclick="eliminarRecurrenteCfg('${r.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.85rem;padding:4px 6px">✕</button>
       </div>
-      <div style="display:flex;gap:6px;align-items:center">
-        <input type="text" value="${r.categoria}" oninput="actualizarRecurrenteCfg('${r.id}','categoria',this.value)" class="fi" style="flex:1;font-size:.72rem;padding:7px 8px" placeholder="Categoría (ej: Seguros)">
-        <select onchange="actualizarRecurrenteCfg('${r.id}','moneda',this.value)" class="fi" style="width:62px;font-size:.72rem;padding:7px 4px">
-          <option value="ARS" ${(r.moneda||'ARS')==='ARS'?'selected':''}>ARS</option>
-          <option value="USD" ${r.moneda==='USD'?'selected':''}>USD</option>
+
+      <div>
+        <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">CATEGORÍA</div>
+        <select id="cat-sel-${r.id}" onchange="recurrenteCategoriaChange('${r.id}', this)" class="fi" style="width:100%;font-size:.74rem;padding:7px 8px">
+          <option value="">— elegí una categoría —</option>
+          ${categoriasDisponibles.map(c => `<option value="${c}" ${r.categoria===c?'selected':''}>${c}</option>`).join('')}
+          <option value="__nueva__">＋ Nueva categoría...</option>
         </select>
-        <input type="number" value="${r.monto||''}" oninput="actualizarRecurrenteCfg('${r.id}','monto',this.value)" class="fi" style="width:90px;font-size:.72rem;padding:7px 8px;text-align:right" placeholder="Monto">
-        <input type="number" min="1" max="31" value="${r.diaDelMes||1}" oninput="actualizarRecurrenteCfg('${r.id}','diaDelMes',this.value)" class="fi" style="width:50px;font-size:.72rem;padding:7px 6px;text-align:center" title="Día del mes">
       </div>
-      ${r.moneda==='USD' ? `<div id="conv-label-${r.id}" style="font-size:.62rem;color:var(--muted)">≈ ${fmt((r.monto||0) * TC)} al TC actual (${fmt(TC)})</div>` : ''}
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div>
+          <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">MONEDA</div>
+          <select onchange="actualizarRecurrenteCfg('${r.id}','moneda',this.value)" class="fi" style="width:100%;font-size:.74rem;padding:7px 8px">
+            <option value="ARS" ${(r.moneda||'ARS')==='ARS'?'selected':''}>ARS</option>
+            <option value="USD" ${r.moneda==='USD'?'selected':''}>USD</option>
+          </select>
+        </div>
+        <div>
+          <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">MONTO</div>
+          <input type="number" value="${r.monto||''}" oninput="actualizarRecurrenteCfg('${r.id}','monto',this.value)" class="fi" style="width:100%;font-size:.74rem;padding:7px 8px;text-align:right" placeholder="0">
+        </div>
+      </div>
+
+      <div>
+        <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">DÍA DEL MES EN QUE SE DEBITA</div>
+        <input type="number" min="1" max="31" value="${r.diaDelMes||1}" oninput="actualizarRecurrenteCfg('${r.id}','diaDelMes',this.value)" class="fi" style="width:70px;font-size:.74rem;padding:7px 8px;text-align:center">
+      </div>
+
+      ${r.moneda==='USD' ? `<div id="conv-label-${r.id}" style="font-size:.64rem;color:var(--muted)">≈ ${fmt((r.monto||0) * TC)} al TC actual (${fmt(TC)}) — al insertarse, se ajusta al TC vigente ese día; después podés corregir el monto en pesos a mano si cambió.</div>` : ''}
     </div>`).join('');
+}
+
+// ── Manejo del select de categoría: permite elegir una existente o crear una nueva al vuelo ──
+function recurrenteCategoriaChange(id, selectEl) {
+  if (selectEl.value === '__nueva__') {
+    const nueva = prompt('Nombre de la categoría nueva:');
+    if (!nueva || !nueva.trim()) { selectEl.value = ''; return; }
+    actualizarRecurrenteCfg(id, 'categoria', nueva.trim());
+    renderRecurrentesCfg(); // acá sí re-renderizamos: cambió la lista de opciones disponibles
+  } else {
+    actualizarRecurrenteCfg(id, 'categoria', selectEl.value);
+  }
 }
 
 // ── Inserta automáticamente, una vez por mes, cada débito recurrente como transacción real ──
