@@ -243,7 +243,7 @@ let _cfTarjetasDisponibles = [];
 // Cuando el owner genera/copia el link, también espejamos PIN + tarjetas a la colección pública.
 window.cfPublicarConfig = async function(pin, tarjetas) {
   try {
-    await setDoc(CF_DOC_PIN, { pin, tarjetas: tarjetas.map(t => ({ id: t.id, nombre: t.nombre })) });
+    await setDoc(CF_DOC_PIN, { pin, tarjetas: tarjetas.map(t => ({ id: t.id, nombre: t.nombre, tipoCierre: t.tipoCierre, diaFijo: t.diaFijo })) });
   } catch(e) { console.error('cfPublicarConfig error:', e); }
 };
 
@@ -274,6 +274,12 @@ window.cfValidarPin = async function() {
   }
 };
 
+window.cfToggleCuotas = function() {
+  const checked = document.getElementById('cf-cuotas-check').checked;
+  document.getElementById('cf-cuotas-wrap').style.display = checked ? 'block' : 'none';
+  document.getElementById('cf-monto-label').textContent = checked ? 'Monto total de la compra' : 'Monto';
+};
+
 window.cfGuardarGasto = async function() {
   if (!_cfPinValidado) return;
   const quien   = document.getElementById('cf-quien').value;
@@ -281,30 +287,52 @@ window.cfGuardarGasto = async function() {
   const fecha   = document.getElementById('cf-fecha').value;
   const tipo    = document.getElementById('cf-tipo').value.trim();
   const monto   = parseFloat(document.getElementById('cf-monto').value);
+  const enCuotas = document.getElementById('cf-cuotas-check').checked;
+  const cantCuotas = enCuotas ? parseInt(document.getElementById('cf-cuotas-cant').value) : 1;
 
   if (!tarjetaId)        { alert('Elegí una tarjeta'); return; }
   if (!fecha)            { alert('Elegí la fecha'); return; }
   if (!tipo)             { alert('Escribí el tipo de gasto'); return; }
   if (!monto || monto <= 0) { alert('Ingresá un monto válido'); return; }
+  if (enCuotas && (!cantCuotas || cantCuotas < 2)) { alert('Ingresá una cantidad de cuotas válida (2 o más)'); return; }
 
-  const gasto = {
-    id: 'gt_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
-    tarjetaId, fecha, tipo, monto,
-    cargadoPor: quien,
-    ts: Date.now(),
-  };
+  const tarjeta = _cfTarjetasDisponibles.find(t => t.id === tarjetaId);
 
   try {
-    await addDoc(CF_COL_GASTOS, gasto);
-    // Feedback visual + reset parcial del form
-    const recientesEl = document.getElementById('cf-recientes');
-    const item = document.createElement('div');
-    item.style.cssText = 'padding:8px 10px;background:var(--s2);border-radius:8px;margin-bottom:6px;font-size:.74rem;display:flex;justify-content:space-between';
-    item.innerHTML = `<span>${tipo}</span><span style="color:var(--green);font-weight:700">${fmt(monto)}</span>`;
-    recientesEl.prepend(item);
+    if (enCuotas && tarjeta && typeof generarSecuenciaCierres === 'function') {
+      const compraId = 'compra_' + Date.now();
+      const montos = repartirEnCuotas(monto, cantCuotas);
+      const cierres = generarSecuenciaCierres(tarjeta, fecha, cantCuotas);
+      for (let i = 0; i < cierres.length; i++) {
+        await addDoc(CF_COL_GASTOS, {
+          id: 'gt_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2,5),
+          tarjetaId, fecha: cierres[i], tipo: `${tipo} (cuota ${i+1}/${cantCuotas})`, monto: montos[i],
+          cargadoPor: quien, ts: Date.now(), compraId, cuotaNum: i+1, cuotaTotal: cantCuotas,
+        });
+      }
+      const item = document.createElement('div');
+      item.style.cssText = 'padding:8px 10px;background:var(--s2);border-radius:8px;margin-bottom:6px;font-size:.74rem;display:flex;justify-content:space-between';
+      item.innerHTML = `<span>${tipo} (${cantCuotas} cuotas)</span><span style="color:var(--green);font-weight:700">${fmt(monto)} total</span>`;
+      document.getElementById('cf-recientes').prepend(item);
+    } else {
+      const gasto = {
+        id: 'gt_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+        tarjetaId, fecha, tipo, monto,
+        cargadoPor: quien,
+        ts: Date.now(),
+      };
+      await addDoc(CF_COL_GASTOS, gasto);
+      const item = document.createElement('div');
+      item.style.cssText = 'padding:8px 10px;background:var(--s2);border-radius:8px;margin-bottom:6px;font-size:.74rem;display:flex;justify-content:space-between';
+      item.innerHTML = `<span>${tipo}</span><span style="color:var(--green);font-weight:700">${fmt(monto)}</span>`;
+      document.getElementById('cf-recientes').prepend(item);
+    }
 
     document.getElementById('cf-tipo').value = '';
     document.getElementById('cf-monto').value = '';
+    document.getElementById('cf-cuotas-check').checked = false;
+    document.getElementById('cf-cuotas-cant').value = '';
+    cfToggleCuotas();
     document.getElementById('cf-tipo').focus();
   } catch(e) {
     console.error('cfGuardarGasto error:', e);
@@ -557,8 +585,19 @@ nav::-webkit-scrollbar{display:none}
       </div>
 
       <div class="card" style="margin-bottom:14px">
-        <div class="ct">Monto</div>
+        <div class="ct" id="cf-monto-label">Monto</div>
         <input type="number" id="cf-monto" class="fi" placeholder="0" style="font-size:1.2rem;text-align:right">
+      </div>
+
+      <div class="card" style="margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="cf-cuotas-check" onchange="cfToggleCuotas()" style="width:16px;height:16px">
+          <label for="cf-cuotas-check" style="font-size:.82rem;cursor:pointer">¿En cuotas?</label>
+        </div>
+        <div id="cf-cuotas-wrap" style="display:none;margin-top:10px">
+          <div style="font-size:.7rem;color:var(--muted);margin-bottom:4px">¿En cuántas cuotas?</div>
+          <input type="number" id="cf-cuotas-cant" min="2" max="24" placeholder="6" class="fi" style="width:80px;text-align:center">
+        </div>
       </div>
 
       <button onclick="cfGuardarGasto()" class="btn btn-g" style="width:100%;padding:14px;font-size:.9rem">✓ Registrar gasto</button>
@@ -1317,8 +1356,15 @@ nav::-webkit-scrollbar{display:none}
         <input type="text" id="own-tj-tipo" class="fi" placeholder="ej: Nafta, Supermercado..." style="font-size:.78rem;padding:8px 9px">
       </div>
       <div>
-        <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">MONTO</div>
+        <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px" id="own-tj-monto-label">MONTO</div>
         <input type="number" id="own-tj-monto" class="fi" placeholder="0" style="font-size:.78rem;padding:8px 9px;text-align:right">
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <input type="checkbox" id="own-tj-cuotas-check" onchange="ownToggleCuotas()" style="width:16px;height:16px">
+      <label for="own-tj-cuotas-check" style="font-size:.74rem;cursor:pointer">¿En cuotas?</label>
+      <div id="own-tj-cuotas-wrap" style="display:none;margin-left:auto">
+        <input type="number" id="own-tj-cuotas-cant" min="2" max="24" placeholder="6" class="fi" style="width:60px;font-size:.74rem;padding:6px 8px;text-align:center">
       </div>
     </div>
     <button onclick="ownCargarGastoTarjeta()" class="btn btn-g" style="width:100%">＋ Registrar mi gasto</button>
@@ -2792,6 +2838,28 @@ function periodoDeGasto(tarjeta, fechaGasto) {
   return cierreActual.toISOString().slice(0,10);
 }
 
+// ── Genera la secuencia de N cierres consecutivos a partir de una fecha de compra ──
+// (el primer cierre es el período que contiene la compra; cada uno después es el siguiente cierre real de esa tarjeta)
+function generarSecuenciaCierres(tarjeta, fechaCompra, cantidad) {
+  const cierres = [];
+  let cierreActual = calcularProximoCierre(tarjeta, new Date(fechaCompra + 'T00:00:00'));
+  for (let i = 0; i < cantidad; i++) {
+    cierres.push(cierreActual.toISOString().slice(0,10));
+    // Para el siguiente cierre, buscamos desde un día después del cierre actual
+    const siguienteDesde = new Date(cierreActual);
+    siguienteDesde.setDate(siguienteDesde.getDate() + 1);
+    cierreActual = calcularProximoCierre(tarjeta, siguienteDesde);
+  }
+  return cierres;
+}
+
+// ── Reparte un monto total en N cuotas iguales, con el resto de redondeo en la primera cuota ──
+function repartirEnCuotas(montoTotal, cantCuotas) {
+  const base = Math.floor(montoTotal / cantCuotas);
+  const resto = montoTotal - (base * cantCuotas);
+  return Array.from({length: cantCuotas}, (_, i) => i === 0 ? base + resto : base);
+}
+
 // ══════════════════════════════════════════════════════
 // GASTOS CON TARJETAS — cargados por Lara/Emma vía link simplificado
 // ══════════════════════════════════════════════════════
@@ -2821,29 +2889,58 @@ function renderOwnTarjetaSelector() {
     : '<option value="">— configurá una tarjeta primero —</option>';
 }
 
+function ownToggleCuotas() {
+  const checked = document.getElementById('own-tj-cuotas-check').checked;
+  document.getElementById('own-tj-cuotas-wrap').style.display = checked ? 'block' : 'none';
+  document.getElementById('own-tj-monto-label').textContent = checked ? 'MONTO TOTAL DE LA COMPRA' : 'MONTO';
+}
+
 function ownCargarGastoTarjeta() {
   const tarjetaId = document.getElementById('own-tj-tarjeta').value;
   const fecha     = document.getElementById('own-tj-fecha').value;
   const tipo      = document.getElementById('own-tj-tipo').value.trim();
   const monto     = parseFloat(document.getElementById('own-tj-monto').value);
+  const enCuotas  = document.getElementById('own-tj-cuotas-check').checked;
+  const cantCuotas = enCuotas ? parseInt(document.getElementById('own-tj-cuotas-cant').value) : 1;
 
   if (!tarjetaId)            { showToast('Elegí una tarjeta', '#f43f5e'); return; }
   if (!fecha)                { showToast('Elegí la fecha', '#f43f5e'); return; }
   if (!tipo)                 { showToast('Escribí el tipo de gasto', '#f43f5e'); return; }
   if (!monto || monto <= 0)  { showToast('Ingresá un monto válido', '#f43f5e'); return; }
+  if (enCuotas && (!cantCuotas || cantCuotas < 2)) { showToast('Ingresá una cantidad de cuotas válida (2 o más)', '#f43f5e'); return; }
 
   const lista = getGastosTarjetas();
-  lista.push({
-    id: 'gt_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
-    tarjetaId, fecha, tipo, monto,
-    cargadoPor: 'Cris',
-    ts: Date.now(),
-  });
+  const tarjeta = getTarjetas().find(t => t.id === tarjetaId);
+
+  if (enCuotas && tarjeta) {
+    const compraId = 'compra_' + Date.now();
+    const montos = repartirEnCuotas(monto, cantCuotas);
+    const cierres = generarSecuenciaCierres(tarjeta, fecha, cantCuotas);
+    cierres.forEach((cierre, i) => {
+      lista.push({
+        id: 'gt_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2,5),
+        tarjetaId, fecha: cierre, tipo: `${tipo} (cuota ${i+1}/${cantCuotas})`, monto: montos[i],
+        cargadoPor: 'Cris', ts: Date.now(), compraId, cuotaNum: i+1, cuotaTotal: cantCuotas,
+      });
+    });
+    showToast(`✓ ${tipo} en ${cantCuotas} cuotas de ~${fmt(montos[1] || montos[0])}`);
+  } else {
+    lista.push({
+      id: 'gt_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+      tarjetaId, fecha, tipo, monto,
+      cargadoPor: 'Cris',
+      ts: Date.now(),
+    });
+    showToast('✓ Gasto registrado: ' + tipo + ' — ' + fmt(monto));
+  }
+
   saveGastosTarjetas(lista);
 
   document.getElementById('own-tj-tipo').value = '';
   document.getElementById('own-tj-monto').value = '';
-  showToast('✓ Gasto registrado: ' + tipo + ' — ' + fmt(monto));
+  document.getElementById('own-tj-cuotas-check').checked = false;
+  document.getElementById('own-tj-cuotas-cant').value = '';
+  ownToggleCuotas();
   renderGastosTarjetas();
 }
 
