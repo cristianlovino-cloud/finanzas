@@ -3348,9 +3348,22 @@ function renderGastosTarjetas() {
   }
 
   const conciliaciones = DB.get('tarjetas_conciliadas', {});
+  const mesActual = getCurMes(); // "YYYY-MM"
 
-  // Totales separados ARS / USD — sin mezclar ni convertir
-  const gruposAbiertos = grupos.filter(g => !conciliaciones[g.tarjeta.id + '|' + g.cierre]);
+  // Clasificar cada grupo: conciliado / cierra este mes / cierra en un mes futuro
+  const gruposConciliados = [];
+  const gruposEsteMes = [];
+  const gruposFuturos = [];
+  grupos.forEach(grupo => {
+    const key = grupo.tarjeta.id + '|' + grupo.cierre;
+    if (conciliaciones[key]) { gruposConciliados.push(grupo); return; }
+    const mesDeCierre = grupo.cierre.slice(0,7);
+    if (mesDeCierre <= mesActual) gruposEsteMes.push(grupo); // incluye atrasados sin conciliar, para no perderlos de vista
+    else gruposFuturos.push(grupo);
+  });
+
+  // Totales separados ARS / USD — solo de lo pendiente (este mes + futuros)
+  const gruposAbiertos = [...gruposEsteMes, ...gruposFuturos];
   const granTotalARS = gruposAbiertos.reduce((s, grupo) =>
     s + grupo.gastos.filter(g => g.moneda !== 'USD').reduce((ss,g) => ss + (g.monto||0), 0), 0);
   const granTotalUSD = gruposAbiertos.reduce((s, grupo) =>
@@ -3364,81 +3377,166 @@ function renderGastosTarjetas() {
           <div style="font-family:var(--fh);font-weight:700;font-size:1.2rem;color:var(--orange)">${fmt(granTotalARS)}</div>
           ${granTotalUSD > 0 ? `<div style="font-family:var(--fh);font-weight:700;font-size:1.1rem;color:var(--yellow)">+ U$S ${granTotalUSD.toLocaleString('es-AR')}</div>` : ''}
         </div>
-        <div style="font-size:.7rem;color:var(--muted);text-align:right">${gruposAbiertos.length} período${gruposAbiertos.length!==1?'s':''} abierto${gruposAbiertos.length!==1?'s':''}</div>
+        <div style="font-size:.7rem;color:var(--muted);text-align:right">${gruposEsteMes.length} este mes · ${gruposFuturos.length} a futuro</div>
       </div>
     </div>`;
 
-  el.innerHTML = headerHtml + grupos.map(grupo => {
-    const key = grupo.tarjeta.id + '|' + grupo.cierre;
-    const estaConciliado = !!conciliaciones[key];
-    const totalARS = grupo.gastos.filter(g => g.moneda !== 'USD').reduce((s,g) => s + (g.monto||0), 0);
-    const totalUSD = grupo.gastos.filter(g => g.moneda === 'USD').reduce((s,g) => s + (g.monto||0), 0);
-    const totalLabel = totalUSD > 0
-      ? (totalARS > 0 ? `${fmt(totalARS)} + U$S ${totalUSD}` : `U$S ${totalUSD}`)
-      : fmt(totalARS);
-    const fechaCierreLabel = new Date(grupo.cierre + 'T00:00:00').toLocaleDateString('es-AR', {day:'2-digit', month:'long', year:'numeric'});
+  const esteMesHtml = gruposEsteMes.length > 0
+    ? gruposEsteMes.map(grupo => renderTarjetaCard(grupo, conciliaciones, true)).join('')
+    : `<div class="card" style="margin-bottom:14px"><div style="font-size:.74rem;color:var(--muted);text-align:center;padding:10px 0">Sin períodos que cierren este mes.</div></div>`;
 
+  const futurosHtml = renderFuturosAgrupados(gruposFuturos);
+
+  const conciliadosHtml = `
+    <div style="margin-top:18px">
+      <div style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 0" onclick="toggleSeccionConciliados()">
+        <span style="font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700">✓ Conciliados (${gruposConciliados.length})</span>
+        <span id="toggle-icon-conciliados" style="color:var(--muted);font-size:.75rem">▶</span>
+      </div>
+      <div id="seccion-conciliados" style="display:none">
+        ${gruposConciliados.length > 0
+          ? gruposConciliados.map(grupo => renderTarjetaCard(grupo, conciliaciones, true)).join('')
+          : '<div style="font-size:.72rem;color:var(--muted);padding:8px 0">Todavía no conciliaste ningún período.</div>'}
+      </div>
+    </div>`;
+
+  el.innerHTML = headerHtml
+    + `<div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Este mes</div>`
+    + esteMesHtml
+    + futurosHtml
+    + conciliadosHtml;
+}
+
+// ── Card individual de un período (usada para "este mes" y para "conciliados") ──
+function renderTarjetaCard(grupo, conciliaciones, colapsadoPorDefault) {
+  const key = grupo.tarjeta.id + '|' + grupo.cierre;
+  const safeKey = key.replace(/[|.]/g,'_');
+  const estaConciliado = !!conciliaciones[key];
+  const totalARS = grupo.gastos.filter(g => g.moneda !== 'USD').reduce((s,g) => s + (g.monto||0), 0);
+  const totalUSD = grupo.gastos.filter(g => g.moneda === 'USD').reduce((s,g) => s + (g.monto||0), 0);
+  const totalLabel = totalUSD > 0
+    ? (totalARS > 0 ? `${fmt(totalARS)} + U$S ${totalUSD}` : `U$S ${totalUSD}`)
+    : fmt(totalARS);
+  const fechaCierreLabel = new Date(grupo.cierre + 'T00:00:00').toLocaleDateString('es-AR', {day:'2-digit', month:'long', year:'numeric'});
+
+  return `
+  <div class="card" style="margin-bottom:14px;${estaConciliado ? 'opacity:.6' : ''}">
+    <div class="ct" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;cursor:pointer" onclick="toggleGastosTarjetaDetalle('${key}')">
+      <div>
+        <div style="font-size:.75rem;font-weight:700">💳 ${grupo.tarjeta.nombre}</div>
+        <div style="font-size:.63rem;color:var(--muted)">cierre ${fechaCierreLabel}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:.8rem;font-weight:700;color:${estaConciliado ? 'var(--muted)' : 'var(--orange)'}">${estaConciliado ? '✓' : totalLabel}</span>
+        <span id="toggle-icon-${safeKey}" style="color:var(--muted);font-size:.8rem">${colapsadoPorDefault ? '▶' : '▼'}</span>
+      </div>
+    </div>
+    <div id="detalle-${safeKey}" style="${colapsadoPorDefault ? 'display:none' : ''}">
+    <div style="display:flex;flex-direction:column;gap:6px;margin:10px 0">
+      ${grupo.gastos.sort((a,b)=>a.fecha.localeCompare(b.fecha)).map(g => {
+        const esUSD = g.moneda === 'USD';
+        const montoDisplay = esUSD ? `U$S ${g.monto}` : fmt(g.monto);
+        const quienColores = { 'Cris':'var(--blue)', 'Lara':'var(--purple)', 'Emma':'var(--green)', 'Recurrente automático':'var(--muted)' };
+        const quienColor = quienColores[g.cargadoPor] || 'var(--yellow)';
+        const quienBadge = `<span style="font-size:.6rem;font-weight:700;color:${quienColor};background:${quienColor}1a;padding:1px 6px;border-radius:4px;white-space:nowrap">${g.cargadoPor}</span>`;
+
+        return `
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px">
+              <span style="font-weight:600;font-size:.76rem">${g.tipo}</span>
+              ${quienBadge}
+              ${g.esCuotaEnCurso ? `<span style="font-size:.6rem;color:var(--muted);background:var(--s1);border:1px solid var(--border);padding:1px 5px;border-radius:4px">cuota en curso</span>` : ''}
+            </div>
+            <div style="font-size:.65rem;color:var(--muted)">${new Date(g.fecha+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'})}</div>
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <div style="font-weight:700;color:var(--red);font-size:.8rem">${montoDisplay}</div>
+          </div>
+          ${!estaConciliado ? `<button onclick="eliminarGastoTarjeta('${g.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.8rem;padding:2px 5px;flex-shrink:0">✕</button>` : ''}
+        </div>`;
+      }).join('')}
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px solid var(--border2)">
+      <div>
+        <div style="font-size:.76rem;font-weight:700">Total período: ${totalLabel}</div>
+        ${totalUSD > 0 ? `<div style="font-size:.63rem;color:var(--muted)">U$S ${totalUSD} sin pesificar · ARS ${fmt(totalARS)}</div>` : ''}
+      </div>
+      <button onclick="marcarPeriodoConciliado('${grupo.tarjeta.id}','${grupo.cierre}', ${!estaConciliado})" class="btn ${estaConciliado ? 'btn-o' : 'btn-g'}" style="padding:6px 14px;font-size:.7rem">
+        ${estaConciliado ? '↺ Reabrir' : '✓ Marcar conciliado'}
+      </button>
+    </div>
+    </div><!-- /detalle -->
+  </div>`;
+}
+
+// ── Períodos futuros: agrupados por mes de cierre, colapsados, solo total (sin desglose línea por línea) ──
+function renderFuturosAgrupados(gruposFuturos) {
+  if (gruposFuturos.length === 0) return '';
+
+  const porMes = {}; // "YYYY-MM" -> { totalARS, totalUSD, tarjetas: Set }
+  gruposFuturos.forEach(grupo => {
+    const mes = grupo.cierre.slice(0,7);
+    if (!porMes[mes]) porMes[mes] = { totalARS: 0, totalUSD: 0, tarjetas: new Set() };
+    grupo.gastos.forEach(g => {
+      if (g.moneda === 'USD') porMes[mes].totalUSD += (g.monto||0);
+      else porMes[mes].totalARS += (g.monto||0);
+    });
+    porMes[mes].tarjetas.add(grupo.tarjeta.nombre);
+  });
+
+  const mesesOrdenados = Object.keys(porMes).sort();
+  const filas = mesesOrdenados.map(mes => {
+    const d = porMes[mes];
+    const label = new Date(mes + '-01T00:00:00').toLocaleDateString('es-AR', {month:'long', year:'numeric'});
+    const totalLabel = d.totalUSD > 0
+      ? (d.totalARS > 0 ? `${fmt(d.totalARS)} + U$S ${d.totalUSD.toLocaleString('es-AR')}` : `U$S ${d.totalUSD.toLocaleString('es-AR')}`)
+      : fmt(d.totalARS);
     return `
-    <div class="card" style="margin-bottom:14px;${estaConciliado ? 'opacity:.6' : ''}">
-      <div class="ct" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;cursor:pointer" onclick="toggleGastosTarjetaDetalle('${key}')">
-        <div>
-          <div style="font-size:.75rem;font-weight:700">💳 ${grupo.tarjeta.nombre}</div>
-          <div style="font-size:.63rem;color:var(--muted)">cierre ${fechaCierreLabel}</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <span style="font-size:.8rem;font-weight:700;color:${estaConciliado ? 'var(--muted)' : 'var(--orange)'}">${estaConciliado ? '✓' : totalLabel}</span>
-          <span id="toggle-icon-${key.replace(/[|.]/g,'_')}" style="color:var(--muted);font-size:.8rem">▼</span>
-        </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:.74rem">
+      <div>
+        <div style="font-weight:600;text-transform:capitalize">${label}</div>
+        <div style="font-size:.62rem;color:var(--muted)">${[...d.tarjetas].join(', ')}</div>
       </div>
-      <div id="detalle-${key.replace(/[|.]/g,'_')}">
-      <div style="display:flex;flex-direction:column;gap:6px;margin:10px 0">
-        ${grupo.gastos.sort((a,b)=>a.fecha.localeCompare(b.fecha)).map(g => {
-          const esUSD = g.moneda === 'USD';
-          const montoArs = esUSD ? (g.monto||0) * TC : (g.monto||0);
-          const montoDisplay = esUSD ? `U$S ${g.monto}` : fmt(g.monto);
-
-          // Badge de color por quién cargó el gasto
-          const quienColores = { 'Cris':'var(--blue)', 'Lara':'var(--purple)', 'Emma':'var(--green)', 'Recurrente automático':'var(--muted)' };
-          const quienColor = quienColores[g.cargadoPor] || 'var(--yellow)';
-          const quienBadge = `<span style="font-size:.6rem;font-weight:700;color:${quienColor};background:${quienColor}1a;padding:1px 6px;border-radius:4px;white-space:nowrap">${g.cargadoPor}</span>`;
-
-          return `
-          <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
-            <div style="flex:1;min-width:0">
-              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px">
-                <span style="font-weight:600;font-size:.76rem">${g.tipo}</span>
-                ${quienBadge}
-                ${g.esCuotaEnCurso ? `<span style="font-size:.6rem;color:var(--muted);background:var(--s1);border:1px solid var(--border);padding:1px 5px;border-radius:4px">cuota en curso</span>` : ''}
-              </div>
-              <div style="font-size:.65rem;color:var(--muted)">${new Date(g.fecha+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'})}</div>
-            </div>
-            <div style="text-align:right;flex-shrink:0">
-              <div style="font-weight:700;color:var(--red);font-size:.8rem">${montoDisplay}</div>
-            </div>
-            ${!estaConciliado ? `<button onclick="eliminarGastoTarjeta('${g.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.8rem;padding:2px 5px;flex-shrink:0">✕</button>` : ''}
-          </div>`;
-        }).join('')}
-      </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px solid var(--border2)">
-        <div>
-          <div style="font-size:.76rem;font-weight:700">Total período: ${totalLabel}</div>
-          ${(() => {
-            return totalUSD > 0 ? `<div style="font-size:.63rem;color:var(--muted)">U$S ${totalUSD} sin pesificar · ARS ${fmt(totalARS)}</div>` : '';
-          })()}
-        </div>
-        <button onclick="marcarPeriodoConciliado('${grupo.tarjeta.id}','${grupo.cierre}', ${!estaConciliado})" class="btn ${estaConciliado ? 'btn-o' : 'btn-g'}" style="padding:6px 14px;font-size:.7rem">
-          ${estaConciliado ? '↺ Reabrir' : '✓ Marcar conciliado'}
-        </button>
-      </div>
-      </div><!-- /detalle -->
+      <div style="font-weight:700;color:var(--muted2)">${totalLabel}</div>
     </div>`;
   }).join('');
+
+  return `
+    <div style="margin-top:18px;margin-bottom:8px">
+      <div style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 0" onclick="toggleSeccionFuturos()">
+        <span style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700">A futuro — ${gruposFuturos.length} período${gruposFuturos.length!==1?'s':''}</span>
+        <span id="toggle-icon-futuros" style="color:var(--muted);font-size:.75rem">▶</span>
+      </div>
+      <div id="seccion-futuros" style="display:none">
+        <div class="card">${filas}</div>
+        <div style="font-size:.62rem;color:var(--muted);padding:8px 4px;line-height:1.5">Se muestran agrupados por mes. A medida que pase el tiempo, cada período aparece con su detalle completo en "Este mes".</div>
+      </div>
+    </div>`;
 }
 
 function toggleGastosTarjetaDetalle(key) {
   const safeKey = key.replace(/[|.]/g,'_');
   const el = document.getElementById('detalle-' + safeKey);
   const icon = document.getElementById('toggle-icon-' + safeKey);
+  if (!el) return;
+  const abierto = el.style.display !== 'none';
+  el.style.display = abierto ? 'none' : 'block';
+  if (icon) icon.textContent = abierto ? '▶' : '▼';
+}
+
+function toggleSeccionFuturos() {
+  const el = document.getElementById('seccion-futuros');
+  const icon = document.getElementById('toggle-icon-futuros');
+  if (!el) return;
+  const abierto = el.style.display !== 'none';
+  el.style.display = abierto ? 'none' : 'block';
+  if (icon) icon.textContent = abierto ? '▶' : '▼';
+}
+
+function toggleSeccionConciliados() {
+  const el = document.getElementById('seccion-conciliados');
+  const icon = document.getElementById('toggle-icon-conciliados');
   if (!el) return;
   const abierto = el.style.display !== 'none';
   el.style.display = abierto ? 'none' : 'block';
