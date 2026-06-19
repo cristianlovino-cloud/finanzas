@@ -138,7 +138,7 @@ async function loadFromFirestore(uid) {
   _alreadyLoaded = true;
   setSyncStatus('syncing');
 
-  const keys = ['txs', 'plans', 'inversiones', 'tc', 'cuentas', 'ct_movimientos'];
+  const keys = ['txs', 'plans', 'inversiones', 'tc', 'cuentas', 'ct_movimientos', 'gastos_tarjetas', 'tarjetas_cfg', 'categorias_consumo', 'tarjetas_conciliadas', 'debitos_recurrentes'];
   let restoredFromCloud = false;
 
   for (const key of keys) {
@@ -209,8 +209,38 @@ function iniciarEscuchaGastosFamiliares() {
     localStorage.setItem('gastos_tarjetas', JSON.stringify(actualizados));
     if (typeof renderGastosTarjetas === 'function') renderGastosTarjetas();
     if (typeof showToast === 'function') showToast(`💳 ${nuevos.length} gasto${nuevos.length>1?'s':''} nuevo${nuevos.length>1?'s':''} de tarjeta`);
-  }, (err) => console.error('Escucha gastos familiares error:', err));
+  }, (err) => {
+    console.error('Escucha gastos familiares error:', err);
+    if (typeof showToast === 'function') showToast('⚠ No se pudo sincronizar gastos de tarjetas — tocá "Sincronizar ahora" en el tab', '#f43f5e');
+  });
 }
+
+// ── Sincronización manual: trae TODOS los gastos de Firestore de una sola vez, sin depender del listener en vivo ──
+window.cfSincronizarAhora = async function() {
+  try {
+    const snap = await getDocs(CF_COL_GASTOS);
+    const remotos = [];
+    snap.forEach(d => remotos.push(d.data()));
+
+    const locales = JSON.parse(localStorage.getItem('gastos_tarjetas') || '[]');
+    const idsLocales = new Set(locales.map(g => g.id));
+    const nuevos = remotos.filter(g => !idsLocales.has(g.id));
+
+    if (nuevos.length > 0) {
+      const actualizados = [...locales, ...nuevos];
+      localStorage.setItem('gastos_tarjetas', JSON.stringify(actualizados));
+      if (typeof renderGastosTarjetas === 'function') renderGastosTarjetas();
+    }
+    if (typeof showToast === 'function') {
+      showToast(nuevos.length > 0
+        ? `✓ Sincronizado — ${nuevos.length} gasto${nuevos.length>1?'s':''} nuevo${nuevos.length>1?'s':''}`
+        : '✓ Ya estás al día, sin gastos nuevos');
+    }
+  } catch(e) {
+    console.error('cfSincronizarAhora error:', e);
+    if (typeof showToast === 'function') showToast('⚠ No se pudo sincronizar — revisá tu conexión o que tengas sesión iniciada', '#f43f5e');
+  }
+};
 
 // ── Login con Google ──
 window.fbLogin = async function() {
@@ -1470,7 +1500,8 @@ nav::-webkit-scrollbar{display:none}
       Acá vas mapeando todo el consumo del período (vos, Lara y Emma) por categoría y tipo de gasto, para totalizar y comparar contra el resumen real cuando lo emite el banco. No toca Flujo ni Overview en ningún momento — el pago del resumen lo seguís cargando vos, donde siempre, cuando vence.
     </p>
     <button onclick="copiarLinkCargaFamiliar('Lara')" class="btn btn-g" style="width:100%;margin-bottom:6px">🔗 Link para Lara</button>
-    <button onclick="copiarLinkCargaFamiliar('Emma')" class="btn btn-g" style="width:100%">🔗 Link para Emma</button>
+    <button onclick="copiarLinkCargaFamiliar('Emma')" class="btn btn-g" style="width:100%;margin-bottom:6px">🔗 Link para Emma</button>
+    <button onclick="window.cfSincronizarAhora && window.cfSincronizarAhora()" class="btn btn-o" style="width:100%">🔄 Sincronizar ahora</button>
   </div>
 
   <div class="card" style="margin-bottom:14px">
@@ -2123,6 +2154,7 @@ function go(id, btn) {
     renderOwnCategoriaSelector();
     const fechaEl = document.getElementById('own-tj-fecha');
     if (fechaEl && !fechaEl.value) fechaEl.value = new Date().toISOString().slice(0,10);
+    if (window.cfSincronizarAhora) window.cfSincronizarAhora();
   }
 }
 
@@ -3126,6 +3158,19 @@ function periodoDeGasto(tarjeta, fechaGasto) {
   return cierreActual.toISOString().slice(0,10);
 }
 
+// ── Mes "de pago" de un período, para fines de clasificación visual (Este mes / A futuro) ──
+// Si el cierre cae en los primeros días del mes (1 al 5), lo tratamos como si perteneciera
+// al mes anterior: ese es el resumen que la persona efectivamente paga "de ese ciclo",
+// aunque el banco técnicamente lo cierre unos días después del cambio de mes.
+function mesDeClasificacion(cierreISO) {
+  const fecha = new Date(cierreISO + 'T00:00:00');
+  const dia = fecha.getDate();
+  if (dia >= 1 && dia <= 5) {
+    fecha.setDate(0); // retrocede al último día del mes anterior
+  }
+  return fecha.getFullYear() + '-' + String(fecha.getMonth()+1).padStart(2,'0');
+}
+
 // ── Genera la secuencia de N cierres consecutivos a partir de una fecha de compra ──
 // (el primer cierre es el período que contiene la compra; cada uno después es el siguiente cierre real de esa tarjeta)
 function generarSecuenciaCierres(tarjeta, fechaCompra, cantidad) {
@@ -3372,7 +3417,7 @@ function renderGastosTarjetas() {
   gruposNormales.forEach(grupo => {
     const key = grupo.tarjeta.id + '|' + grupo.cierre;
     if (conciliaciones[key]) { gruposConciliados.push(grupo); return; }
-    const mesDeCierre = grupo.cierre.slice(0,7);
+    const mesDeCierre = mesDeClasificacion(grupo.cierre);
     if (mesDeCierre <= mesActual) gruposEsteMes.push(grupo); // incluye atrasados sin conciliar, para no perderlos de vista
     else gruposFuturos.push(grupo);
   });
@@ -3559,7 +3604,7 @@ function renderFuturosAgrupados(gruposFuturos) {
 
   const porMes = {}; // "YYYY-MM" -> { totalARS, totalUSD, tarjetas: Set }
   gruposFuturos.forEach(grupo => {
-    const mes = grupo.cierre.slice(0,7);
+    const mes = mesDeClasificacion(grupo.cierre);
     if (!porMes[mes]) porMes[mes] = { totalARS: 0, totalUSD: 0, tarjetas: new Set() };
     grupo.gastos.forEach(g => {
       if (g.moneda === 'USD') porMes[mes].totalUSD += (g.monto||0);
