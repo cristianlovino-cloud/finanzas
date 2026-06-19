@@ -328,7 +328,25 @@ window.cfTipoCategoriaChange = function(selectEl) {
 window.cfToggleCuotas = function() {
   const checked = document.getElementById('cf-cuotas-check').checked;
   document.getElementById('cf-cuotas-wrap').style.display = checked ? 'block' : 'none';
-  document.getElementById('cf-monto-label').textContent = checked ? 'Monto total de la compra' : 'Monto';
+  if (checked) {
+    document.getElementById('cf-cuota-en-curso').checked = false;
+    document.getElementById('cf-cec-wrap').style.display = 'none';
+    document.getElementById('cf-monto-label').textContent = 'Monto total de la compra';
+  } else if (!document.getElementById('cf-cuota-en-curso').checked) {
+    document.getElementById('cf-monto-label').textContent = 'Monto';
+  }
+};
+
+window.cfToggleCuotaEnCurso = function() {
+  const checked = document.getElementById('cf-cuota-en-curso').checked;
+  document.getElementById('cf-cec-wrap').style.display = checked ? 'block' : 'none';
+  if (checked) {
+    document.getElementById('cf-cuotas-check').checked = false;
+    document.getElementById('cf-cuotas-wrap').style.display = 'none';
+    document.getElementById('cf-monto-label').textContent = 'Monto de esta cuota';
+  } else {
+    document.getElementById('cf-monto-label').textContent = 'Monto';
+  }
 };
 
 let _cfGuardando = false;
@@ -346,6 +364,9 @@ window.cfGuardarGasto = async function() {
   const monto   = parseFloat(document.getElementById('cf-monto').value);
   const enCuotas = document.getElementById('cf-cuotas-check').checked;
   const cantCuotas = enCuotas ? parseInt(document.getElementById('cf-cuotas-cant').value) : 1;
+  const esCuotaEnCurso = document.getElementById('cf-cuota-en-curso')?.checked || false;
+  const cecActual = esCuotaEnCurso ? parseInt(document.getElementById('cf-cec-actual').value) : null;
+  const cecTotal  = esCuotaEnCurso ? parseInt(document.getElementById('cf-cec-total').value) : null;
 
   const restaurarBtn = () => {
     _cfGuardando = false;
@@ -357,11 +378,33 @@ window.cfGuardarGasto = async function() {
   if (!tipo)             { alert('Escribí el tipo de gasto'); restaurarBtn(); return; }
   if (!monto || monto <= 0) { alert('Ingresá un monto válido'); restaurarBtn(); return; }
   if (enCuotas && (!cantCuotas || cantCuotas < 2)) { alert('Ingresá una cantidad de cuotas válida (2 o más)'); restaurarBtn(); return; }
+  if (esCuotaEnCurso) {
+    if (!cecActual || !cecTotal) { alert('Completá en qué cuota vas y el total'); restaurarBtn(); return; }
+    if (cecActual > cecTotal)    { alert('La cuota actual no puede ser mayor al total'); restaurarBtn(); return; }
+  }
 
   const tarjeta = _cfTarjetasDisponibles.find(t => t.id === tarjetaId);
 
   try {
-    if (enCuotas && tarjeta && typeof generarSecuenciaCierres === 'function') {
+    if (esCuotaEnCurso && tarjeta && typeof generarSecuenciaCierres === 'function') {
+      // Monto = el de UNA cuota. Generamos esta cuota + las que faltan hasta cecTotal.
+      const compraId = 'compra_' + Date.now();
+      const cuotasFaltantes = cecTotal - cecActual + 1;
+      const cierres = generarSecuenciaCierres(tarjeta, fecha, cuotasFaltantes);
+      for (let i = 0; i < cierres.length; i++) {
+        const numeroCuota = cecActual + i;
+        await addDoc(CF_COL_GASTOS, {
+          id: 'gt_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2,5),
+          tarjetaId, fecha: cierres[i], tipo: `${tipo} (cuota ${numeroCuota}/${cecTotal})`, monto,
+          cargadoPor: quien, ts: Date.now(), compraId, cuotaNum: numeroCuota, cuotaTotal: cecTotal,
+          esCuotaEnCurso: true,
+        });
+      }
+      const item = document.createElement('div');
+      item.style.cssText = 'padding:8px 10px;background:var(--s2);border-radius:8px;margin-bottom:6px;font-size:.74rem;display:flex;justify-content:space-between';
+      item.innerHTML = `<span>${tipo} (cuota ${cecActual}/${cecTotal} + ${cuotasFaltantes-1} restantes)</span><span style="color:var(--green);font-weight:700">${fmt(monto)} c/u</span>`;
+      document.getElementById('cf-recientes').prepend(item);
+    } else if (enCuotas && tarjeta && typeof generarSecuenciaCierres === 'function') {
       const compraId = 'compra_' + Date.now();
       const montos = repartirEnCuotas(monto, cantCuotas);
       const cierres = generarSecuenciaCierres(tarjeta, fecha, cantCuotas);
@@ -394,7 +437,11 @@ window.cfGuardarGasto = async function() {
     document.getElementById('cf-monto').value = '';
     document.getElementById('cf-cuotas-check').checked = false;
     document.getElementById('cf-cuotas-cant').value = '';
+    if (document.getElementById('cf-cuota-en-curso')) document.getElementById('cf-cuota-en-curso').checked = false;
+    if (document.getElementById('cf-cec-actual')) document.getElementById('cf-cec-actual').value = '';
+    if (document.getElementById('cf-cec-total')) document.getElementById('cf-cec-total').value = '';
     cfToggleCuotas();
+    cfToggleCuotaEnCurso();
     document.getElementById('cf-tipo').focus();
     restaurarBtn();
   } catch(e) {
@@ -659,11 +706,31 @@ nav::-webkit-scrollbar{display:none}
       <div class="card" style="margin-bottom:14px">
         <div style="display:flex;align-items:center;gap:8px">
           <input type="checkbox" id="cf-cuotas-check" onchange="cfToggleCuotas()" style="width:16px;height:16px">
-          <label for="cf-cuotas-check" style="font-size:.82rem;cursor:pointer">¿En cuotas?</label>
+          <label for="cf-cuotas-check" style="font-size:.82rem;cursor:pointer">¿En cuotas? <span style="font-size:.65rem;color:var(--muted)">(compra nueva)</span></label>
         </div>
         <div id="cf-cuotas-wrap" style="display:none;margin-top:10px">
           <div style="font-size:.7rem;color:var(--muted);margin-bottom:4px">¿En cuántas cuotas?</div>
           <input type="number" id="cf-cuotas-cant" min="2" max="24" placeholder="6" class="fi" style="width:80px;text-align:center">
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="cf-cuota-en-curso" onchange="cfToggleCuotaEnCurso()" style="width:16px;height:16px">
+          <label for="cf-cuota-en-curso" style="font-size:.82rem;cursor:pointer">Cuota en curso <span style="font-size:.65rem;color:var(--muted)">(ya está en el resumen)</span></label>
+        </div>
+        <div id="cf-cec-wrap" style="display:none;margin-top:10px">
+          <div style="font-size:.65rem;color:var(--muted);margin-bottom:6px">El monto de arriba es el de ESTA cuota.</div>
+          <div style="display:flex;gap:8px">
+            <div style="flex:1">
+              <div style="font-size:.65rem;color:var(--muted);margin-bottom:4px">ESTA ES LA CUOTA N°</div>
+              <input type="number" id="cf-cec-actual" min="1" max="24" placeholder="3" class="fi" style="width:100%;text-align:center">
+            </div>
+            <div style="flex:1">
+              <div style="font-size:.65rem;color:var(--muted);margin-bottom:4px">DE UN TOTAL DE</div>
+              <input type="number" id="cf-cec-total" min="1" max="24" placeholder="6" class="fi" style="width:100%;text-align:center">
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1433,14 +1500,27 @@ nav::-webkit-scrollbar{display:none}
     </div>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
       <input type="checkbox" id="own-tj-cuotas-check" onchange="ownToggleCuotas()" style="width:16px;height:16px">
-      <label for="own-tj-cuotas-check" style="font-size:.74rem;cursor:pointer">¿En cuotas?</label>
+      <label for="own-tj-cuotas-check" style="font-size:.74rem;cursor:pointer">¿En cuotas? <span style="font-size:.65rem;color:var(--muted)">(compra nueva, arranca desde la cuota 1)</span></label>
       <div id="own-tj-cuotas-wrap" style="display:none;margin-left:auto">
         <input type="number" id="own-tj-cuotas-cant" min="2" max="24" placeholder="6" class="fi" style="width:60px;font-size:.74rem;padding:6px 8px;text-align:center">
       </div>
     </div>
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-      <input type="checkbox" id="own-tj-cuota-en-curso" style="width:16px;height:16px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <input type="checkbox" id="own-tj-cuota-en-curso" onchange="ownToggleCuotaEnCurso()" style="width:16px;height:16px">
       <label for="own-tj-cuota-en-curso" style="font-size:.74rem;cursor:pointer">Cuota en curso <span style="font-size:.65rem;color:var(--muted)">(ya está en el resumen, no es compra nueva)</span></label>
+    </div>
+    <div id="own-tj-cec-wrap" style="display:none;margin-bottom:10px;padding:10px;background:var(--s2);border-radius:8px">
+      <div style="font-size:.65rem;color:var(--muted);margin-bottom:6px">El monto de arriba es el de ESTA cuota (no el total de la compra).</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="flex:1">
+          <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">ESTA ES LA CUOTA N°</div>
+          <input type="number" id="own-tj-cec-actual" min="1" max="24" placeholder="3" class="fi" style="width:100%;font-size:.74rem;padding:6px 8px;text-align:center">
+        </div>
+        <div style="flex:1">
+          <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">DE UN TOTAL DE</div>
+          <input type="number" id="own-tj-cec-total" min="1" max="24" placeholder="6" class="fi" style="width:100%;font-size:.74rem;padding:6px 8px;text-align:center">
+        </div>
+      </div>
     </div>
     <button onclick="ownCargarGastoTarjeta()" class="btn btn-g" style="width:100%">＋ Registrar mi gasto</button>
   </div>
@@ -3123,7 +3203,26 @@ function ownTipoCategoriaChange(selectEl) {
 function ownToggleCuotas() {
   const checked = document.getElementById('own-tj-cuotas-check').checked;
   document.getElementById('own-tj-cuotas-wrap').style.display = checked ? 'block' : 'none';
-  document.getElementById('own-tj-monto-label').textContent = checked ? 'MONTO TOTAL DE LA COMPRA' : 'MONTO';
+  if (checked) {
+    // Mutuamente excluyente con "cuota en curso" — no tiene sentido tildar ambos a la vez
+    document.getElementById('own-tj-cuota-en-curso').checked = false;
+    document.getElementById('own-tj-cec-wrap').style.display = 'none';
+    document.getElementById('own-tj-monto-label').textContent = 'MONTO TOTAL DE LA COMPRA';
+  } else if (!document.getElementById('own-tj-cuota-en-curso').checked) {
+    document.getElementById('own-tj-monto-label').textContent = 'MONTO';
+  }
+}
+
+function ownToggleCuotaEnCurso() {
+  const checked = document.getElementById('own-tj-cuota-en-curso').checked;
+  document.getElementById('own-tj-cec-wrap').style.display = checked ? 'block' : 'none';
+  if (checked) {
+    document.getElementById('own-tj-cuotas-check').checked = false;
+    document.getElementById('own-tj-cuotas-wrap').style.display = 'none';
+    document.getElementById('own-tj-monto-label').textContent = 'MONTO DE ESTA CUOTA';
+  } else {
+    document.getElementById('own-tj-monto-label').textContent = 'MONTO';
+  }
 }
 
 function ownCargarGastoTarjeta() {
@@ -3134,17 +3233,39 @@ function ownCargarGastoTarjeta() {
   const enCuotas  = document.getElementById('own-tj-cuotas-check').checked;
   const cantCuotas = enCuotas ? parseInt(document.getElementById('own-tj-cuotas-cant').value) : 1;
   const esCuotaEnCurso = document.getElementById('own-tj-cuota-en-curso')?.checked || false;
+  const cecActual = esCuotaEnCurso ? parseInt(document.getElementById('own-tj-cec-actual').value) : null;
+  const cecTotal  = esCuotaEnCurso ? parseInt(document.getElementById('own-tj-cec-total').value) : null;
 
   if (!tarjetaId)            { showToast('Elegí una tarjeta', '#f43f5e'); return; }
   if (!fecha)                { showToast('Elegí la fecha', '#f43f5e'); return; }
   if (!tipo)                 { showToast('Escribí el tipo de gasto', '#f43f5e'); return; }
   if (!monto || monto <= 0)  { showToast('Ingresá un monto válido', '#f43f5e'); return; }
   if (enCuotas && (!cantCuotas || cantCuotas < 2)) { showToast('Ingresá una cantidad de cuotas válida (2 o más)', '#f43f5e'); return; }
+  if (esCuotaEnCurso) {
+    if (!cecActual || !cecTotal) { showToast('Completá en qué cuota vas y el total', '#f43f5e'); return; }
+    if (cecActual > cecTotal)    { showToast('La cuota actual no puede ser mayor al total', '#f43f5e'); return; }
+  }
 
   const lista = getGastosTarjetas();
   const tarjeta = getTarjetas().find(t => t.id === tarjetaId);
 
-  if (enCuotas && tarjeta) {
+  if (esCuotaEnCurso && tarjeta) {
+    // Monto = el de UNA cuota (no el total). Generamos esta cuota + todas las que faltan,
+    // desde cecActual hasta cecTotal, en períodos de cierre consecutivos a partir de hoy.
+    const compraId = 'compra_' + Date.now();
+    const cuotasFaltantes = cecTotal - cecActual + 1; // incluye la actual
+    const cierres = generarSecuenciaCierres(tarjeta, fecha, cuotasFaltantes);
+    cierres.forEach((cierre, i) => {
+      const numeroCuota = cecActual + i;
+      lista.push({
+        id: 'gt_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2,5),
+        tarjetaId, fecha: cierre, tipo: `${tipo} (cuota ${numeroCuota}/${cecTotal})`, monto,
+        cargadoPor: 'Cris', ts: Date.now(), compraId, cuotaNum: numeroCuota, cuotaTotal: cecTotal,
+        esCuotaEnCurso: true,
+      });
+    });
+    showToast(`✓ ${tipo}: cuota ${cecActual}/${cecTotal} + ${cuotasFaltantes-1} restante${cuotasFaltantes-1!==1?'s':''} de ${fmt(monto)} c/u`);
+  } else if (enCuotas && tarjeta) {
     const compraId = 'compra_' + Date.now();
     const montos = repartirEnCuotas(monto, cantCuotas);
     const cierres = generarSecuenciaCierres(tarjeta, fecha, cantCuotas);
@@ -3161,9 +3282,8 @@ function ownCargarGastoTarjeta() {
       id: 'gt_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
       tarjetaId, fecha, tipo, monto,
       cargadoPor: 'Cris', ts: Date.now(),
-      ...(esCuotaEnCurso ? { esCuotaEnCurso: true } : {}),
     });
-    showToast('✓ ' + (esCuotaEnCurso ? 'Cuota en curso registrada: ' : 'Gasto registrado: ') + tipo + ' — ' + fmt(monto));
+    showToast('✓ Gasto registrado: ' + tipo + ' — ' + fmt(monto));
   }
 
   saveGastosTarjetas(lista);
@@ -3173,7 +3293,10 @@ function ownCargarGastoTarjeta() {
   document.getElementById('own-tj-cuotas-check').checked = false;
   document.getElementById('own-tj-cuotas-cant').value = '';
   if (document.getElementById('own-tj-cuota-en-curso')) document.getElementById('own-tj-cuota-en-curso').checked = false;
+  if (document.getElementById('own-tj-cec-actual')) document.getElementById('own-tj-cec-actual').value = '';
+  if (document.getElementById('own-tj-cec-total')) document.getElementById('own-tj-cec-total').value = '';
   ownToggleCuotas();
+  ownToggleCuotaEnCurso();
   renderGastosTarjetas();
 }
 
