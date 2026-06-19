@@ -289,7 +289,24 @@ window.cfPublicarConfig = async function(pin, tarjetas) {
       tarjetas: tarjetas.map(t => ({ id: t.id, nombre: t.nombre, tipoCierre: t.tipoCierre, diaFijo: t.diaFijo })),
       categorias,
     }, { merge: true });
-  } catch(e) { console.error('cfPublicarConfig error:', e); }
+    return true;
+  } catch(e) {
+    console.error('cfPublicarConfig error:', e);
+    return false;
+  }
+};
+
+// Verifica que la config publicada en Firestore (PIN + tarjetas) coincida con la actual
+window.cfVerificarConfigPublicada = async function(pinEsperado) {
+  try {
+    const snap = await getDoc(CF_DOC_PIN);
+    if (!snap.exists()) return { ok: false, motivo: 'No existe ningún documento de configuración en Firestore todavía.' };
+    const data = snap.data();
+    if (data.pin !== pinEsperado) return { ok: false, motivo: `El PIN publicado (${data.pin}) no coincide con el actual (${pinEsperado}).` };
+    return { ok: true, tarjetas: data.tarjetas || [] };
+  } catch(e) {
+    return { ok: false, motivo: 'No se pudo leer la configuración: ' + e.message };
+  }
 };
 
 // Actualiza solo las categorías sin tocar pin/tarjetas (se usa al agregar una categoría nueva)
@@ -3672,19 +3689,38 @@ function toggleSeccionConciliados() {
 }
 
 // ── Generar y copiar el link de carga familiar (con PIN configurado) ──
-function copiarLinkCargaFamiliar(quien) {
+async function copiarLinkCargaFamiliar(quien) {
   let pin = DB.get('pin_carga_familiar', null);
   if (!pin) {
     pin = String(Math.floor(1000 + Math.random()*9000));
     DB.set('pin_carga_familiar', pin);
     if (window.FBsave) window.FBsave('pin_carga_familiar', pin);
   }
-  if (window.cfPublicarConfig) window.cfPublicarConfig(pin, getTarjetas());
+
+  if (!window.cfPublicarConfig) {
+    showToast('⚠ No se pudo verificar la conexión con Firestore', '#f43f5e');
+    return;
+  }
+
+  showToast('⏳ Publicando configuración...');
+  const publicado = await window.cfPublicarConfig(pin, getTarjetas());
+  if (!publicado) {
+    showToast('⚠ No se pudo publicar la config en Firestore — revisá que tengas sesión iniciada con Google y conexión a internet. El link NO va a funcionar para Lara/Emma hasta resolver esto.', '#f43f5e');
+    return;
+  }
+
+  // Verificamos leyendo de vuelta, para confirmar que lo que se publicó es realmente lo que tenemos local
+  const verificacion = await window.cfVerificarConfigPublicada(pin);
+  if (!verificacion.ok) {
+    showToast('⚠ ' + verificacion.motivo + ' — el link puede no funcionar correctamente.', '#f43f5e');
+    return;
+  }
+
   const base = location.origin + location.pathname;
   const quienParam = quien ? '&quien=' + encodeURIComponent(quien) : '';
   const link = base + '?modo=carga-familiar' + quienParam;
   navigator.clipboard?.writeText(link).then(() => {
-    showToast('✓ Link' + (quien ? ' de '+quien : '') + ' copiado — PIN: ' + pin);
+    showToast('✓ Link' + (quien ? ' de '+quien : '') + ' copiado y verificado — PIN: ' + pin);
   }).catch(() => { showToast('Link: ' + link + ' — PIN: ' + pin); });
 }
 
