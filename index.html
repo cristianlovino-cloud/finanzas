@@ -345,7 +345,7 @@ window.cfValidarPin = async function() {
       ? _cfTarjetasDisponibles.map(t => `<option value="${t.id}">${t.nombre}</option>`).join('')
       : '<option value="">— sin tarjetas configuradas —</option>';
 
-    _cfCategoriasDisponibles = data.categorias || [];
+    _cfCategoriasDisponibles = (data.categorias || []).slice().sort((a,b) => a.localeCompare(b, 'es'));
     cfRenderCategoriaSelector();
 
     document.getElementById('cf-pin-step').style.display  = 'none';
@@ -373,6 +373,7 @@ window.cfTipoCategoriaChange = function(selectEl) {
     const limpio = nueva.trim();
     if (!_cfCategoriasDisponibles.some(c => c.toLowerCase() === limpio.toLowerCase())) {
       _cfCategoriasDisponibles.push(limpio);
+      _cfCategoriasDisponibles.sort((a,b) => a.localeCompare(b, 'es'));
       if (window.cfPublicarCategorias) window.cfPublicarCategorias(_cfCategoriasDisponibles);
     }
     cfRenderCategoriaSelector();
@@ -2765,7 +2766,8 @@ const CATEGORIAS_CONSUMO_DEFAULT = [
 ];
 
 function getCategoriasConsumo() {
-  return DB.get('categorias_consumo', CATEGORIAS_CONSUMO_DEFAULT);
+  const lista = DB.get('categorias_consumo', CATEGORIAS_CONSUMO_DEFAULT);
+  return [...lista].sort((a,b) => a.localeCompare(b, 'es'));
 }
 
 function saveCategoriasConsumo(lista) {
@@ -3034,7 +3036,7 @@ function renderRecurrentesCfg() {
       <span style="font-size:.72rem;color:var(--muted)">Total mensual estimado</span>
       <div style="text-align:right">
         <div style="font-weight:700;font-size:.85rem;color:var(--text)">${fmt(totalMensualARS)}</div>
-        ${totalMensualUSD > 0 ? `<div style="font-weight:700;font-size:.78rem;color:var(--yellow)">+ U$S ${totalMensualUSD.toLocaleString('es-AR')}</div>` : ''}
+        ${totalMensualUSD > 0 ? `<div style="font-weight:700;font-size:.78rem;color:var(--yellow)">U$S ${totalMensualUSD.toLocaleString('es-AR')}</div>` : ''}
       </div>
     </div>` +
   lista.map(r => {
@@ -3329,14 +3331,16 @@ function guardarEdicionMontoGasto(id) {
   const lista = getGastosTarjetas();
   const g = lista.find(g => g.id === id);
   if (!g) return;
+  const nuevaTarjetaId = document.getElementById('edit-tarjeta-' + id)?.value || g.tarjetaId;
   const nuevaMoneda = document.getElementById('edit-moneda-' + id).value;
   const nuevoValor = parseFloat(document.getElementById('edit-valor-' + id).value);
   if (!nuevoValor || nuevoValor <= 0) { showToast('Ingresá un monto válido', '#f43f5e'); return; }
   g.monto = nuevoValor;
   g.moneda = nuevaMoneda;
+  g.tarjetaId = nuevaTarjetaId;
   saveGastosTarjetas(lista);
-  if (window.cfActualizarGastoFirestore) window.cfActualizarGastoFirestore(id, { monto: nuevoValor, moneda: nuevaMoneda });
-  showToast('✓ Monto corregido: ' + (nuevaMoneda==='USD' ? 'U$S '+nuevoValor : fmt(nuevoValor)));
+  if (window.cfActualizarGastoFirestore) window.cfActualizarGastoFirestore(id, { monto: nuevoValor, moneda: nuevaMoneda, tarjetaId: nuevaTarjetaId });
+  showToast('✓ Gasto actualizado: ' + (nuevaMoneda==='USD' ? 'U$S '+nuevoValor : fmt(nuevoValor)));
   renderGastosTarjetas();
 }
 
@@ -3639,11 +3643,11 @@ function renderTotalesPorPersona(gruposAbiertos) {
       const d = porPersona[nombre];
       const color = quienColores[nombre] || 'var(--yellow)';
       return `
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;gap:10px">
         <span style="font-size:.72rem;font-weight:700;color:${color}">${nombre}</span>
-        <div style="text-align:right">
+        <div style="display:flex;gap:10px;align-items:baseline">
           <span style="font-size:.74rem;font-weight:700">${fmt(d.ars)}</span>
-          ${d.usd > 0 ? `<span style="font-size:.7rem;font-weight:700;color:var(--yellow);margin-left:6px">+ U$S ${d.usd.toLocaleString('es-AR')}</span>` : ''}
+          ${d.usd > 0 ? `<span style="font-size:.7rem;font-weight:700;color:var(--yellow)">U$S ${d.usd.toLocaleString('es-AR')}</span>` : ''}
         </div>
       </div>`;
     }).join('');
@@ -3671,10 +3675,11 @@ function renderTarjetaCard(grupo, conciliaciones, colapsadoPorDefault) {
   const key = grupo.tarjeta.id + '|' + grupo.cierre;
   const safeKey = key.replace(/[|.]/g,'_');
   const estaConciliado = !!conciliaciones[key];
+  const tarjetasDisponiblesEdit = getTarjetas();
   const totalARS = grupo.gastos.filter(g => g.moneda !== 'USD').reduce((s,g) => s + (g.monto||0), 0);
   const totalUSD = grupo.gastos.filter(g => g.moneda === 'USD').reduce((s,g) => s + (g.monto||0), 0);
   const totalLabel = totalUSD > 0
-    ? (totalARS > 0 ? `${fmt(totalARS)} + U$S ${totalUSD}` : `U$S ${totalUSD}`)
+    ? (totalARS > 0 ? `${fmt(totalARS)} · U$S ${totalUSD}` : `U$S ${totalUSD}`)
     : fmt(totalARS);
   const fechaCierreLabel = new Date(grupo.cierre + 'T00:00:00').toLocaleDateString('es-AR', {day:'2-digit', month:'long', year:'numeric'});
 
@@ -3725,6 +3730,12 @@ function renderTarjetaCard(grupo, conciliaciones, colapsadoPorDefault) {
         </div>
         ${!estaConciliado ? `
         <div id="edit-monto-${g.id}" style="display:none;margin-top:8px;padding:8px;background:var(--s1);border-radius:6px">
+          <div style="margin-bottom:6px">
+            <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">TARJETA</div>
+            <select id="edit-tarjeta-${g.id}" class="fi" style="width:100%;font-size:.7rem;padding:6px 6px">
+              ${tarjetasDisponiblesEdit.map(t => `<option value="${t.id}" ${g.tarjetaId===t.id?'selected':''}>${t.nombre}</option>`).join('')}
+            </select>
+          </div>
           <div style="display:flex;gap:6px">
             <select id="edit-moneda-${g.id}" class="fi" style="width:80px;font-size:.7rem;padding:6px 4px">
               <option value="ARS" ${!esUSD?'selected':''}>ARS</option>
@@ -3770,7 +3781,7 @@ function renderFuturosAgrupados(gruposFuturos) {
     const d = porMes[mes];
     const label = new Date(mes + '-01T00:00:00').toLocaleDateString('es-AR', {month:'long', year:'numeric'});
     const totalLabel = d.totalUSD > 0
-      ? (d.totalARS > 0 ? `${fmt(d.totalARS)} + U$S ${d.totalUSD.toLocaleString('es-AR')}` : `U$S ${d.totalUSD.toLocaleString('es-AR')}`)
+      ? (d.totalARS > 0 ? `${fmt(d.totalARS)} · U$S ${d.totalUSD.toLocaleString('es-AR')}` : `U$S ${d.totalUSD.toLocaleString('es-AR')}`)
       : fmt(d.totalARS);
     return `
     <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:.74rem">
