@@ -250,12 +250,26 @@ window.addEventListener('offline', () => setSyncStatus('offline'));
 let _cfPinValidado = false;
 let _cfTarjetasDisponibles = [];
 
-// Cuando el owner genera/copia el link, también espejamos PIN + tarjetas a la colección pública.
+// Cuando el owner genera/copia el link, también espejamos PIN + tarjetas + categorías a la colección pública.
 window.cfPublicarConfig = async function(pin, tarjetas) {
   try {
-    await setDoc(CF_DOC_PIN, { pin, tarjetas: tarjetas.map(t => ({ id: t.id, nombre: t.nombre, tipoCierre: t.tipoCierre, diaFijo: t.diaFijo })) });
+    const categorias = (typeof getCategoriasConsumo === 'function') ? getCategoriasConsumo() : [];
+    await setDoc(CF_DOC_PIN, {
+      pin,
+      tarjetas: tarjetas.map(t => ({ id: t.id, nombre: t.nombre, tipoCierre: t.tipoCierre, diaFijo: t.diaFijo })),
+      categorias,
+    }, { merge: true });
   } catch(e) { console.error('cfPublicarConfig error:', e); }
 };
+
+// Actualiza solo las categorías sin tocar pin/tarjetas (se usa al agregar una categoría nueva)
+window.cfPublicarCategorias = async function(categorias) {
+  try {
+    await setDoc(CF_DOC_PIN, { categorias }, { merge: true });
+  } catch(e) { console.error('cfPublicarCategorias error:', e); }
+};
+
+let _cfCategoriasDisponibles = [];
 
 window.cfValidarPin = async function() {
   const input = document.getElementById('cf-pin-input').value.trim();
@@ -276,11 +290,38 @@ window.cfValidarPin = async function() {
       ? _cfTarjetasDisponibles.map(t => `<option value="${t.id}">${t.nombre}</option>`).join('')
       : '<option value="">— sin tarjetas configuradas —</option>';
 
+    _cfCategoriasDisponibles = data.categorias || [];
+    cfRenderCategoriaSelector();
+
     document.getElementById('cf-pin-step').style.display  = 'none';
     document.getElementById('cf-form-step').style.display = 'block';
   } catch(e) {
     console.error('cfValidarPin error:', e);
     errEl.textContent = 'No se pudo verificar el PIN (revisá tu conexión)';
+  }
+};
+
+function cfRenderCategoriaSelector() {
+  const sel = document.getElementById('cf-tipo');
+  if (!sel) return;
+  const valorActual = sel.value;
+  sel.innerHTML = '<option value="">— elegí una categoría —</option>'
+    + _cfCategoriasDisponibles.map(c => `<option value="${c}">${c}</option>`).join('')
+    + '<option value="__nueva__">＋ Nueva categoría...</option>';
+  if (_cfCategoriasDisponibles.includes(valorActual)) sel.value = valorActual;
+}
+
+window.cfTipoCategoriaChange = function(selectEl) {
+  if (selectEl.value === '__nueva__') {
+    const nueva = prompt('Nombre de la categoría nueva:');
+    if (!nueva || !nueva.trim()) { selectEl.value = ''; return; }
+    const limpio = nueva.trim();
+    if (!_cfCategoriasDisponibles.some(c => c.toLowerCase() === limpio.toLowerCase())) {
+      _cfCategoriasDisponibles.push(limpio);
+      if (window.cfPublicarCategorias) window.cfPublicarCategorias(_cfCategoriasDisponibles);
+    }
+    cfRenderCategoriaSelector();
+    selectEl.value = limpio;
   }
 };
 
@@ -604,7 +645,10 @@ nav::-webkit-scrollbar{display:none}
 
       <div class="card" style="margin-bottom:14px">
         <div class="ct">Tipo de gasto</div>
-        <input type="text" id="cf-tipo" class="fi" placeholder="ej: Ropa, Comida, Salidas...">
+        <select id="cf-tipo" class="fi" onchange="cfTipoCategoriaChange(this)">
+          <option value="">— elegí una categoría —</option>
+          <option value="__nueva__">＋ Nueva categoría...</option>
+        </select>
       </div>
 
       <div class="card" style="margin-bottom:14px">
@@ -1377,7 +1421,10 @@ nav::-webkit-scrollbar{display:none}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
       <div>
         <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">TIPO DE GASTO</div>
-        <input type="text" id="own-tj-tipo" class="fi" placeholder="ej: Nafta, Supermercado..." style="font-size:.78rem;padding:8px 9px">
+        <select id="own-tj-tipo" class="fi" style="font-size:.78rem;padding:8px 6px" onchange="ownTipoCategoriaChange(this)">
+          <option value="">— elegí una categoría —</option>
+          <option value="__nueva__">＋ Nueva categoría...</option>
+        </select>
       </div>
       <div>
         <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px" id="own-tj-monto-label">MONTO</div>
@@ -1422,6 +1469,14 @@ nav::-webkit-scrollbar{display:none}
       </p>
       <div id="cfg-tarjetas-list" style="margin-bottom:10px"></div>
       <button onclick="agregarTarjetaCfg()" class="btn btn-o" style="width:100%;font-size:.72rem">＋ Agregar tarjeta</button>
+    </div>
+
+    <div class="card" style="margin-bottom:14px">
+      <div class="ct">🏷 Categorías de consumo — normalizar</div>
+      <p style="font-size:.75rem;color:var(--muted2);margin-bottom:12px;line-height:1.5">
+        Antes había texto libre, así que pueden existir variantes del mismo gasto (ej. "nafta" y "Nafta"). Acá fusionás cada variante con la categoría correcta de la lista.
+      </p>
+      <div id="cfg-normalizador-list" style="margin-bottom:10px"></div>
     </div>
 
     <div class="card" style="margin-bottom:14px">
@@ -1981,10 +2036,11 @@ function go(id, btn) {
   if (id === 'flujo')       renderFlujo();
   if (id === 'patrimonio')  updatePatrimonio();
   if (id === 'cuentas')   { renderCuentas(); updateMediosDePago(); updateOverviewSaldos(); renderHistorialTransf(); }
-  if (id === 'config')     { renderTarjetasCfg(); renderRecurrentesCfg(); }
+  if (id === 'config')     { renderTarjetasCfg(); renderRecurrentesCfg(); renderNormalizadorCategorias(); }
   if (id === 'tarjetas')    {
     renderGastosTarjetas();
     renderOwnTarjetaSelector();
+    renderOwnCategoriaSelector();
     const fechaEl = document.getElementById('own-tj-fecha');
     if (fechaEl && !fechaEl.value) fechaEl.value = new Date().toISOString().slice(0,10);
   }
@@ -2558,8 +2614,107 @@ function saveCuentas(cuentas) {
 }
 
 // ══════════════════════════════════════════════════════
-// TARJETAS DE CRÉDITO — config de cierre de resumen
+// CATEGORÍAS DE CONSUMO DE TARJETA — lista tabulada para vos, Lara y Emma
+// (distinta de las categorías de Flujo: acá son gasto cotidiano tipo "Nafta", "Ropa")
 // ══════════════════════════════════════════════════════
+const CATEGORIAS_CONSUMO_DEFAULT = [
+  'Supermercado', 'Nafta', 'Ropa', 'Comida afuera', 'Delivery', 'Farmacia',
+  'Entretenimiento', 'Salidas', 'Regalos', 'Hogar', 'Tecnología', 'Salud', 'Otros',
+];
+
+function getCategoriasConsumo() {
+  return DB.get('categorias_consumo', CATEGORIAS_CONSUMO_DEFAULT);
+}
+
+function saveCategoriasConsumo(lista) {
+  DB.set('categorias_consumo', lista);
+  if (window.FBsave) window.FBsave('categorias_consumo', lista);
+  const pin = DB.get('pin_carga_familiar', null);
+  if (pin && window.cfPublicarCategorias) window.cfPublicarCategorias(lista);
+}
+
+// Agrega una categoría nueva a la lista maestra si no existe ya (sin duplicar, sin importar mayúsculas)
+function agregarCategoriaConsumoSiNoExiste(nombre) {
+  const limpio = (nombre || '').trim();
+  if (!limpio) return null;
+  const lista = getCategoriasConsumo();
+  const existente = lista.find(c => c.toLowerCase() === limpio.toLowerCase());
+  if (existente) return existente;
+  lista.push(limpio);
+  saveCategoriasConsumo(lista);
+  return limpio;
+}
+
+// ── Normalizador: encuentra valores de 'tipo' ya cargados en gastos_tarjetas que no coinciden
+// exactamente con la lista maestra de categorías (variantes de texto libre de antes), y deja
+// fusionar cada variante con la categoría real elegida, aplicando el cambio a todos los gastos.
+function detectarVariantesCategoria() {
+  const lista = getCategoriasConsumo();
+  const listaLower = lista.map(c => c.toLowerCase());
+  const gastos = getGastosTarjetas();
+
+  // Quitamos el sufijo "(cuota X/N)" antes de comparar, para no tratar cada cuota como variante distinta
+  const limpiarSufijoCuota = (s) => (s || '').replace(/\s*\(cuota\s*\d+\/\d+\)\s*$/i, '').trim();
+
+  const variantes = new Set();
+  gastos.forEach(g => {
+    const base = limpiarSufijoCuota(g.tipo);
+    if (base && !listaLower.includes(base.toLowerCase())) variantes.add(base);
+  });
+  return [...variantes].sort();
+}
+
+function renderNormalizadorCategorias() {
+  const el = document.getElementById('cfg-normalizador-list');
+  if (!el) return;
+  const variantes = detectarVariantesCategoria();
+  if (variantes.length === 0) {
+    el.innerHTML = '<div style="font-size:.72rem;color:var(--muted);padding:8px 0">✓ No hay variantes sueltas — todo está usando la lista de categorías.</div>';
+    return;
+  }
+  const categorias = getCategoriasConsumo();
+  el.innerHTML = variantes.map(v => `
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--s2);border-radius:8px;margin-bottom:6px">
+      <span style="flex:1;font-size:.76rem;font-weight:600">${v}</span>
+      <span style="color:var(--muted);font-size:.7rem">→</span>
+      <select onchange="fusionarVarianteCategoria('${v.replace(/'/g,"\\'")}', this.value)" class="fi" style="width:150px;font-size:.72rem;padding:6px 6px">
+        <option value="">— elegir —</option>
+        ${categorias.map(c => `<option value="${c}">${c}</option>`).join('')}
+        <option value="__nueva__">＋ Nueva...</option>
+      </select>
+    </div>`).join('');
+}
+
+function fusionarVarianteCategoria(variante, destino) {
+  if (!destino) return;
+  let categoriaFinal = destino;
+  if (destino === '__nueva__') {
+    const nueva = prompt('Nombre de la categoría nueva:', variante);
+    if (!nueva || !nueva.trim()) { renderNormalizadorCategorias(); return; }
+    categoriaFinal = agregarCategoriaConsumoSiNoExiste(nueva);
+  } else {
+    agregarCategoriaConsumoSiNoExiste(destino);
+  }
+
+  const lista = getGastosTarjetas();
+  let cambios = 0;
+  lista.forEach(g => {
+    const match = (g.tipo || '').match(/^(.*?)(\s*\(cuota\s*\d+\/\d+\))?$/i);
+    const base = match ? match[1].trim() : g.tipo;
+    const sufijo = match && match[2] ? match[2] : '';
+    if (base === variante) {
+      g.tipo = categoriaFinal + sufijo;
+      cambios++;
+    }
+  });
+  if (cambios > 0) {
+    saveGastosTarjetas(lista);
+    if (typeof renderGastosTarjetas === 'function') renderGastosTarjetas();
+    showToast(`✓ ${cambios} gasto${cambios>1?'s':''} fusionado${cambios>1?'s':''} en "${categoriaFinal}"`);
+  }
+  renderNormalizadorCategorias();
+}
+
 // Cada tarjeta: { id, nombre, tipoCierre: 'penultimo_jueves' | 'ultimo_jueves' | 'dia_fijo', diaFijo: 1-31 }
 const TARJETAS_DEFAULT = [];
 
@@ -2697,13 +2852,17 @@ function renderRecurrentesCfg() {
   const categoriasDisponibles = obtenerCategoriasUsadas();
   const tarjetasDisponibles = getTarjetas();
 
-  // Total mensual estimado (ARS, convirtiendo USD al TC)
-  const totalMensual = lista.reduce((s,r) => s + (r.moneda==='USD' ? (r.monto||0)*TC : (r.monto||0)), 0);
+  // Totales separados — sin mezclar ni convertir
+  const totalMensualARS = lista.filter(r => r.moneda !== 'USD').reduce((s,r) => s + (r.monto||0), 0);
+  const totalMensualUSD = lista.filter(r => r.moneda === 'USD').reduce((s,r) => s + (r.monto||0), 0);
 
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;margin-bottom:8px;border-bottom:1px solid var(--border)">
       <span style="font-size:.72rem;color:var(--muted)">Total mensual estimado</span>
-      <span style="font-weight:700;font-size:.85rem;color:var(--text)">${fmt(totalMensual)}</span>
+      <div style="text-align:right">
+        <div style="font-weight:700;font-size:.85rem;color:var(--text)">${fmt(totalMensualARS)}</div>
+        ${totalMensualUSD > 0 ? `<div style="font-weight:700;font-size:.78rem;color:var(--yellow)">+ U$S ${totalMensualUSD.toLocaleString('es-AR')}</div>` : ''}
+      </div>
     </div>` +
   lista.map(r => `
     <div style="background:var(--s2);border-radius:8px;margin-bottom:8px;overflow:hidden">
@@ -2713,9 +2872,9 @@ function renderRecurrentesCfg() {
           <div style="font-size:.64rem;color:var(--muted)">${r.categoria || '—'} · día ${r.diaDelMes||1}${r.tarjetaId ? ' · ' + (tarjetasDisponibles.find(t=>t.id===r.tarjetaId)?.nombre||'tarjeta') : ''}</div>
         </div>
         <span style="font-weight:700;font-size:.8rem;color:var(--text);white-space:nowrap">${r.moneda==='USD' ? 'U$S '+r.monto : fmt(r.monto||0)}</span>
-        <span id="rec-toggle-${r.id}" style="color:var(--muted);font-size:.75rem">▼</span>
+        <span id="rec-toggle-${r.id}" style="color:var(--muted);font-size:.75rem">▶</span>
       </div>
-      <div id="rec-detalle-${r.id}" style="padding:0 10px 10px;border-top:1px solid var(--border)">
+      <div id="rec-detalle-${r.id}" style="display:none;padding:0 10px 10px;border-top:1px solid var(--border)">
         <div style="display:flex;gap:6px;align-items:center;margin-top:8px">
           <input type="text" value="${r.nombre}" oninput="actualizarRecurrenteCfg('${r.id}','nombre',this.value)" class="fi" style="flex:1;font-size:.78rem;padding:7px 9px" placeholder="ej: Seguro Taos">
           <button onclick="eliminarRecurrenteCfg('${r.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.85rem;padding:4px 6px">✕</button>
@@ -2938,6 +3097,27 @@ function renderOwnTarjetaSelector() {
   sel.innerHTML = tarjetas.length > 0
     ? tarjetas.map(t => `<option value="${t.id}">${t.nombre}</option>`).join('')
     : '<option value="">— configurá una tarjeta primero —</option>';
+}
+
+function renderOwnCategoriaSelector() {
+  const sel = document.getElementById('own-tj-tipo');
+  if (!sel) return;
+  const categorias = getCategoriasConsumo();
+  const valorActual = sel.value;
+  sel.innerHTML = '<option value="">— elegí una categoría —</option>'
+    + categorias.map(c => `<option value="${c}">${c}</option>`).join('')
+    + '<option value="__nueva__">＋ Nueva categoría...</option>';
+  if (categorias.includes(valorActual)) sel.value = valorActual;
+}
+
+function ownTipoCategoriaChange(selectEl) {
+  if (selectEl.value === '__nueva__') {
+    const nueva = prompt('Nombre de la categoría nueva:');
+    if (!nueva || !nueva.trim()) { selectEl.value = ''; return; }
+    const guardada = agregarCategoriaConsumoSiNoExiste(nueva);
+    renderOwnCategoriaSelector();
+    selectEl.value = guardada;
+  }
 }
 
 function ownToggleCuotas() {
@@ -6151,6 +6331,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('header-mes').textContent = mesLabel(initMes);
   renderPlanSections();
   if (typeof renderRecurrentesCfg === 'function') renderRecurrentesCfg();
+  if (typeof renderNormalizadorCategorias === 'function') renderNormalizadorCategorias();
   if (typeof actualizarAvisoAutocompletado === 'function') actualizarAvisoAutocompletado();
 
   // Autocompletar presupuesto del mes actual si todavía no tiene uno propio (igual que en setGlobalMes)
