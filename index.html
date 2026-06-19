@@ -262,6 +262,14 @@ window.cfEliminarGastoFirestore = async function(gastoId) {
   } catch(e) { console.error('cfEliminarGastoFirestore error:', e); }
 };
 
+window.cfActualizarGastoFirestore = async function(gastoId, cambios) {
+  try {
+    const q = query(CF_COL_GASTOS, where('id', '==', gastoId));
+    const snap = await getDocs(q);
+    snap.forEach(async d => { await setDoc(d.ref, cambios, { merge: true }); });
+  } catch(e) { console.error('cfActualizarGastoFirestore error:', e); }
+};
+
 
 
 window.fbSignOut = () => signOut(auth);
@@ -1516,6 +1524,11 @@ nav::-webkit-scrollbar{display:none}
     <p style="font-size:.75rem;color:var(--muted2);margin-bottom:12px;line-height:1.5">
       Acá vas mapeando todo el consumo del período (vos, Lara y Emma) por categoría y tipo de gasto, para totalizar y comparar contra el resumen real cuando lo emite el banco. No toca Flujo ni Overview en ningún momento — el pago del resumen lo seguís cargando vos, donde siempre, cuando vence.
     </p>
+    <div style="background:var(--s2);border-radius:8px;padding:10px;margin-bottom:12px;font-size:.68rem;color:var(--muted2);line-height:1.6">
+      <b style="color:var(--text)">¿Cómo se arma cada resumen?</b><br>
+      Cierre anterior → ━━━ consumos de ese período ━━━ → Cierre actual<br>
+      Cada gasto se agrupa entre el cierre previo y el siguiente cierre de esa tarjeta, no por mes calendario. Por eso podés ver dos cards de la misma tarjeta a la vez: una recién cerrada (lista para pagar) y otra todavía corriendo.
+    </div>
     <button onclick="copiarLinkCargaFamiliar('Lara')" class="btn btn-g" style="width:100%;margin-bottom:6px">🔗 Link para Lara</button>
     <button onclick="copiarLinkCargaFamiliar('Emma')" class="btn btn-g" style="width:100%;margin-bottom:6px">🔗 Link para Emma</button>
     <button onclick="window.cfSincronizarAhora && window.cfSincronizarAhora()" class="btn btn-o" style="width:100%">🔄 Sincronizar ahora</button>
@@ -3306,6 +3319,27 @@ function eliminarGastoTarjeta(id) {
   if (window.cfEliminarGastoFirestore) window.cfEliminarGastoFirestore(id);
 }
 
+function toggleEditarMontoGasto(id) {
+  const el = document.getElementById('edit-monto-' + id);
+  if (!el) return;
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function guardarEdicionMontoGasto(id) {
+  const lista = getGastosTarjetas();
+  const g = lista.find(g => g.id === id);
+  if (!g) return;
+  const nuevaMoneda = document.getElementById('edit-moneda-' + id).value;
+  const nuevoValor = parseFloat(document.getElementById('edit-valor-' + id).value);
+  if (!nuevoValor || nuevoValor <= 0) { showToast('Ingresá un monto válido', '#f43f5e'); return; }
+  g.monto = nuevoValor;
+  g.moneda = nuevaMoneda;
+  saveGastosTarjetas(lista);
+  if (window.cfActualizarGastoFirestore) window.cfActualizarGastoFirestore(id, { monto: nuevoValor, moneda: nuevaMoneda });
+  showToast('✓ Monto corregido: ' + (nuevaMoneda==='USD' ? 'U$S '+nuevoValor : fmt(nuevoValor)));
+  renderGastosTarjetas();
+}
+
 // ── Carga rápida del propio consumo (Cris), desde dentro de la sesión normal ──
 function renderOwnTarjetaSelector() {
   const sel = document.getElementById('own-tj-tarjeta');
@@ -3540,14 +3574,19 @@ function renderGastosTarjetas() {
 
   const headerHtml = `
     <div class="card" style="margin-bottom:14px;background:var(--s1);border:1px solid var(--border2)">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
-        <div>
-          <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Total pendiente de conciliar</div>
-          <div style="font-family:var(--fh);font-weight:700;font-size:1.2rem;color:var(--orange)">${fmt(granTotalARS)}</div>
-          ${granTotalUSD > 0 ? `<div style="font-family:var(--fh);font-weight:700;font-size:1.1rem;color:var(--yellow)">+ U$S ${granTotalUSD.toLocaleString('es-AR')}</div>` : ''}
+      <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Total pendiente de conciliar — dos monedas separadas, no se suman entre sí</div>
+      <div style="display:flex;gap:10px;margin-bottom:8px">
+        <div style="flex:1;padding:8px 10px;background:var(--s2);border-radius:8px;border-left:3px solid var(--orange)">
+          <div style="font-size:.58rem;color:var(--muted);text-transform:uppercase">En pesos</div>
+          <div style="font-family:var(--fh);font-weight:700;font-size:1.15rem;color:var(--orange)">${fmt(granTotalARS)}</div>
         </div>
-        <div style="font-size:.7rem;color:var(--muted);text-align:right">${gruposEsteMes.length} este mes · ${gruposFuturos.length} a futuro</div>
+        ${granTotalUSD > 0 ? `
+        <div style="flex:1;padding:8px 10px;background:var(--s2);border-radius:8px;border-left:3px solid var(--yellow)">
+          <div style="font-size:.58rem;color:var(--muted);text-transform:uppercase">En dólares</div>
+          <div style="font-family:var(--fh);font-weight:700;font-size:1.15rem;color:var(--yellow)">U$S ${granTotalUSD.toLocaleString('es-AR')}</div>
+        </div>` : ''}
       </div>
+      <div style="font-size:.7rem;color:var(--muted)">${gruposEsteMes.length} este mes · ${gruposFuturos.length} a futuro</div>
     </div>` + renderTotalesPorPersona(gruposAbiertos);
 
   const esteMesHtml = gruposEsteMes.length > 0
@@ -3639,11 +3678,19 @@ function renderTarjetaCard(grupo, conciliaciones, colapsadoPorDefault) {
     : fmt(totalARS);
   const fechaCierreLabel = new Date(grupo.cierre + 'T00:00:00').toLocaleDateString('es-AR', {day:'2-digit', month:'long', year:'numeric'});
 
+  // Distinguir si el período ya cerró (resumen listo, no va a sumar más) o sigue corriendo (consumo en curso)
+  const hoyISO = new Date().toISOString().slice(0,10);
+  const yaCerro = grupo.cierre < hoyISO;
+  const estadoBadge = estaConciliado ? ''
+    : yaCerro
+      ? `<span style="font-size:.58rem;color:var(--red);background:rgba(244,63,94,.1);padding:1px 6px;border-radius:4px;margin-left:6px">resumen cerrado</span>`
+      : `<span style="font-size:.58rem;color:var(--green);background:rgba(34,211,160,.1);padding:1px 6px;border-radius:4px;margin-left:6px">en curso</span>`;
+
   return `
   <div class="card" style="margin-bottom:14px;${estaConciliado ? 'opacity:.6' : ''}">
     <div class="ct" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;cursor:pointer" onclick="toggleGastosTarjetaDetalle('${key}')">
       <div>
-        <div style="font-size:.75rem;font-weight:700">💳 ${grupo.tarjeta.nombre}</div>
+        <div style="font-size:.75rem;font-weight:700">💳 ${grupo.tarjeta.nombre}${estadoBadge}</div>
         <div style="font-size:.63rem;color:var(--muted)">cierre ${fechaCierreLabel}</div>
       </div>
       <div style="display:flex;align-items:center;gap:8px">
@@ -3661,7 +3708,8 @@ function renderTarjetaCard(grupo, conciliaciones, colapsadoPorDefault) {
         const quienBadge = `<span style="font-size:.6rem;font-weight:700;color:${quienColor};background:${quienColor}1a;padding:1px 6px;border-radius:4px;white-space:nowrap">${g.cargadoPor}</span>`;
 
         return `
-        <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
+        <div style="padding:8px 0;border-bottom:1px solid var(--border)">
+        <div style="display:flex;align-items:center;gap:8px">
           <div style="flex:1;min-width:0">
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px">
               <span style="font-weight:600;font-size:.76rem">${g.tipo}</span>
@@ -3670,10 +3718,22 @@ function renderTarjetaCard(grupo, conciliaciones, colapsadoPorDefault) {
             </div>
             <div style="font-size:.65rem;color:var(--muted)">${new Date(g.fecha+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'})}</div>
           </div>
-          <div style="text-align:right;flex-shrink:0">
-            <div style="font-weight:700;color:var(--red);font-size:.8rem">${montoDisplay}</div>
+          <div style="text-align:right;flex-shrink:0;cursor:${estaConciliado?'default':'pointer'}" ${!estaConciliado ? `onclick="toggleEditarMontoGasto('${g.id}')"` : ''}>
+            <div style="font-weight:700;color:var(--red);font-size:.8rem">${montoDisplay}${!estaConciliado ? ' ✎' : ''}</div>
           </div>
           ${!estaConciliado ? `<button onclick="eliminarGastoTarjeta('${g.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.8rem;padding:2px 5px;flex-shrink:0">✕</button>` : ''}
+        </div>
+        ${!estaConciliado ? `
+        <div id="edit-monto-${g.id}" style="display:none;margin-top:8px;padding:8px;background:var(--s1);border-radius:6px">
+          <div style="display:flex;gap:6px">
+            <select id="edit-moneda-${g.id}" class="fi" style="width:80px;font-size:.7rem;padding:6px 4px">
+              <option value="ARS" ${!esUSD?'selected':''}>ARS</option>
+              <option value="USD" ${esUSD?'selected':''}>USD</option>
+            </select>
+            <input type="number" id="edit-valor-${g.id}" value="${g.monto}" class="fi" style="flex:1;font-size:.7rem;padding:6px 8px;text-align:right">
+            <button onclick="guardarEdicionMontoGasto('${g.id}')" class="btn btn-g" style="font-size:.68rem;padding:6px 10px">✓</button>
+          </div>
+        </div>` : ''}
         </div>`;
       }).join('')}
     </div>
