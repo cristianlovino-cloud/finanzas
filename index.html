@@ -350,9 +350,64 @@ window.cfValidarPin = async function() {
 
     document.getElementById('cf-pin-step').style.display  = 'none';
     document.getElementById('cf-form-step').style.display = 'block';
+
+    cfCargarMiHistorial(); // trae lo que esta persona ya cargó antes, no solo lo de esta sesión
   } catch(e) {
     console.error('cfValidarPin error:', e);
     errEl.textContent = 'No se pudo verificar el PIN (revisá tu conexión)';
+  }
+};
+
+// ── Trae y muestra el historial real de la persona logueada en este link (no solo lo de la sesión actual) ──
+window.cfCargarMiHistorial = async function() {
+  const quien = document.getElementById('cf-quien')?.value;
+  if (!quien) return;
+  const el = document.getElementById('cf-recientes');
+  if (el) el.innerHTML = '<div style="font-size:.7rem;color:var(--muted)">⟳ Cargando tu historial...</div>';
+
+  try {
+    const q = query(CF_COL_GASTOS, where('cargadoPor', '==', quien));
+    const snap = await getDocs(q);
+    const gastos = [];
+    snap.forEach(d => gastos.push(d.data()));
+    gastos.sort((a,b) => (b.ts||0) - (a.ts||0));
+
+    if (!el) return;
+    if (gastos.length === 0) {
+      el.innerHTML = '<div style="font-size:.7rem;color:var(--muted)">Todavía no cargaste nada.</div>';
+      return;
+    }
+
+    const totalARS = gastos.filter(g => g.moneda !== 'USD').reduce((s,g) => s + (g.monto||0), 0);
+    const totalUSD = gastos.filter(g => g.moneda === 'USD').reduce((s,g) => s + (g.monto||0), 0);
+
+    const totalHtml = `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--s2);border-radius:8px;margin-bottom:8px">
+        <span style="font-size:.7rem;color:var(--muted)">Total cargado por vos</span>
+        <div style="text-align:right">
+          <span style="font-size:.78rem;font-weight:700">${fmt(totalARS)}</span>
+          ${totalUSD > 0 ? `<span style="font-size:.72rem;font-weight:700;color:var(--yellow);margin-left:8px">U$S ${totalUSD.toLocaleString('es-AR')}</span>` : ''}
+        </div>
+      </div>`;
+
+    const itemsHtml = gastos.map(g => {
+      const esUSD = g.moneda === 'USD';
+      const montoDisplay = esUSD ? `U$S ${g.monto}` : fmt(g.monto);
+      const fechaLabel = g.fecha ? new Date(g.fecha+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
+      return `
+      <div style="padding:8px 10px;background:var(--s2);border-radius:8px;margin-bottom:6px;font-size:.74rem;display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <div style="min-width:0">
+          <div style="font-weight:600">${g.tipo || ''}</div>
+          <div style="font-size:.62rem;color:var(--muted)">${fechaLabel}</div>
+        </div>
+        <span style="font-weight:700;color:var(--red);white-space:nowrap">${montoDisplay}</span>
+      </div>`;
+    }).join('');
+
+    el.innerHTML = totalHtml + itemsHtml;
+  } catch(e) {
+    console.error('cfCargarMiHistorial error:', e);
+    if (el) el.innerHTML = '<div style="font-size:.7rem;color:var(--red)">No se pudo cargar tu historial (revisá tu conexión)</div>';
   }
 };
 
@@ -3705,7 +3760,7 @@ function renderTarjetaCard(grupo, conciliaciones, colapsadoPorDefault) {
     </div>
     <div id="detalle-${safeKey}" style="${colapsadoPorDefault ? 'display:none' : ''}">
     <div style="display:flex;flex-direction:column;gap:6px;margin:10px 0">
-      ${grupo.gastos.sort((a,b)=>a.fecha.localeCompare(b.fecha)).map(g => {
+      ${grupo.gastos.sort((a,b)=>b.fecha.localeCompare(a.fecha)).map(g => {
         const esUSD = g.moneda === 'USD';
         const montoDisplay = esUSD ? `U$S ${g.monto}` : fmt(g.monto);
         const quienColores = { 'Cris':'var(--blue)', 'Lara':'var(--purple)', 'Emma':'var(--green)', 'Recurrente automático':'var(--muted)' };
