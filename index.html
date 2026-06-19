@@ -3305,17 +3305,28 @@ function agruparGastosPorPeriodo() {
   const tarjetas = getTarjetas();
   const gastosFamilia = getGastosTarjetas();
   const grupos = {}; // key: tarjetaId + '|' + cierreISO -> { tarjeta, cierre, gastos: [] }
+  const huerfanos = []; // gastos cuyo tarjetaId ya no coincide con ninguna tarjeta configurada
 
   gastosFamilia.forEach(g => {
     const tarjeta = tarjetas.find(t => t.id === g.tarjetaId);
-    if (!tarjeta) return; // tarjeta borrada después de cargar el gasto — lo dejamos fuera del agrupado
+    if (!tarjeta) { huerfanos.push(g); return; } // no los perdemos: van a un grupo aparte
     const cierre = periodoDeGasto(tarjeta, g.fecha);
     const key = tarjeta.id + '|' + cierre;
     if (!grupos[key]) grupos[key] = { tarjeta, cierre, gastos: [] };
     grupos[key].gastos.push(g);
   });
 
-  return Object.values(grupos).sort((a,b) => b.cierre.localeCompare(a.cierre));
+  const resultado = Object.values(grupos).sort((a,b) => b.cierre.localeCompare(a.cierre));
+  if (huerfanos.length > 0) {
+    // Tarjeta "fantasma" para que el usuario vea y pueda reasignar, en vez de perder el gasto en silencio
+    resultado.unshift({
+      tarjeta: { id: '__huerfano__', nombre: '⚠ Sin tarjeta válida' },
+      cierre: '9999-99-99', // siempre arriba de todo
+      gastos: huerfanos,
+      esHuerfano: true,
+    });
+  }
+  return resultado;
 }
 
 function marcarPeriodoConciliado(tarjetaId, cierre, conciliado) {
@@ -3350,11 +3361,15 @@ function renderGastosTarjetas() {
   const conciliaciones = DB.get('tarjetas_conciliadas', {});
   const mesActual = getCurMes(); // "YYYY-MM"
 
+  // El grupo huérfano (gastos cuyo tarjetaId ya no existe) se muestra siempre, separado de la clasificación normal
+  const grupoHuerfano = grupos.find(g => g.esHuerfano);
+  const gruposNormales = grupos.filter(g => !g.esHuerfano);
+
   // Clasificar cada grupo: conciliado / cierra este mes / cierra en un mes futuro
   const gruposConciliados = [];
   const gruposEsteMes = [];
   const gruposFuturos = [];
-  grupos.forEach(grupo => {
+  gruposNormales.forEach(grupo => {
     const key = grupo.tarjeta.id + '|' + grupo.cierre;
     if (conciliaciones[key]) { gruposConciliados.push(grupo); return; }
     const mesDeCierre = grupo.cierre.slice(0,7);
@@ -3362,12 +3377,29 @@ function renderGastosTarjetas() {
     else gruposFuturos.push(grupo);
   });
 
-  // Totales separados ARS / USD — solo de lo pendiente (este mes + futuros)
+  // Totales separados ARS / USD — solo de lo pendiente (este mes + futuros), el huérfano no entra en el total hasta reasignarse
   const gruposAbiertos = [...gruposEsteMes, ...gruposFuturos];
   const granTotalARS = gruposAbiertos.reduce((s, grupo) =>
     s + grupo.gastos.filter(g => g.moneda !== 'USD').reduce((ss,g) => ss + (g.monto||0), 0), 0);
   const granTotalUSD = gruposAbiertos.reduce((s, grupo) =>
     s + grupo.gastos.filter(g => g.moneda === 'USD').reduce((ss,g) => ss + (g.monto||0), 0), 0);
+
+  const huerfanoHtml = grupoHuerfano ? `
+    <div class="card" style="margin-bottom:14px;border:1px solid var(--red)">
+      <div style="font-size:.74rem;font-weight:700;color:var(--red);margin-bottom:6px">⚠ ${grupoHuerfano.gastos.length} gasto${grupoHuerfano.gastos.length>1?'s':''} sin tarjeta válida</div>
+      <div style="font-size:.66rem;color:var(--muted2);margin-bottom:10px;line-height:1.5">Quedaron registrados contra una tarjeta que ya no existe (probablemente se editó o borró después). Reasigná cada uno a una tarjeta actual para que vuelva a sumar en los totales.</div>
+      ${grupoHuerfano.gastos.map(g => `
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:600;font-size:.76rem">${g.tipo}</div>
+            <div style="font-size:.65rem;color:var(--muted)">${new Date(g.fecha+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'})} · ${g.cargadoPor} · ${g.moneda==='USD' ? 'U$S '+g.monto : fmt(g.monto)}</div>
+          </div>
+          <select onchange="reasignarTarjetaGasto('${g.id}', this.value)" class="fi" style="width:130px;font-size:.7rem;padding:6px 6px">
+            <option value="">— reasignar —</option>
+            ${tarjetas.map(t => `<option value="${t.id}">${t.nombre}</option>`).join('')}
+          </select>
+        </div>`).join('')}
+    </div>` : '';
 
   const headerHtml = `
     <div class="card" style="margin-bottom:14px;background:var(--s1);border:1px solid var(--border2)">
@@ -3379,7 +3411,7 @@ function renderGastosTarjetas() {
         </div>
         <div style="font-size:.7rem;color:var(--muted);text-align:right">${gruposEsteMes.length} este mes · ${gruposFuturos.length} a futuro</div>
       </div>
-    </div>`;
+    </div>` + renderTotalesPorPersona(gruposAbiertos);
 
   const esteMesHtml = gruposEsteMes.length > 0
     ? gruposEsteMes.map(grupo => renderTarjetaCard(grupo, conciliaciones, true)).join('')
@@ -3400,11 +3432,62 @@ function renderGastosTarjetas() {
       </div>
     </div>`;
 
-  el.innerHTML = headerHtml
+  el.innerHTML = huerfanoHtml
+    + headerHtml
     + `<div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Este mes</div>`
     + esteMesHtml
     + futurosHtml
     + conciliadosHtml;
+}
+
+// ── Totales por persona (ARS y USD separados, sin convertir), sobre los períodos abiertos ──
+function renderTotalesPorPersona(gruposAbiertos) {
+  const porPersona = {}; // nombre -> { ars, usd }
+  gruposAbiertos.forEach(grupo => {
+    grupo.gastos.forEach(g => {
+      const nombre = g.cargadoPor || 'Sin asignar';
+      if (!porPersona[nombre]) porPersona[nombre] = { ars: 0, usd: 0 };
+      if (g.moneda === 'USD') porPersona[nombre].usd += (g.monto||0);
+      else porPersona[nombre].ars += (g.monto||0);
+    });
+  });
+
+  const nombres = Object.keys(porPersona);
+  if (nombres.length === 0) return '';
+
+  const quienColores = { 'Cris':'var(--blue)', 'Lara':'var(--purple)', 'Emma':'var(--green)', 'Recurrente automático':'var(--muted)' };
+
+  const filas = nombres
+    .sort((a,b) => (porPersona[b].ars - porPersona[a].ars))
+    .map(nombre => {
+      const d = porPersona[nombre];
+      const color = quienColores[nombre] || 'var(--yellow)';
+      return `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0">
+        <span style="font-size:.72rem;font-weight:700;color:${color}">${nombre}</span>
+        <div style="text-align:right">
+          <span style="font-size:.74rem;font-weight:700">${fmt(d.ars)}</span>
+          ${d.usd > 0 ? `<span style="font-size:.7rem;font-weight:700;color:var(--yellow);margin-left:6px">+ U$S ${d.usd.toLocaleString('es-AR')}</span>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+
+  return `
+    <div class="card" style="margin-bottom:14px">
+      <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Total por persona (pendiente)</div>
+      ${filas}
+    </div>`;
+}
+
+function reasignarTarjetaGasto(gastoId, nuevaTarjetaId) {
+  if (!nuevaTarjetaId) return;
+  const lista = getGastosTarjetas();
+  const g = lista.find(g => g.id === gastoId);
+  if (!g) return;
+  g.tarjetaId = nuevaTarjetaId;
+  saveGastosTarjetas(lista);
+  showToast('✓ Gasto reasignado correctamente');
+  renderGastosTarjetas();
 }
 
 // ── Card individual de un período (usada para "este mes" y para "conciliados") ──
