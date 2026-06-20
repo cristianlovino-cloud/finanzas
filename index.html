@@ -3384,33 +3384,38 @@ function calcularProximoCierre(tarjeta, desde) {
 // Devuelve una clave única tipo "tj_xxx_2026-06" (cierre del período que lo contiene)
 function periodoDeGasto(tarjeta, fechaGasto) {
   const f = new Date(fechaGasto); f.setHours(0,0,0,0);
-  let cierreActual = calcularProximoCierre(tarjeta, f);
-  // Si el gasto es posterior al "próximo cierre desde su propia fecha", retrocedemos
-  // (calcularProximoCierre con 'desde'=f ya da el cierre que lo contiene, porque busca el primer cierre >= f)
-  const cierreISO = cierreActual.toISOString().slice(0,10);
 
-  // Si hay una fecha de INICIO corregida a mano para este período puntual, y el gasto cae
-  // antes de ese inicio, en realidad pertenece al período anterior (el banco "atrasó" el arranque).
-  // Sin excepción cargada, esto no cambia nada respecto al comportamiento de siempre.
-  const mesDelCierre = cierreActual.getFullYear() + '-' + String(cierreActual.getMonth()+1).padStart(2,'0');
+  // Primero chequeamos si la fecha del gasto cae dentro del rango de alguna excepción de
+  // inicio manual (ej. "el período que cierra el 25/06 en realidad arrancó el 21/05").
+  // Sin esto, un gasto de fecha temprana (como el 22/05) calcularía su cierre natural
+  // (28/05, el normal de mayo) y nunca llegaría a consultar la excepción del período de junio.
   const iniciosExcepcion = tarjeta.iniciosExcepcion || {};
-  const inicioManual = iniciosExcepcion[mesDelCierre];
-  if (inicioManual && fechaGasto < inicioManual) {
-    // Retrocedemos al período anterior: buscamos el cierre inmediatamente anterior al actual
-    const unDiaAntes = new Date(cierreActual);
-    unDiaAntes.setDate(unDiaAntes.getDate() - 1);
-    // Recorremos hacia atrás día por día hasta encontrar un cierre distinto al actual
-    // (en la práctica esto es instantáneo: como mucho retrocede un mes)
-    let cursor = new Date(unDiaAntes);
-    let cierreAnterior = calcularProximoCierre(tarjeta, cursor);
-    while (cierreAnterior.toISOString().slice(0,10) === cierreISO && cursor > new Date('2000-01-01')) {
-      cursor.setDate(cursor.getDate() - 1);
-      cierreAnterior = calcularProximoCierre(tarjeta, cursor);
+  for (const mesKey in iniciosExcepcion) {
+    const inicioManual = iniciosExcepcion[mesKey];
+    if (fechaGasto < inicioManual) continue; // el gasto es anterior a este inicio corregido, no es candidato
+
+    // El cierre de ESE período corregido es el que tenga excepción de cierre para mesKey,
+    // o si no hay excepción de cierre, el cierre calculado normal de ese mes.
+    const [y, m] = mesKey.split('-').map(Number);
+    const cierresExcepcion = tarjeta.cierresExcepcion || {};
+    let cierreDeEsePeriodo;
+    if (cierresExcepcion[mesKey]) {
+      cierreDeEsePeriodo = cierresExcepcion[mesKey];
+    } else {
+      // calculamos el cierre "natural" de ese mes específico (sin pasar por excepciones de inicio,
+      // para no entrar en recursión — usamos calcularProximoCierre con una fecha bien adentro del mes)
+      const fechaDeReferencia = new Date(y, m - 1, 15);
+      cierreDeEsePeriodo = calcularProximoCierre(tarjeta, fechaDeReferencia).toISOString().slice(0,10);
     }
-    return cierreAnterior.toISOString().slice(0,10);
+
+    if (fechaGasto >= inicioManual && fechaGasto <= cierreDeEsePeriodo) {
+      return cierreDeEsePeriodo;
+    }
   }
 
-  return cierreISO;
+  // Sin excepción de inicio aplicable: comportamiento normal de siempre.
+  let cierreActual = calcularProximoCierre(tarjeta, f);
+  return cierreActual.toISOString().slice(0,10);
 }
 
 // ── Mes "de pago" de un período, para fines de clasificación visual (Este mes / A futuro) ──
