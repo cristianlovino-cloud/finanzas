@@ -2958,6 +2958,29 @@ function actualizarTarjetaCfg(id, campo, valor) {
   }
 }
 
+// ── Excepción manual de cierre: corrige UN mes puntual sin alterar la regla general de la tarjeta ──
+function guardarExcepcionCierre(tarjetaId, mesKey, fechaNueva) {
+  if (!fechaNueva) return;
+  const tarjetas = getTarjetas();
+  const t = tarjetas.find(t => t.id === tarjetaId);
+  if (!t) return;
+  if (!t.cierresExcepcion) t.cierresExcepcion = {};
+  t.cierresExcepcion[mesKey] = fechaNueva;
+  saveTarjetas(tarjetas);
+  showToast('✓ Cierre de ' + t.nombre + ' corregido para ese mes');
+  renderTarjetasCfg();
+}
+
+function borrarExcepcionCierre(tarjetaId, mesKey) {
+  const tarjetas = getTarjetas();
+  const t = tarjetas.find(t => t.id === tarjetaId);
+  if (!t || !t.cierresExcepcion) return;
+  delete t.cierresExcepcion[mesKey];
+  saveTarjetas(tarjetas);
+  showToast('✓ Vuelve a calcularse automáticamente');
+  renderTarjetasCfg();
+}
+
 function renderTarjetasCfg() {
   const el = document.getElementById('cfg-tarjetas-list');
   if (!el) return;
@@ -2968,6 +2991,8 @@ function renderTarjetasCfg() {
   }
   el.innerHTML = tarjetas.map(t => {
     const proximoCierre = calcularProximoCierre(t);
+    const mesDelProximoCierre = proximoCierre.getFullYear() + '-' + String(proximoCierre.getMonth()+1).padStart(2,'0');
+    const tieneExcepcion = !!(t.cierresExcepcion && t.cierresExcepcion[mesDelProximoCierre]);
     return `
     <div style="display:flex;flex-direction:column;gap:6px;padding:10px;background:var(--s2);border-radius:8px;margin-bottom:8px">
       <div style="display:flex;gap:6px;align-items:center">
@@ -2982,7 +3007,14 @@ function renderTarjetasCfg() {
         </select>
         ${t.tipoCierre === 'dia_fijo' ? `<input type="number" min="1" max="31" value="${t.diaFijo||20}" oninput="actualizarTarjetaCfg('${t.id}','diaFijo',this.value)" class="fi" style="width:60px;font-size:.72rem;padding:7px 6px;text-align:center">` : ''}
       </div>
-      <div style="font-size:.64rem;color:var(--muted)">Próximo cierre: <b id="cierre-label-${t.id}" style="color:var(--text)">${proximoCierre.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'})}</b></div>
+      <div style="font-size:.64rem;color:var(--muted)">Próximo cierre: <b id="cierre-label-${t.id}" style="color:var(--text)">${proximoCierre.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'})}</b>${tieneExcepcion ? ' <span style="color:var(--orange)">(corregido a mano)</span>' : ''}</div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <div style="flex:1">
+          <div style="font-size:.58rem;color:var(--muted);margin-bottom:2px">¿El banco corrió esta fecha? Corregila acá:</div>
+          <input type="date" id="excepcion-input-${t.id}" value="${tieneExcepcion ? t.cierresExcepcion[mesDelProximoCierre] : ''}" onchange="guardarExcepcionCierre('${t.id}','${mesDelProximoCierre}',this.value)" class="fi" style="width:100%;font-size:.72rem;padding:6px 8px">
+        </div>
+        ${tieneExcepcion ? `<button onclick="borrarExcepcionCierre('${t.id}','${mesDelProximoCierre}')" class="btn btn-o" style="font-size:.65rem;padding:6px 10px;align-self:flex-end">Quitar</button>` : ''}
+      </div>
     </div>`;
   }).join('');
 }
@@ -3298,6 +3330,12 @@ function calcularProximoCierre(tarjeta, desde) {
   hoy.setHours(0,0,0,0);
 
   function cierreDeMes(year, monthIndex) {
+    // Si hay una excepción manual para este mes (ej. el banco no respetó el jueves por feriado),
+    // la usamos directamente en vez de calcular con la fórmula automática.
+    const mesKey = year + '-' + String(monthIndex+1).padStart(2,'0');
+    const excepciones = tarjeta.cierresExcepcion || {};
+    if (excepciones[mesKey]) return new Date(excepciones[mesKey] + 'T00:00:00');
+
     if (tarjeta.tipoCierre === 'ultimo_jueves')    return juevesDelMes(year, monthIndex, 0);
     if (tarjeta.tipoCierre === 'penultimo_jueves') return juevesDelMes(year, monthIndex, 1);
     // dia_fijo
