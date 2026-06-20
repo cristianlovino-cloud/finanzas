@@ -3607,12 +3607,18 @@ function renderGastosTarjetas() {
     else gruposFuturos.push(grupo);
   });
 
-  // Totales separados ARS / USD — solo de lo pendiente (este mes + futuros), el huérfano no entra en el total hasta reasignarse
-  const gruposAbiertos = [...gruposEsteMes, ...gruposFuturos];
-  const granTotalARS = gruposAbiertos.reduce((s, grupo) =>
+  // Totales separados: "Este mes" es lo que efectivamente hay que pagar/conciliar ahora.
+  // "A futuro" es lo que vendrá en próximos resúmenes (cuotas en curso, etc.) — informativo, no urgente.
+  const totalEsteMesARS = gruposEsteMes.reduce((s, grupo) =>
     s + grupo.gastos.filter(g => g.moneda !== 'USD').reduce((ss,g) => ss + (g.monto||0), 0), 0);
-  const granTotalUSD = gruposAbiertos.reduce((s, grupo) =>
+  const totalEsteMesUSD = gruposEsteMes.reduce((s, grupo) =>
     s + grupo.gastos.filter(g => g.moneda === 'USD').reduce((ss,g) => ss + (g.monto||0), 0), 0);
+  const totalFuturoARS = gruposFuturos.reduce((s, grupo) =>
+    s + grupo.gastos.filter(g => g.moneda !== 'USD').reduce((ss,g) => ss + (g.monto||0), 0), 0);
+  const totalFuturoUSD = gruposFuturos.reduce((s, grupo) =>
+    s + grupo.gastos.filter(g => g.moneda === 'USD').reduce((ss,g) => ss + (g.monto||0), 0), 0);
+
+  const gruposAbiertos = [...gruposEsteMes, ...gruposFuturos]; // se sigue usando para "Total por persona"
 
   const huerfanoHtml = grupoHuerfano ? `
     <div class="card" style="margin-bottom:14px;border:1px solid var(--red)">
@@ -3633,20 +3639,23 @@ function renderGastosTarjetas() {
 
   const headerHtml = `
     <div class="card" style="margin-bottom:14px;background:var(--s1);border:1px solid var(--border2)">
-      <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Total pendiente de conciliar — dos monedas separadas, no se suman entre sí</div>
+      <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Este mes — lo que hay que conciliar ahora</div>
       <div style="display:flex;gap:10px;margin-bottom:8px">
         <div style="flex:1;padding:8px 10px;background:var(--s2);border-radius:8px;border-left:3px solid var(--orange)">
           <div style="font-size:.58rem;color:var(--muted);text-transform:uppercase">En pesos</div>
-          <div style="font-family:var(--fh);font-weight:700;font-size:1.15rem;color:var(--orange)">${fmt(granTotalARS)}</div>
+          <div style="font-family:var(--fh);font-weight:700;font-size:1.15rem;color:var(--orange)">${fmt(totalEsteMesARS)}</div>
         </div>
-        ${granTotalUSD > 0 ? `
+        ${totalEsteMesUSD > 0 ? `
         <div style="flex:1;padding:8px 10px;background:var(--s2);border-radius:8px;border-left:3px solid var(--yellow)">
           <div style="font-size:.58rem;color:var(--muted);text-transform:uppercase">En dólares</div>
-          <div style="font-family:var(--fh);font-weight:700;font-size:1.15rem;color:var(--yellow)">U$S ${granTotalUSD.toLocaleString('es-AR')}</div>
+          <div style="font-family:var(--fh);font-weight:700;font-size:1.15rem;color:var(--yellow)">U$S ${totalEsteMesUSD.toLocaleString('es-AR')}</div>
         </div>` : ''}
       </div>
-      <div style="font-size:.7rem;color:var(--muted)">${gruposEsteMes.length} este mes · ${gruposFuturos.length} a futuro</div>
-    </div>` + renderTotalesPorPersona(gruposAbiertos);
+      ${gruposFuturos.length > 0 ? `
+      <div style="border-top:1px solid var(--border);padding-top:8px;margin-top:4px">
+        <div style="font-size:.62rem;color:var(--muted)">A futuro (${gruposFuturos.length} período${gruposFuturos.length!==1?'s':''}, ver abajo): ${fmt(totalFuturoARS)}${totalFuturoUSD>0?` · U$S ${totalFuturoUSD.toLocaleString('es-AR')}`:''}</div>
+      </div>` : ''}
+    </div>` + renderTotalesPorPersona(gruposEsteMes);
 
   const esteMesHtml = gruposEsteMes.length > 0
     ? gruposEsteMes.map(grupo => renderTarjetaCard(grupo, conciliaciones, true)).join('')
@@ -3709,7 +3718,7 @@ function renderTotalesPorPersona(gruposAbiertos) {
 
   return `
     <div class="card" style="margin-bottom:14px">
-      <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Total por persona (pendiente)</div>
+      <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Total por persona — este mes</div>
       ${filas}
     </div>`;
 }
