@@ -2981,6 +2981,30 @@ function borrarExcepcionCierre(tarjetaId, mesKey) {
   renderTarjetasCfg();
 }
 
+function guardarExcepcionInicio(tarjetaId, mesKey, fechaNueva) {
+  if (!fechaNueva) return;
+  const tarjetas = getTarjetas();
+  const t = tarjetas.find(t => t.id === tarjetaId);
+  if (!t) return;
+  if (!t.iniciosExcepcion) t.iniciosExcepcion = {};
+  t.iniciosExcepcion[mesKey] = fechaNueva;
+  saveTarjetas(tarjetas);
+  showToast('✓ Inicio de ' + t.nombre + ' corregido para ese mes');
+  renderTarjetasCfg();
+  if (typeof renderGastosTarjetas === 'function') renderGastosTarjetas();
+}
+
+function borrarExcepcionInicio(tarjetaId, mesKey) {
+  const tarjetas = getTarjetas();
+  const t = tarjetas.find(t => t.id === tarjetaId);
+  if (!t || !t.iniciosExcepcion) return;
+  delete t.iniciosExcepcion[mesKey];
+  saveTarjetas(tarjetas);
+  showToast('✓ Vuelve a calcularse automáticamente');
+  renderTarjetasCfg();
+  if (typeof renderGastosTarjetas === 'function') renderGastosTarjetas();
+}
+
 function renderTarjetasCfg() {
   const el = document.getElementById('cfg-tarjetas-list');
   if (!el) return;
@@ -2993,6 +3017,7 @@ function renderTarjetasCfg() {
     const proximoCierre = calcularProximoCierre(t);
     const mesDelProximoCierre = proximoCierre.getFullYear() + '-' + String(proximoCierre.getMonth()+1).padStart(2,'0');
     const tieneExcepcion = !!(t.cierresExcepcion && t.cierresExcepcion[mesDelProximoCierre]);
+    const tieneInicioExcepcion = !!(t.iniciosExcepcion && t.iniciosExcepcion[mesDelProximoCierre]);
     return `
     <div style="display:flex;flex-direction:column;gap:6px;padding:10px;background:var(--s2);border-radius:8px;margin-bottom:8px">
       <div style="display:flex;gap:6px;align-items:center">
@@ -3010,10 +3035,17 @@ function renderTarjetasCfg() {
       <div style="font-size:.64rem;color:var(--muted)">Próximo cierre: <b id="cierre-label-${t.id}" style="color:var(--text)">${proximoCierre.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'})}</b>${tieneExcepcion ? ' <span style="color:var(--orange)">(corregido a mano)</span>' : ''}</div>
       <div style="display:flex;gap:6px;align-items:center">
         <div style="flex:1">
-          <div style="font-size:.58rem;color:var(--muted);margin-bottom:2px">¿El banco corrió esta fecha? Corregila acá:</div>
+          <div style="font-size:.58rem;color:var(--muted);margin-bottom:2px">¿El banco corrió la fecha de CIERRE? Corregila acá:</div>
           <input type="date" id="excepcion-input-${t.id}" value="${tieneExcepcion ? t.cierresExcepcion[mesDelProximoCierre] : ''}" onchange="guardarExcepcionCierre('${t.id}','${mesDelProximoCierre}',this.value)" class="fi" style="width:100%;font-size:.72rem;padding:6px 8px">
         </div>
         ${tieneExcepcion ? `<button onclick="borrarExcepcionCierre('${t.id}','${mesDelProximoCierre}')" class="btn btn-o" style="font-size:.65rem;padding:6px 10px;align-self:flex-end">Quitar</button>` : ''}
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <div style="flex:1">
+          <div style="font-size:.58rem;color:var(--muted);margin-bottom:2px">¿El banco corrió la fecha de INICIO de este período? Corregila acá:</div>
+          <input type="date" id="inicio-excepcion-input-${t.id}" value="${tieneInicioExcepcion ? t.iniciosExcepcion[mesDelProximoCierre] : ''}" onchange="guardarExcepcionInicio('${t.id}','${mesDelProximoCierre}',this.value)" class="fi" style="width:100%;font-size:.72rem;padding:6px 8px">
+        </div>
+        ${tieneInicioExcepcion ? `<button onclick="borrarExcepcionInicio('${t.id}','${mesDelProximoCierre}')" class="btn btn-o" style="font-size:.65rem;padding:6px 10px;align-self:flex-end">Quitar</button>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -3355,7 +3387,30 @@ function periodoDeGasto(tarjeta, fechaGasto) {
   let cierreActual = calcularProximoCierre(tarjeta, f);
   // Si el gasto es posterior al "próximo cierre desde su propia fecha", retrocedemos
   // (calcularProximoCierre con 'desde'=f ya da el cierre que lo contiene, porque busca el primer cierre >= f)
-  return cierreActual.toISOString().slice(0,10);
+  const cierreISO = cierreActual.toISOString().slice(0,10);
+
+  // Si hay una fecha de INICIO corregida a mano para este período puntual, y el gasto cae
+  // antes de ese inicio, en realidad pertenece al período anterior (el banco "atrasó" el arranque).
+  // Sin excepción cargada, esto no cambia nada respecto al comportamiento de siempre.
+  const mesDelCierre = cierreActual.getFullYear() + '-' + String(cierreActual.getMonth()+1).padStart(2,'0');
+  const iniciosExcepcion = tarjeta.iniciosExcepcion || {};
+  const inicioManual = iniciosExcepcion[mesDelCierre];
+  if (inicioManual && fechaGasto < inicioManual) {
+    // Retrocedemos al período anterior: buscamos el cierre inmediatamente anterior al actual
+    const unDiaAntes = new Date(cierreActual);
+    unDiaAntes.setDate(unDiaAntes.getDate() - 1);
+    // Recorremos hacia atrás día por día hasta encontrar un cierre distinto al actual
+    // (en la práctica esto es instantáneo: como mucho retrocede un mes)
+    let cursor = new Date(unDiaAntes);
+    let cierreAnterior = calcularProximoCierre(tarjeta, cursor);
+    while (cierreAnterior.toISOString().slice(0,10) === cierreISO && cursor > new Date('2000-01-01')) {
+      cursor.setDate(cursor.getDate() - 1);
+      cierreAnterior = calcularProximoCierre(tarjeta, cursor);
+    }
+    return cierreAnterior.toISOString().slice(0,10);
+  }
+
+  return cierreISO;
 }
 
 // ── Mes "de pago" de un período, para fines de clasificación visual (Este mes / A futuro) ──
