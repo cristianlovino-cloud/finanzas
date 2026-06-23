@@ -748,6 +748,8 @@ nav::-webkit-scrollbar{display:none}
 
 /* ── TOAST ── */
 .toast-wrap{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:9999;pointer-events:none}
+#fab-btn:hover{transform:scale(1.08)!important;box-shadow:0 6px 24px rgba(34,211,160,.5)}
+#fab-btn:active{transform:scale(.88)!important}
 .toast{background:rgba(34,211,160,.12);border:1px solid rgba(34,211,160,.3);color:var(--green);padding:10px 20px;border-radius:8px;font-size:.78rem;white-space:nowrap;animation:fadeUp .3s ease;display:none}
 .toast.show{display:block}
 
@@ -878,6 +880,28 @@ nav::-webkit-scrollbar{display:none}
 
 <!-- TOAST -->
 <div class="toast-wrap"><div class="toast" id="toast"></div></div>
+
+<!-- FAB CONTEXTUAL -->
+<button id="fab-btn" onclick="fabAccion()" style="
+  display:none;
+  position:fixed;
+  bottom:24px;
+  right:20px;
+  z-index:800;
+  width:52px;
+  height:52px;
+  border-radius:50%;
+  border:none;
+  background:var(--green);
+  color:var(--bg);
+  font-size:1.5rem;
+  line-height:1;
+  cursor:pointer;
+  box-shadow:0 4px 18px rgba(34,211,160,.35);
+  transition:transform .15s,opacity .15s;
+  align-items:center;
+  justify-content:center;
+" aria-label="Acción rápida">＋</button>
 
 <!-- ════════════ OVERVIEW ════════════ -->
 <div class="page active" id="page-overview">
@@ -2224,6 +2248,18 @@ function go(id, btn) {
   // Show sticky save only on presupuesto
   const stickySave = document.getElementById('sticky-save');
   if (stickySave) stickySave.style.display = id === 'presupuesto' ? 'flex' : 'none';
+  // FAB contextual
+  const fab = document.getElementById('fab-btn');
+  if (fab) {
+    const fabTabs = { overview: true, flujo: true, cargar: true, tarjetas: true };
+    if (fabTabs[id]) {
+      fab.style.display = 'flex';
+      fab.title = id === 'tarjetas' ? 'Cargar gasto con tarjeta' : 'Cargar gasto';
+      fab.dataset.ctx = id;
+    } else {
+      fab.style.display = 'none';
+    }
+  }
   // Auto-refresh data when switching to key pages
   if (id === 'overview') {
     updateOverview();
@@ -2241,6 +2277,32 @@ function go(id, btn) {
     const fechaEl = document.getElementById('own-tj-fecha');
     if (fechaEl && !fechaEl.value) fechaEl.value = new Date().toISOString().slice(0,10);
     if (window.cfSincronizarAhora) window.cfSincronizarAhora();
+  }
+}
+
+function fabAccion() {
+  const fab = document.getElementById('fab-btn');
+  const ctx = fab ? fab.dataset.ctx : '';
+  // Animación tap
+  if (fab) { fab.style.transform = 'scale(.88)'; setTimeout(() => fab.style.transform = '', 150); }
+  if (ctx === 'tarjetas') {
+    // Scroll al form de carga propia en la misma página
+    const formEl = document.querySelector('#page-tarjetas .card:nth-child(2)');
+    if (formEl) {
+      formEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setTimeout(() => {
+        const tj = document.getElementById('own-tj-tarjeta');
+        if (tj) tj.focus();
+      }, 350);
+    }
+  } else {
+    // Ir a Cargar y hacer foco en monto
+    const btnCargar = Array.from(document.querySelectorAll('.nb')).find(b => b.textContent.includes('Cargar'));
+    if (btnCargar) go('cargar', btnCargar);
+    setTimeout(() => {
+      const montoEl = document.getElementById('tx-monto');
+      if (montoEl) montoEl.focus();
+    }, 150);
   }
 }
 
@@ -7087,6 +7149,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Init patrimonio
   updatePatrimonio();
+
+  // Init FAB — visible en Overview al arrancar
+  const fabInit = document.getElementById('fab-btn');
+  if (fabInit) { fabInit.style.display = 'flex'; fabInit.dataset.ctx = 'overview'; }
 
   // Init overview (KPIs primero, antes que los charts)
   updateOverview();
