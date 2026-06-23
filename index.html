@@ -209,6 +209,7 @@ function iniciarEscuchaGastosFamiliares() {
     localStorage.setItem('gastos_tarjetas', JSON.stringify(actualizados));
     if (typeof renderGastosTarjetas === 'function') renderGastosTarjetas();
     if (typeof showToast === 'function') showToast(`💳 ${nuevos.length} gasto${nuevos.length>1?'s':''} nuevo${nuevos.length>1?'s':''} de tarjeta`);
+    actualizarBadgeTarjetas();
   }, (err) => {
     console.error('Escucha gastos familiares error:', err);
     if (typeof showToast === 'function') showToast('⚠ No se pudo sincronizar gastos de tarjetas — tocá "Sincronizar ahora" en el tab', '#f43f5e');
@@ -873,7 +874,7 @@ nav::-webkit-scrollbar{display:none}
   <button class="nb" onclick="go('cargar',this)">＋ Cargar</button>
   <button class="nb" onclick="go('cuentas',this)">◈ Cuentas</button>
   <button class="nb" onclick="go('inversiones',this)">◈ Inversiones</button>
-  <button class="nb" onclick="go('tarjetas',this)">💳 Gastos Tarjetas</button>
+  <button class="nb" onclick="go('tarjetas',this)" id="nb-tarjetas" style="position:relative">💳 Gastos Tarjetas<span id="badge-tarjetas" style="display:none;position:absolute;top:4px;right:4px;background:#f43f5e;color:#fff;font-size:.6rem;font-weight:700;min-width:16px;height:16px;border-radius:8px;padding:0 4px;line-height:16px;text-align:center;"></span></button>
   <button class="nb" onclick="go('patrimonio',this)" style="display:none">⬟ Patrimonio</button>
   <button class="nb" onclick="go('config',this)">⚙ Config</button>
 </nav>
@@ -2277,7 +2278,37 @@ function go(id, btn) {
     const fechaEl = document.getElementById('own-tj-fecha');
     if (fechaEl && !fechaEl.value) fechaEl.value = new Date().toISOString().slice(0,10);
     if (window.cfSincronizarAhora) window.cfSincronizarAhora();
+    resetearBadgeTarjetas();
   }
+}
+
+// ── Badge "cargas nuevas de Lara/Emma" en tab Tarjetas ──
+function actualizarBadgeTarjetas() {
+  const badge = document.getElementById('badge-tarjetas');
+  if (!badge) return;
+  const ultimaVista = parseInt(localStorage.getItem('tarjetas_ultima_vista') || '0');
+  const gastos = JSON.parse(localStorage.getItem('gastos_tarjetas') || '[]');
+  // Solo gastos de Lara o Emma, cargados después de la última visita al tab
+  const nuevos = gastos.filter(g => {
+    const usuario = (g.usuario || '').toLowerCase();
+    if (usuario !== 'lara' && usuario !== 'emma') return false;
+    const ts = g.timestamp || g.fechaRegistro || g.fecha || 0;
+    // Si el timestamp es string ISO, convertir
+    const tsMilis = typeof ts === 'string' ? new Date(ts).getTime() : (ts?.seconds ? ts.seconds * 1000 : Number(ts));
+    return tsMilis > ultimaVista;
+  });
+  if (nuevos.length > 0) {
+    badge.textContent = nuevos.length > 99 ? '99+' : nuevos.length;
+    badge.style.display = 'inline-block';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+function resetearBadgeTarjetas() {
+  localStorage.setItem('tarjetas_ultima_vista', Date.now().toString());
+  const badge = document.getElementById('badge-tarjetas');
+  if (badge) badge.style.display = 'none';
 }
 
 function fabAccion() {
@@ -7153,6 +7184,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Init FAB — visible en Overview al arrancar
   const fabInit = document.getElementById('fab-btn');
   if (fabInit) { fabInit.style.display = 'flex'; fabInit.dataset.ctx = 'overview'; }
+  // Init badge tarjetas — por si hay cargas previas no vistas
+  actualizarBadgeTarjetas();
 
   // Init overview (KPIs primero, antes que los charts)
   updateOverview();
