@@ -3041,6 +3041,7 @@ function actualizarTarjetaCfg(id, campo, valor) {
   // Solo 'tipoCierre' cambia la estructura visible (aparece/desaparece el input de día fijo), así que ese sí re-renderiza.
   const requiereRerender = campo === 'tipoCierre';
   saveTarjetas(tarjetas, { skipRender: !requiereRerender });
+  if (campo === 'mostrarComoEsteMes' && typeof renderGastosTarjetas === 'function') renderGastosTarjetas();
 
   // Si cambió el día fijo (sin re-render completo), actualizamos solo el texto de "próximo cierre" in-place
   if (campo === 'diaFijo') {
@@ -3138,6 +3139,10 @@ function renderTarjetasCfg() {
         </div>
         ${tieneInicioExcepcion ? `<button onclick="borrarExcepcionInicio('${t.id}','${mesDelProximoCierre}')" class="btn btn-o" style="font-size:.65rem;padding:6px 10px;align-self:flex-end">Quitar</button>` : ''}
       </div>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 0">
+        <input type="checkbox" ${t.mostrarComoEsteMes ? 'checked' : ''} onchange="actualizarTarjetaCfg('${t.id}','mostrarComoEsteMes',this.checked)" style="width:15px;height:15px;cursor:pointer">
+        <span style="font-size:.68rem;color:var(--muted2)">Mostrar período próximo en <b style="color:var(--text)">Este mes</b> <span style="color:var(--muted)">(útil si cierra en los primeros días del mes siguiente)</span></span>
+      </label>
     </div>`;
   }).join('');
 }
@@ -3792,7 +3797,8 @@ function renderGastosTarjetas() {
     const key = grupo.tarjeta.id + '|' + grupo.cierre;
     if (conciliaciones[key]) { gruposConciliados.push(grupo); return; }
     const mesDeCierre = mesDeClasificacion(grupo.cierre);
-    if (mesDeCierre <= mesActual) gruposEsteMes.push(grupo); // incluye atrasados sin conciliar, para no perderlos de vista
+    const forzarEsteMes = !!(grupo.tarjeta && grupo.tarjeta.mostrarComoEsteMes);
+    if (mesDeCierre <= mesActual || forzarEsteMes) gruposEsteMes.push(grupo); // incluye atrasados + tarjetas con flag manual
     else gruposFuturos.push(grupo);
   });
 
