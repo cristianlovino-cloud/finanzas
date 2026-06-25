@@ -2288,12 +2288,10 @@ function actualizarBadgeTarjetas() {
   if (!badge) return;
   const ultimaVista = parseInt(localStorage.getItem('tarjetas_ultima_vista') || '0');
   const gastos = JSON.parse(localStorage.getItem('gastos_tarjetas') || '[]');
-  // Solo gastos de Lara o Emma, cargados después de la última visita al tab
   const nuevos = gastos.filter(g => {
-    const usuario = (g.usuario || '').toLowerCase();
-    if (usuario !== 'lara' && usuario !== 'emma') return false;
-    const ts = g.timestamp || g.fechaRegistro || g.fecha || 0;
-    // Si el timestamp es string ISO, convertir
+    const quien = (g.cargadoPor || g.usuario || '').toLowerCase();
+    if (quien !== 'lara' && quien !== 'emma') return false;
+    const ts = g.ts || g.timestamp || g.fechaRegistro || 0;
     const tsMilis = typeof ts === 'string' ? new Date(ts).getTime() : (ts?.seconds ? ts.seconds * 1000 : Number(ts));
     return tsMilis > ultimaVista;
   });
