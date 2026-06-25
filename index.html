@@ -341,6 +341,10 @@ window.cfValidarPin = async function() {
 
     _cfPinValidado = true;
     _cfTarjetasDisponibles = data.tarjetas || [];
+    // Persistir modo familiar para que PWA instalada arranque directo al form
+    const quienActual = document.getElementById('cf-quien')?.value || '';
+    localStorage.setItem('cf_modo_familiar', '1');
+    if (quienActual) localStorage.setItem('cf_quien', quienActual);
     const sel = document.getElementById('cf-tarjeta');
     sel.innerHTML = _cfTarjetasDisponibles.length > 0
       ? _cfTarjetasDisponibles.map(t => `<option value="${t.id}">${t.nombre}</option>`).join('')
@@ -774,6 +778,7 @@ nav::-webkit-scrollbar{display:none}
     <div style="text-align:center;margin-bottom:24px">
       <div style="font-family:var(--fh);font-weight:700;font-size:1.3rem">💳 Cargar gasto</div>
       <div style="font-size:.78rem;color:var(--muted);margin-top:4px">CL · Finanzas</div>
+      <button onclick="cfCerrarSesion()" style="margin-top:10px;background:none;border:none;color:var(--muted);font-size:.65rem;cursor:pointer;text-decoration:underline">Cerrar sesión</button>
     </div>
 
     <!-- Paso 1: PIN -->
@@ -2281,6 +2286,13 @@ function go(id, btn) {
     resetearBadgeTarjetas();
   }
 }
+
+// ── Cerrar sesión modo familiar (limpia flag y recarga) ──
+window.cfCerrarSesion = function() {
+  localStorage.removeItem('cf_modo_familiar');
+  localStorage.removeItem('cf_quien');
+  location.href = location.origin + location.pathname; // recarga sin query params
+};
 
 // ── Badge "cargas nuevas de Lara/Emma" en tab Tarjetas ──
 function actualizarBadgeTarjetas() {
@@ -7051,26 +7063,53 @@ if ('serviceWorker' in navigator) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  // ── Modo carga familiar: si viene por query param, mostramos solo el overlay simplificado ──
-  if (new URLSearchParams(location.search).get('modo') === 'carga-familiar') {
+  // ── Modo carga familiar: query param O flag persistido (para PWA instalada sin query string) ──
+  const _cfModoParam = new URLSearchParams(location.search).get('modo') === 'carga-familiar';
+  const _cfModoFlag  = localStorage.getItem('cf_modo_familiar') === '1';
+  if (_cfModoParam || _cfModoFlag) {
     document.getElementById('carga-familiar-overlay').style.display = 'block';
     document.getElementById('cf-fecha').value = new Date().toISOString().slice(0,10);
 
-    // Si el link tiene &quien=Lara o &quien=Emma, preseleccionar y ocultar el selector
-    const quienUrl = new URLSearchParams(location.search).get('quien');
+    // Quien: primero query param, después localStorage (PWA)
+    const quienUrl = new URLSearchParams(location.search).get('quien') || localStorage.getItem('cf_quien') || '';
     if (quienUrl) {
       const quienSel = document.getElementById('cf-quien');
       if (quienSel) {
-        // Agregar la opción si no existe (para personas fuera de la lista por default)
         if (![...quienSel.options].some(o => o.value === quienUrl)) {
           const opt = document.createElement('option');
           opt.value = quienUrl; opt.textContent = quienUrl;
           quienSel.appendChild(opt);
         }
         quienSel.value = quienUrl;
-        quienSel.closest('.card').style.display = 'none'; // oculta la card de "¿quién carga?"
+        quienSel.closest('.card').style.display = 'none';
       }
     }
+
+    // Si ya validó el PIN antes (flag persistido), saltar directo al form
+    if (_cfModoFlag && !_cfModoParam) {
+      // Intentar cargar config desde Firestore para tener tarjetas/categorías actualizadas
+      getDoc(CF_DOC_PIN).then(snap => {
+        if (!snap.exists()) return;
+        const data = snap.data();
+        _cfTarjetasDisponibles = data.tarjetas || [];
+        const sel = document.getElementById('cf-tarjeta');
+        sel.innerHTML = _cfTarjetasDisponibles.length > 0
+          ? _cfTarjetasDisponibles.map(t => `<option value="${t.id}">${t.nombre}</option>`).join('')
+          : '<option value="">— sin tarjetas configuradas —</option>';
+        _cfCategoriasDisponibles = (data.categorias || []).slice().sort((a,b) => a.localeCompare(b,'es'));
+        cfRenderCategoriaSelector();
+        document.getElementById('cf-pin-step').style.display  = 'none';
+        document.getElementById('cf-form-step').style.display = 'block';
+        _cfPinValidado = true;
+        cfCargarMiHistorial();
+      }).catch(() => {
+        // Sin conexión: igual mostrar form si ya validó antes, sin historial
+        document.getElementById('cf-pin-step').style.display  = 'none';
+        document.getElementById('cf-form-step').style.display = 'block';
+        _cfPinValidado = true;
+      });
+    }
+
     return; // no inicializamos el resto de la app en este modo
   }
 
