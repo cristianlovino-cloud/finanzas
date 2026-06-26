@@ -3845,17 +3845,17 @@ function renderGastosTarjetas() {
     if (conciliaciones[key]) { gruposConciliados.push(grupo); return; }
     const mesDeCierre = mesDeClasificacion(grupo.cierre);
     const forzarEsteMes = !!(grupo.tarjeta && grupo.tarjeta.mostrarComoEsteMes);
-    // Auto: calcular el cierre anterior de esta tarjeta (= inicio del período actual).
-    // Si ese cierre anterior ya pasó → este período ya arrancó → mostrar en "Este mes".
-    // Ej: BSF cerró el 25/06 → período siguiente (26/06→30/07) ya empezó → mostrar ahora.
+    // Auto: si hoy >= inicio del período (= el gasto más antiguo del grupo ya existe y su fecha <= hoy)
+    // el período ya arrancó → mostrarlo en "Este mes"
     let periodoYaArrancoHoy = false;
     try {
       const cierreDate = new Date(grupo.cierre + 'T00:00:00');
-      const unDiaAntes = new Date(cierreDate);
-      unDiaAntes.setDate(unDiaAntes.getDate() - 1);
-      const cierreAnterior = calcularProximoCierre(grupo.tarjeta, unDiaAntes);
-      // Si el cierre anterior ya ocurrió (≤ hoy) y el cierre actual todavía no → período en curso
-      periodoYaArrancoHoy = cierreAnterior <= hoy && cierreDate > hoy;
+      if (cierreDate > hoy && grupo.gastos.length > 0) {
+        // El inicio del período = fecha mínima de los gastos del grupo
+        const fechaMinGasto = grupo.gastos.map(g => g.fecha).sort()[0];
+        const inicioDate = new Date(fechaMinGasto + 'T00:00:00');
+        periodoYaArrancoHoy = inicioDate <= hoy;
+      }
     } catch(e) {}
     if (mesDeCierre <= mesActual || forzarEsteMes || periodoYaArrancoHoy) gruposEsteMes.push(grupo);
     else gruposFuturos.push(grupo);
