@@ -3405,6 +3405,15 @@ function aplicarDebitosRecurrentes(mes) {
 
       const diaSeguro = Math.min(r.diaDelMes || 1, new Date(parseInt(mes.slice(0,4)), parseInt(mes.slice(5,7)), 0).getDate());
       const fecha = mes + '-' + String(diaSeguro).padStart(2,'0');
+
+      // Verificar que la fecha del recurrente caiga dentro del período correcto de la tarjeta.
+      // Ej: BSF cierra el 25/06 — un recurrente del día 26 pertenece al período siguiente, no a junio.
+      const tarjetaDelRec = getTarjetas().find(t => t.id === r.tarjetaId);
+      if (tarjetaDelRec) {
+        const cierreDelPeriodo = periodoDeGasto(tarjetaDelRec, fecha);
+        const mesDelCierre = mesDeClasificacion(cierreDelPeriodo);
+        if (mesDelCierre !== mes) return; // cae en otro período, no insertar acá
+      }
       // Dentro del desglose de tarjeta sí podemos guardar el monto en su moneda original
       // (USD o ARS), porque ese desglose no se suma a los totales de Flujo.
       gastosTarjetas.push({
@@ -3445,7 +3454,18 @@ function aplicarDebitosRecurrentes(mes) {
     DB.set('txs', txsAll);
     if (window.FBsave) window.FBsave('txs', txsAll);
   }
-  if (huboCambiosTarjetas) {
+  // Limpiar recurrentes que hayan quedado en períodos incorrectos (ej: después de cambiar fecha de cierre)
+  const tarjetasActuales = getTarjetas();
+  const antesLimpiar = gastosTarjetas.length;
+  gastosTarjetas = gastosTarjetas.filter(g => {
+    if (!g.recurrenteId || !g.tarjetaId) return true; // no es recurrente de tarjeta, no tocar
+    const tj = tarjetasActuales.find(t => t.id === g.tarjetaId);
+    if (!tj) return true; // tarjeta no encontrada, dejar
+    const cierreDelPeriodo = periodoDeGasto(tj, g.fecha);
+    const mesDelCierre = mesDeClasificacion(cierreDelPeriodo);
+    return mesDelCierre === g.fecha.slice(0,7); // solo mantener si pertenece al mes correcto
+  });
+  if (huboCambiosTarjetas || gastosTarjetas.length !== antesLimpiar) {
     saveGastosTarjetas(gastosTarjetas);
     if (typeof renderGastosTarjetas === 'function') renderGastosTarjetas();
   }
