@@ -3454,23 +3454,34 @@ function aplicarDebitosRecurrentes(mes) {
     DB.set('txs', txsAll);
     if (window.FBsave) window.FBsave('txs', txsAll);
   }
-  // Limpiar recurrentes que hayan quedado en períodos incorrectos (ej: después de cambiar fecha de cierre)
+  // Limpiar gastos (recurrentes y de Lara/Emma) que quedaron en el mes calendario equivocado
+  // porque su fecha es posterior al cierre de la tarjeta de ese mes.
+  // Ej: BSF cierra el 25/06 — cualquier gasto del 26/06 pertenece al período siguiente.
   try {
     const tarjetasActuales = getTarjetas();
     const antesLimpiar = gastosTarjetas.length;
     gastosTarjetas = gastosTarjetas.filter(g => {
-      if (!g.recurrenteId || !g.tarjetaId) return true;
+      if (!g.tarjetaId || !g.fecha) return true;
       const tj = tarjetasActuales.find(t => t.id === g.tarjetaId);
       if (!tj) return true;
-      const cierreDelPeriodo = periodoDeGasto(tj, g.fecha);
-      const mesDelCierre = mesDeClasificacion(cierreDelPeriodo);
-      return mesDelCierre === g.fecha.slice(0,7);
+      // El cierre real del período al que pertenece este gasto
+      const cierreReal = periodoDeGasto(tj, g.fecha);
+      // El cierre esperado para el mes que se está procesando (usamos el día 15 como referencia)
+      const cierreEsperado = periodoDeGasto(tj, mes + '-15');
+      // Si el cierre real es posterior al esperado, el gasto pertenece a un período futuro → no va acá
+      return cierreReal <= cierreEsperado;
     });
     if (huboCambiosTarjetas || gastosTarjetas.length !== antesLimpiar) {
       saveGastosTarjetas(gastosTarjetas);
       if (typeof renderGastosTarjetas === 'function') renderGastosTarjetas();
     }
-  } catch(e) { console.warn('Limpieza recurrentes error:', e); if (huboCambiosTarjetas) { saveGastosTarjetas(gastosTarjetas); if (typeof renderGastosTarjetas === 'function') renderGastosTarjetas(); } }
+  } catch(e) {
+    console.warn('Limpieza gastos tarjetas error:', e);
+    if (huboCambiosTarjetas) {
+      saveGastosTarjetas(gastosTarjetas);
+      if (typeof renderGastosTarjetas === 'function') renderGastosTarjetas();
+    }
+  }
 }
 
 // ── Calcula el N-ésimo jueves desde el final de un mes dado (year, monthIndex 0-based) ──
