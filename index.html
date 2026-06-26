@@ -3838,12 +3838,17 @@ function renderGastosTarjetas() {
   const gruposConciliados = [];
   const gruposEsteMes = [];
   const gruposFuturos = [];
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
   gruposNormales.forEach(grupo => {
     const key = grupo.tarjeta.id + '|' + grupo.cierre;
     if (conciliaciones[key]) { gruposConciliados.push(grupo); return; }
     const mesDeCierre = mesDeClasificacion(grupo.cierre);
     const forzarEsteMes = !!(grupo.tarjeta && grupo.tarjeta.mostrarComoEsteMes);
-    if (mesDeCierre <= mesActual || forzarEsteMes) gruposEsteMes.push(grupo); // incluye atrasados + tarjetas con flag manual
+    // Auto: si el cierre de este período ya pasó (o es hoy), mostrarlo en "Este mes" aunque sea mes futuro
+    // Ej: BSF cerró el 25/06 → el período 26/06-25/07 ya arrancó → mostrarlo ahora, no en "A futuro"
+    const cierreDate = new Date(grupo.cierre + 'T00:00:00');
+    const periodoYaArrancoHoy = cierreDate <= hoy;
+    if (mesDeCierre <= mesActual || forzarEsteMes || periodoYaArrancoHoy) gruposEsteMes.push(grupo);
     else gruposFuturos.push(grupo);
   });
 
