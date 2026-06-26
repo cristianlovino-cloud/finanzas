@@ -3839,15 +3839,24 @@ function renderGastosTarjetas() {
   const gruposEsteMes = [];
   const gruposFuturos = [];
   const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const hoyISO = hoy.toISOString().slice(0,10);
   gruposNormales.forEach(grupo => {
     const key = grupo.tarjeta.id + '|' + grupo.cierre;
     if (conciliaciones[key]) { gruposConciliados.push(grupo); return; }
     const mesDeCierre = mesDeClasificacion(grupo.cierre);
     const forzarEsteMes = !!(grupo.tarjeta && grupo.tarjeta.mostrarComoEsteMes);
-    // Auto: si el cierre de este período ya pasó (o es hoy), mostrarlo en "Este mes" aunque sea mes futuro
-    // Ej: BSF cerró el 25/06 → el período 26/06-25/07 ya arrancó → mostrarlo ahora, no en "A futuro"
-    const cierreDate = new Date(grupo.cierre + 'T00:00:00');
-    const periodoYaArrancoHoy = cierreDate <= hoy;
+    // Auto: calcular el cierre anterior de esta tarjeta (= inicio del período actual).
+    // Si ese cierre anterior ya pasó → este período ya arrancó → mostrar en "Este mes".
+    // Ej: BSF cerró el 25/06 → período siguiente (26/06→30/07) ya empezó → mostrar ahora.
+    let periodoYaArrancoHoy = false;
+    try {
+      const cierreDate = new Date(grupo.cierre + 'T00:00:00');
+      const unDiaAntes = new Date(cierreDate);
+      unDiaAntes.setDate(unDiaAntes.getDate() - 1);
+      const cierreAnterior = calcularProximoCierre(grupo.tarjeta, unDiaAntes);
+      // Si el cierre anterior ya ocurrió (≤ hoy) y el cierre actual todavía no → período en curso
+      periodoYaArrancoHoy = cierreAnterior <= hoy && cierreDate > hoy;
+    } catch(e) {}
     if (mesDeCierre <= mesActual || forzarEsteMes || periodoYaArrancoHoy) gruposEsteMes.push(grupo);
     else gruposFuturos.push(grupo);
   });
