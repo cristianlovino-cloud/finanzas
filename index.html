@@ -398,7 +398,8 @@ window.cfCargarMiHistorial = async function() {
     const itemsHtml = gastos.map(g => {
       const esUSD = g.moneda === 'USD';
       const montoDisplay = esUSD ? `U$S ${Number(g.monto).toFixed(2)}` : fmt(g.monto);
-      const fechaLabel = g.fecha ? new Date(g.fecha+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
+      const fechaReal = g.fechaCompra || g.fecha;
+      const fechaLabel = fechaReal ? new Date(fechaReal+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
       return `
       <div style="padding:8px 10px;background:var(--s2);border-radius:8px;margin-bottom:6px;font-size:.74rem;display:flex;justify-content:space-between;align-items:center;gap:8px">
         <div style="min-width:0">
@@ -3808,7 +3809,7 @@ function ownCargarGastoTarjeta() {
       const numeroCuota = cecActual + i;
       lista.push({
         id: 'gt_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2,5),
-        tarjetaId, fecha: cierre, tipo: `${tipo} (cuota ${numeroCuota}/${cecTotal})`, monto,
+        tarjetaId, fecha: cierre, fechaCompra: fecha, tipo: `${tipo} (cuota ${numeroCuota}/${cecTotal})`, monto,
         cargadoPor: 'Cris', ts: Date.now(), compraId, cuotaNum: numeroCuota, cuotaTotal: cecTotal,
         esCuotaEnCurso: true,
       });
@@ -3821,7 +3822,7 @@ function ownCargarGastoTarjeta() {
     cierres.forEach((cierre, i) => {
       lista.push({
         id: 'gt_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2,5),
-        tarjetaId, fecha: cierre, tipo: `${tipo} (cuota ${i+1}/${cantCuotas})`, monto: montos[i],
+        tarjetaId, fecha: cierre, fechaCompra: fecha, tipo: `${tipo} (cuota ${i+1}/${cantCuotas})`, monto: montos[i],
         cargadoPor: 'Cris', ts: Date.now(), compraId, cuotaNum: i+1, cuotaTotal: cantCuotas,
       });
     });
