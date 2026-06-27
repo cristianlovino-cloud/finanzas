@@ -1273,10 +1273,11 @@ nav::-webkit-scrollbar{display:none}
         </div>
         <div class="field"><label>Descripción</label><input type="text" id="tx-desc" class="fi" placeholder="ej: supermercado, nafta..." onkeydown="if(event.key==='Enter')submitTx()"></div>
         <div class="r2">
-          <div class="field" style="grid-column:1/-1">
+          <div class="field">
             <label>Categoría</label>
-            <input type="hidden" id="tx-cat" value="">
-            <div id="tx-cat-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px"></div>
+            <select id="tx-cat" class="fi">
+              <option value="">— elegir —</option>
+            </select>
           </div>
           <div class="field">
             <label>Medio de pago</label>
@@ -2581,19 +2582,15 @@ function setTipo(tipo, btn) {
 function populateCatDropdown() {
   const sel = document.getElementById('tx-cat');
   if (!sel) return;
-
+  
   const fechaEl = document.getElementById('tx-fecha');
   const fecha = fechaEl?.value || new Date().toISOString().split('T')[0];
   const mes = fecha.slice(0,7);
   const plan = getPlan(mes);
-
-  // Ingreso y TC siguen usando select oculto — mostrar select, ocultar chips
-  const chipsEl = document.getElementById('tx-cat-chips');
+  
+  sel.innerHTML = '<option value="">— elegir —</option>';
 
   if (curTipo === 'ingreso') {
-    if (chipsEl) chipsEl.style.display = 'none';
-    sel.style.display = '';
-    sel.innerHTML = '<option value="">— elegir —</option>';
     const g0 = document.createElement('optgroup');
     g0.label = 'Ingresos del mes';
     plan.ing.forEach(r => { const o=document.createElement('option'); o.value=r.l; o.text=r.l; g0.appendChild(o); });
@@ -2605,9 +2602,6 @@ function populateCatDropdown() {
   }
 
   if (curTipo === 'tc') {
-    if (chipsEl) chipsEl.style.display = 'none';
-    sel.style.display = '';
-    sel.innerHTML = '<option value="">— elegir —</option>';
     const g1 = document.createElement('optgroup');
     g1.label = 'Tarjetas';
     const tcVars = plan.vars.filter(r => r.l.toUpperCase().startsWith('TC '));
@@ -2617,11 +2611,24 @@ function populateCatDropdown() {
     return;
   }
 
-  // Gasto directo → chips ordenados alfabéticamente
-  sel.style.display = 'none';
-  if (chipsEl) chipsEl.style.display = 'flex';
-  sel.value = '';
-  renderCatChips('');
+  // Gasto directo: fijos + variables SIN tarjetas
+  if (plan.fijos.length) {
+    const g1 = document.createElement('optgroup');
+    g1.label = 'Gastos fijos';
+    plan.fijos.forEach(r => { const o=document.createElement('option'); o.value=r.l; o.text=r.l; g1.appendChild(o); });
+    sel.appendChild(g1);
+  }
+  const noTC = plan.vars.filter(r => !r.l.toUpperCase().startsWith('TC '));
+  if (noTC.length) {
+    const g2 = document.createElement('optgroup');
+    g2.label = 'Variables';
+    noTC.forEach(r => { const o=document.createElement('option'); o.value=r.l; o.text=r.l; g2.appendChild(o); });
+    sel.appendChild(g2);
+  }
+  const g3 = document.createElement('optgroup');
+  g3.label = 'Sin categoría';
+  const oOtros = document.createElement('option'); oOtros.value='Otros'; oOtros.text='Otros';
+  g3.appendChild(oOtros); sel.appendChild(g3);
 }
 
 function submitTx() {
@@ -2668,7 +2675,6 @@ function submitTx() {
   }
 
   showToast(`✓ ${curTipo === 'ingreso' ? 'Ingreso' : 'Gasto'} registrado — datos actualizados`);
-  if (curTipo === 'gasto') renderCatChips('');
 }
 
 function renderRecentTxs() {
