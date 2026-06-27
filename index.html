@@ -397,7 +397,7 @@ window.cfCargarMiHistorial = async function() {
 
     const itemsHtml = gastos.map(g => {
       const esUSD = g.moneda === 'USD';
-      const montoDisplay = esUSD ? `U$S ${g.monto}` : fmt(g.monto);
+      const montoDisplay = esUSD ? `U$S ${Number(g.monto).toFixed(2)}` : fmt(g.monto);
       const fechaLabel = g.fecha ? new Date(g.fecha+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
       return `
       <div style="padding:8px 10px;background:var(--s2);border-radius:8px;margin-bottom:6px;font-size:.74rem;display:flex;justify-content:space-between;align-items:center;gap:8px">
@@ -3105,7 +3105,18 @@ function guardarPeriodoTarjeta(tarjetaId, idx, campo, valor) {
   if (!t.periodos) t.periodos = [{inicio:'',cierre:''},{inicio:'',cierre:''},{inicio:'',cierre:''}];
   if (!t.periodos[idx]) t.periodos[idx] = {inicio:'',cierre:''};
   t.periodos[idx][campo] = valor;
+  // Auto-completar: si cargaste el cierre de un período, pone el inicio del siguiente como cierre+1 día
+  if (campo === 'cierre' && valor && idx < 2) {
+    const siguiente = t.periodos[idx + 1] || {inicio:'',cierre:''};
+    if (!siguiente.inicio) {
+      const d = new Date(valor + 'T00:00:00');
+      d.setDate(d.getDate() + 1);
+      siguiente.inicio = d.toISOString().slice(0,10);
+      t.periodos[idx + 1] = siguiente;
+    }
+  }
   saveTarjetas(tarjetas);
+  renderTarjetasCfg();
   if (typeof renderGastosTarjetas === 'function') renderGastosTarjetas();
 }
 
@@ -3264,7 +3275,7 @@ function renderRecurrentesCfg() {
       <span style="font-size:.72rem;color:var(--muted)">Total mensual estimado</span>
       <div style="text-align:right">
         <div style="font-weight:700;font-size:.85rem;color:var(--text)">${fmt(totalMensualARS)}</div>
-        ${totalMensualUSD > 0 ? `<div style="font-weight:700;font-size:.78rem;color:var(--yellow)">U$S ${totalMensualUSD.toLocaleString('es-AR')}</div>` : ''}
+        ${totalMensualUSD > 0 ? `<div style="font-weight:700;font-size:.78rem;color:var(--yellow)">U$S ${Number(totalMensualUSD).toFixed(2)}</div>` : ''}
       </div>
     </div>` +
   lista.map(r => {
@@ -3533,15 +3544,8 @@ function periodoDeGasto(tarjeta, fechaGasto) {
       return p.cierre;
     }
   }
-  // Si no cae en ningún período definido, asignar al período más cercano por cierre
-  if (periodos.length > 0) {
-    // Buscar el período con cierre >= fechaGasto más próximo
-    const futuros = periodos.filter(p => p.cierre >= fechaGasto).sort((a,b) => a.cierre.localeCompare(b.cierre));
-    if (futuros.length > 0) return futuros[0].cierre;
-    // Si todos cerraron antes, usar el último
-    const pasados = periodos.slice().sort((a,b) => b.cierre.localeCompare(a.cierre));
-    return pasados[0].cierre;
-  }
+  // Si no cae en ningún período definido → devolver null para que se ignore visualmente
+  if (periodos.length > 0) return null;
   // Sin períodos definidos: fallback al cierre calculado automáticamente
   return calcularProximoCierre(tarjeta, new Date(fechaGasto + 'T00:00:00')).toISOString().slice(0,10);
 }
@@ -3767,6 +3771,7 @@ function agruparGastosPorPeriodo() {
     const tarjeta = tarjetas.find(t => t.id === g.tarjetaId);
     if (!tarjeta) { huerfanos.push(g); return; } // no los perdemos: van a un grupo aparte
     const cierre = periodoDeGasto(tarjeta, g.fecha);
+    if (!cierre) return; // gasto fuera de todos los períodos definidos → ignorar
     const key = tarjeta.id + '|' + cierre;
     if (!grupos[key]) grupos[key] = { tarjeta, cierre, gastos: [] };
     grupos[key].gastos.push(g);
@@ -3887,12 +3892,12 @@ function renderGastosTarjetas() {
         ${totalEsteMesUSD > 0 ? `
         <div style="flex:1;padding:8px 10px;background:var(--s2);border-radius:8px;border-left:3px solid var(--yellow)">
           <div style="font-size:.58rem;color:var(--muted);text-transform:uppercase">En dólares</div>
-          <div style="font-family:var(--fh);font-weight:700;font-size:1.15rem;color:var(--yellow)">U$S ${totalEsteMesUSD.toLocaleString('es-AR')}</div>
+          <div style="font-family:var(--fh);font-weight:700;font-size:1.15rem;color:var(--yellow)">U$S ${Number(totalEsteMesUSD).toFixed(2)}</div>
         </div>` : ''}
       </div>
       ${gruposFuturos.length > 0 ? `
       <div style="border-top:1px solid var(--border);padding-top:8px;margin-top:4px">
-        <div style="font-size:.62rem;color:var(--muted)">A futuro (${gruposFuturos.length} período${gruposFuturos.length!==1?'s':''}, ver abajo): ${fmt(totalFuturoARS)}${totalFuturoUSD>0?` · U$S ${totalFuturoUSD.toLocaleString('es-AR')}`:''}</div>
+        <div style="font-size:.62rem;color:var(--muted)">A futuro (${gruposFuturos.length} período${gruposFuturos.length!==1?'s':''}, ver abajo): ${fmt(totalFuturoARS)}${totalFuturoUSD>0?` · U$S ${Number(totalFuturoUSD).toFixed(2)}`:''}</div>
       </div>` : ''}
     </div>` + renderTotalesPorPersona(gruposEsteMes);
 
@@ -3982,7 +3987,7 @@ function renderTarjetaCard(grupo, conciliaciones, colapsadoPorDefault) {
   const totalARS = grupo.gastos.filter(g => g.moneda !== 'USD').reduce((s,g) => s + (g.monto||0), 0);
   const totalUSD = grupo.gastos.filter(g => g.moneda === 'USD').reduce((s,g) => s + (g.monto||0), 0);
   const totalLabel = totalUSD > 0
-    ? (totalARS > 0 ? `${fmt(totalARS)} · U$S ${totalUSD}` : `U$S ${totalUSD}`)
+    ? (totalARS > 0 ? `${fmt(totalARS)} · U$S ${totalUSD}` : `U$S ${Number(totalUSD).toFixed(2)}`)
     : fmt(totalARS);
   const fechaCierreLabel = new Date(grupo.cierre + 'T00:00:00').toLocaleDateString('es-AR', {day:'2-digit', month:'long', year:'numeric'});
 
@@ -4010,7 +4015,7 @@ function renderTarjetaCard(grupo, conciliaciones, colapsadoPorDefault) {
     <div style="display:flex;flex-direction:column;gap:6px;margin:10px 0">
       ${grupo.gastos.sort((a,b)=>b.fecha.localeCompare(a.fecha)).map(g => {
         const esUSD = g.moneda === 'USD';
-        const montoDisplay = esUSD ? `U$S ${g.monto}` : fmt(g.monto);
+        const montoDisplay = esUSD ? `U$S ${Number(g.monto).toFixed(2)}` : fmt(g.monto);
         const quienColores = { 'Cris':'var(--blue)', 'Lara':'var(--purple)', 'Emma':'var(--green)', 'Recurrente automático':'var(--muted)' };
         const quienColor = quienColores[g.cargadoPor] || 'var(--yellow)';
         const quienBadge = `<span style="font-size:.6rem;font-weight:700;color:${quienColor};background:${quienColor}1a;padding:1px 6px;border-radius:4px;white-space:nowrap">${g.cargadoPor}</span>`;
