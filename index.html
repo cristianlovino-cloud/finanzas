@@ -3730,27 +3730,29 @@ function guardarEdicionMontoGasto(id) {
   const lista = getGastosTarjetas();
   const g = lista.find(g => g.id === id);
   if (!g) return;
-  const nuevoTipo    = document.getElementById('edit-tipo-' + id)?.value.trim() || g.tipo;
-  const nuevaFecha   = document.getElementById('edit-fecha-' + id)?.value || g.fechaCompra || g.fecha;
-  const periodoVal   = document.getElementById('edit-periodo-' + id)?.value || '';
-  const nuevaMoneda  = document.getElementById('edit-moneda-' + id).value;
-  const nuevoValor   = parseFloat(document.getElementById('edit-valor-' + id).value);
-  if (!nuevoValor || nuevoValor <= 0) { showToast('Ingresá un monto válido', '#f43f5e'); return; }
-  g.tipo    = nuevoTipo;
-  g.fechaCompra = nuevaFecha;
-  g.monto   = nuevoValor;
-  g.moneda  = nuevaMoneda;
-  // Período: si cambió, actualizar tarjetaId y fecha de cierre
+  // Campos opcionales — solo si existen en el panel
+  const tipoEl   = document.getElementById('edit-tipo-' + id);
+  const fechaEl  = document.getElementById('edit-fecha-' + id);
+  const monedaEl = document.getElementById('edit-moneda-' + id);
+  const valorEl  = document.getElementById('edit-valor-' + id);
+  const periodoEl = document.getElementById('edit-periodo-' + id);
+
+  if (tipoEl)  g.tipo = tipoEl.value.trim() || g.tipo;
+  if (fechaEl) g.fechaCompra = fechaEl.value || g.fechaCompra || g.fecha;
+  if (monedaEl) g.moneda = monedaEl.value;
+  if (valorEl) {
+    const v = parseFloat(valorEl.value);
+    if (v > 0) g.monto = v;
+  }
+  // Período: lo más importante — mover tarjetaId y fecha de cierre
+  const periodoVal = periodoEl?.value || '';
   if (periodoVal && periodoVal.includes('|')) {
     const [nuevoTarjetaId, nuevoCierre] = periodoVal.split('|');
     g.tarjetaId = nuevoTarjetaId;
     g.fecha     = nuevoCierre;
-  } else {
-    const nuevaTarjetaId = document.getElementById('edit-tarjeta-' + id)?.value || g.tarjetaId;
-    g.tarjetaId = nuevaTarjetaId;
   }
   saveGastosTarjetas(lista);
-  showToast('✓ Gasto actualizado');
+  showToast('✓ Gasto movido al período');
   renderGastosTarjetas();
 }
 
