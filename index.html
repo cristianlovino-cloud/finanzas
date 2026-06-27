@@ -3656,11 +3656,35 @@ function mesDeClasificacion(cierreISO) {
 // ── Genera la secuencia de N cierres consecutivos a partir de una fecha de compra ──
 // (el primer cierre es el período que contiene la compra; cada uno después es el siguiente cierre real de esa tarjeta)
 function generarSecuenciaCierres(tarjeta, fechaCompra, cantidad) {
+  // Usar períodos manuales si están configurados
+  const periodos = (tarjeta.periodos || []).filter(p => p.inicio && p.cierre).sort((a,b) => a.cierre.localeCompare(b.cierre));
+  if (periodos.length > 0) {
+    // Encontrar el período que contiene la fechaCompra o el siguiente
+    const cierres = [];
+    // Buscar desde qué período arranca esta cuota
+    let idxInicio = periodos.findIndex(p => fechaCompra >= p.inicio && fechaCompra <= p.cierre);
+    if (idxInicio === -1) {
+      // No cae en ningún período definido — buscar el siguiente por cierre
+      idxInicio = periodos.findIndex(p => p.cierre >= fechaCompra);
+    }
+    if (idxInicio === -1) idxInicio = periodos.length - 1; // fallback al último
+    for (let i = 0; i < cantidad; i++) {
+      const idx = idxInicio + i;
+      if (idx < periodos.length) {
+        cierres.push(periodos[idx].cierre);
+      } else {
+        // Más cuotas que períodos definidos — usar el cierre del último período disponible
+        // (la cuota quedará huérfana hasta que configures más períodos)
+        cierres.push(periodos[periodos.length - 1].cierre + '_extra_' + i);
+      }
+    }
+    return cierres;
+  }
+  // Fallback: sin períodos manuales usar cálculo automático
   const cierres = [];
   let cierreActual = calcularProximoCierre(tarjeta, new Date(fechaCompra + 'T00:00:00'));
   for (let i = 0; i < cantidad; i++) {
     cierres.push(cierreActual.toISOString().slice(0,10));
-    // Para el siguiente cierre, buscamos desde un día después del cierre actual
     const siguienteDesde = new Date(cierreActual);
     siguienteDesde.setDate(siguienteDesde.getDate() + 1);
     cierreActual = calcularProximoCierre(tarjeta, siguienteDesde);
