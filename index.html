@@ -3154,6 +3154,15 @@ function guardarExcepcionInicio(tarjetaId, mesKey, fechaNueva) {
   if (typeof renderGastosTarjetas === 'function') renderGastosTarjetas();
 }
 
+function toggleTarjetaCfg(id) {
+  const body = document.getElementById('tj-cfg-body-' + id);
+  const chev = document.getElementById('tj-cfg-chev-' + id);
+  if (!body) return;
+  const open = body.style.display === 'none';
+  body.style.display = open ? 'block' : 'none';
+  if (chev) chev.textContent = open ? '▼' : '▶';
+}
+
 function guardarPeriodoTarjeta(tarjetaId, idx, campo, valor) {
   const tarjetas = getTarjetas();
   const t = tarjetas.find(t => t.id === tarjetaId);
@@ -3219,10 +3228,13 @@ function renderTarjetasCfg() {
     <div style="display:flex;flex-direction:column;gap:6px;padding:10px;background:var(--s2);border-radius:8px;margin-bottom:8px">
       <div style="display:flex;gap:6px;align-items:center">
         <input type="text" value="${t.nombre}" oninput="actualizarTarjetaCfg('${t.id}','nombre',this.value)" class="fi" style="flex:1;font-size:.78rem;padding:7px 9px">
+        <button onclick="toggleTarjetaCfg('${t.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.75rem;padding:4px 6px" id="tj-cfg-chev-${t.id}">▶</button>
         <button onclick="eliminarTarjetaCfg('${t.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.85rem;padding:4px 6px">✕</button>
       </div>
-      <div style="font-size:.62rem;color:var(--muted);margin-top:2px">📅 Períodos de resumen</div>
-      ${periodosHTML}
+      <div id="tj-cfg-body-${t.id}" style="display:none">
+        <div style="font-size:.62rem;color:var(--muted);margin-top:2px;margin-bottom:4px">📅 Períodos de resumen</div>
+        ${periodosHTML}
+      </div>
     </div>`;
   }).join('');
 }
@@ -3536,6 +3548,7 @@ function aplicarDebitosRecurrentes(mes) {
       if (!tj) return true;
       const cierre = periodoDeGasto(tj, g.fecha);
       if (!cierre) return false; // fuera de todos los períodos → eliminar
+      if (g.fecha > new Date().toISOString().slice(0,10)) return false; // fecha futura → eliminar
       const key = g.recurrenteId + '|' + cierre;
       if (vistos.has(key)) return false; // duplicado → eliminar
       vistos.add(key);
