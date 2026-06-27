@@ -3098,6 +3098,17 @@ function guardarExcepcionInicio(tarjetaId, mesKey, fechaNueva) {
   if (typeof renderGastosTarjetas === 'function') renderGastosTarjetas();
 }
 
+function guardarPeriodoTarjeta(tarjetaId, idx, campo, valor) {
+  const tarjetas = getTarjetas();
+  const t = tarjetas.find(t => t.id === tarjetaId);
+  if (!t) return;
+  if (!t.periodos) t.periodos = [{inicio:'',cierre:''},{inicio:'',cierre:''},{inicio:'',cierre:''}];
+  if (!t.periodos[idx]) t.periodos[idx] = {inicio:'',cierre:''};
+  t.periodos[idx][campo] = valor;
+  saveTarjetas(tarjetas);
+  if (typeof renderGastosTarjetas === 'function') renderGastosTarjetas();
+}
+
 function borrarExcepcionInicio(tarjetaId, mesKey) {
   const tarjetas = getTarjetas();
   const t = tarjetas.find(t => t.id === tarjetaId);
@@ -3117,44 +3128,34 @@ function renderTarjetasCfg() {
     el.innerHTML = '<div style="font-size:.72rem;color:var(--muted);padding:8px 0">No hay tarjetas configuradas todavía.</div>';
     return;
   }
+  const periodoLabels = ['anterior', 'actual', 'próximo'];
   el.innerHTML = tarjetas.map(t => {
-    const proximoCierre = calcularProximoCierre(t);
-    const mesDelProximoCierre = proximoCierre.getFullYear() + '-' + String(proximoCierre.getMonth()+1).padStart(2,'0');
-    const tieneExcepcion = !!(t.cierresExcepcion && t.cierresExcepcion[mesDelProximoCierre]);
-    const tieneInicioExcepcion = !!(t.iniciosExcepcion && t.iniciosExcepcion[mesDelProximoCierre]);
+    const periodos = t.periodos || [{inicio:'',cierre:''},{inicio:'',cierre:''},{inicio:'',cierre:''}];
+    const periodosHTML = periodoLabels.map((label, i) => {
+      const p = periodos[i] || {inicio:'',cierre:''};
+      return `
+      <div style="background:var(--bg);border-radius:6px;padding:8px;margin-top:4px">
+        <div style="font-size:.6rem;color:var(--muted);font-weight:600;text-transform:uppercase;margin-bottom:4px">Período ${label}</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <div style="flex:1">
+            <div style="font-size:.55rem;color:var(--muted);margin-bottom:2px">Inicio</div>
+            <input type="date" value="${p.inicio||''}" onchange="guardarPeriodoTarjeta('${t.id}',${i},'inicio',this.value)" class="fi" style="width:100%;font-size:.7rem;padding:5px 7px">
+          </div>
+          <div style="flex:1">
+            <div style="font-size:.55rem;color:var(--muted);margin-bottom:2px">Cierre</div>
+            <input type="date" value="${p.cierre||''}" onchange="guardarPeriodoTarjeta('${t.id}',${i},'cierre',this.value)" class="fi" style="width:100%;font-size:.7rem;padding:5px 7px">
+          </div>
+        </div>
+      </div>`;
+    }).join('');
     return `
     <div style="display:flex;flex-direction:column;gap:6px;padding:10px;background:var(--s2);border-radius:8px;margin-bottom:8px">
       <div style="display:flex;gap:6px;align-items:center">
         <input type="text" value="${t.nombre}" oninput="actualizarTarjetaCfg('${t.id}','nombre',this.value)" class="fi" style="flex:1;font-size:.78rem;padding:7px 9px">
         <button onclick="eliminarTarjetaCfg('${t.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.85rem;padding:4px 6px">✕</button>
       </div>
-      <div style="display:flex;gap:6px;align-items:center">
-        <select onchange="actualizarTarjetaCfg('${t.id}','tipoCierre',this.value)" class="fi" style="flex:1;font-size:.72rem;padding:7px 6px">
-          <option value="penultimo_jueves" ${t.tipoCierre==='penultimo_jueves'?'selected':''}>Penúltimo jueves del mes</option>
-          <option value="ultimo_jueves" ${t.tipoCierre==='ultimo_jueves'?'selected':''}>Último jueves del mes</option>
-          <option value="dia_fijo" ${t.tipoCierre==='dia_fijo'?'selected':''}>Día fijo del mes</option>
-        </select>
-        ${t.tipoCierre === 'dia_fijo' ? `<input type="number" min="1" max="31" value="${t.diaFijo||20}" oninput="actualizarTarjetaCfg('${t.id}','diaFijo',this.value)" class="fi" style="width:60px;font-size:.72rem;padding:7px 6px;text-align:center">` : ''}
-      </div>
-      <div style="font-size:.64rem;color:var(--muted)">Próximo cierre: <b id="cierre-label-${t.id}" style="color:var(--text)">${proximoCierre.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'})}</b>${tieneExcepcion ? ' <span style="color:var(--orange)">(corregido a mano)</span>' : ''}</div>
-      <div style="display:flex;gap:6px;align-items:center">
-        <div style="flex:1">
-          <div style="font-size:.58rem;color:var(--muted);margin-bottom:2px">¿El banco corrió la fecha de CIERRE? Corregila acá:</div>
-          <input type="date" id="excepcion-input-${t.id}" value="${tieneExcepcion ? t.cierresExcepcion[mesDelProximoCierre] : ''}" onchange="guardarExcepcionCierre('${t.id}','${mesDelProximoCierre}',this.value)" class="fi" style="width:100%;font-size:.72rem;padding:6px 8px">
-        </div>
-        ${tieneExcepcion ? `<button onclick="borrarExcepcionCierre('${t.id}','${mesDelProximoCierre}')" class="btn btn-o" style="font-size:.65rem;padding:6px 10px;align-self:flex-end">Quitar</button>` : ''}
-      </div>
-      <div style="display:flex;gap:6px;align-items:center">
-        <div style="flex:1">
-          <div style="font-size:.58rem;color:var(--muted);margin-bottom:2px">¿El banco corrió la fecha de INICIO de este período? Corregila acá:</div>
-          <input type="date" id="inicio-excepcion-input-${t.id}" value="${tieneInicioExcepcion ? t.iniciosExcepcion[mesDelProximoCierre] : ''}" onchange="guardarExcepcionInicio('${t.id}','${mesDelProximoCierre}',this.value)" class="fi" style="width:100%;font-size:.72rem;padding:6px 8px">
-        </div>
-        ${tieneInicioExcepcion ? `<button onclick="borrarExcepcionInicio('${t.id}','${mesDelProximoCierre}')" class="btn btn-o" style="font-size:.65rem;padding:6px 10px;align-self:flex-end">Quitar</button>` : ''}
-      </div>
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 0">
-        <input type="checkbox" ${t.mostrarComoEsteMes ? 'checked' : ''} onchange="actualizarTarjetaCfg('${t.id}','mostrarComoEsteMes',this.checked)" style="width:15px;height:15px;cursor:pointer">
-        <span style="font-size:.68rem;color:var(--muted2)">Mostrar período próximo en <b style="color:var(--text)">Este mes</b> <span style="color:var(--muted)">(útil si cierra en los primeros días del mes siguiente)</span></span>
-      </label>
+      <div style="font-size:.62rem;color:var(--muted);margin-top:2px">📅 Períodos de resumen</div>
+      ${periodosHTML}
     </div>`;
   }).join('');
 }
@@ -3522,41 +3523,27 @@ function calcularProximoCierre(tarjeta, desde) {
 }
 
 // ── Dado un gasto con fecha, determina a qué período de resumen pertenece ──
-// Devuelve una clave única tipo "tj_xxx_2026-06" (cierre del período que lo contiene)
+// Usa los períodos definidos manualmente (anterior, actual, próximo).
+// Si la fecha no cae en ninguno, devuelve el cierre del período más cercano.
 function periodoDeGasto(tarjeta, fechaGasto) {
-  const f = new Date(fechaGasto); f.setHours(0,0,0,0);
-
-  // Primero chequeamos si la fecha del gasto cae dentro del rango de alguna excepción de
-  // inicio manual (ej. "el período que cierra el 25/06 en realidad arrancó el 21/05").
-  // Sin esto, un gasto de fecha temprana (como el 22/05) calcularía su cierre natural
-  // (28/05, el normal de mayo) y nunca llegaría a consultar la excepción del período de junio.
-  const iniciosExcepcion = tarjeta.iniciosExcepcion || {};
-  for (const mesKey in iniciosExcepcion) {
-    const inicioManual = iniciosExcepcion[mesKey];
-    if (fechaGasto < inicioManual) continue; // el gasto es anterior a este inicio corregido, no es candidato
-
-    // El cierre de ESE período corregido es el que tenga excepción de cierre para mesKey,
-    // o si no hay excepción de cierre, el cierre calculado normal de ese mes.
-    const [y, m] = mesKey.split('-').map(Number);
-    const cierresExcepcion = tarjeta.cierresExcepcion || {};
-    let cierreDeEsePeriodo;
-    if (cierresExcepcion[mesKey]) {
-      cierreDeEsePeriodo = cierresExcepcion[mesKey];
-    } else {
-      // calculamos el cierre "natural" de ese mes específico (sin pasar por excepciones de inicio,
-      // para no entrar en recursión — usamos calcularProximoCierre con una fecha bien adentro del mes)
-      const fechaDeReferencia = new Date(y, m - 1, 15);
-      cierreDeEsePeriodo = calcularProximoCierre(tarjeta, fechaDeReferencia).toISOString().slice(0,10);
-    }
-
-    if (fechaGasto >= inicioManual && fechaGasto <= cierreDeEsePeriodo) {
-      return cierreDeEsePeriodo;
+  const periodos = (tarjeta.periodos || []).filter(p => p.inicio && p.cierre);
+  // Buscar el período que contiene la fecha
+  for (const p of periodos) {
+    if (fechaGasto >= p.inicio && fechaGasto <= p.cierre) {
+      return p.cierre;
     }
   }
-
-  // Sin excepción de inicio aplicable: comportamiento normal de siempre.
-  let cierreActual = calcularProximoCierre(tarjeta, f);
-  return cierreActual.toISOString().slice(0,10);
+  // Si no cae en ningún período definido, asignar al período más cercano por cierre
+  if (periodos.length > 0) {
+    // Buscar el período con cierre >= fechaGasto más próximo
+    const futuros = periodos.filter(p => p.cierre >= fechaGasto).sort((a,b) => a.cierre.localeCompare(b.cierre));
+    if (futuros.length > 0) return futuros[0].cierre;
+    // Si todos cerraron antes, usar el último
+    const pasados = periodos.slice().sort((a,b) => b.cierre.localeCompare(a.cierre));
+    return pasados[0].cierre;
+  }
+  // Sin períodos definidos: fallback al cierre calculado automáticamente
+  return calcularProximoCierre(tarjeta, new Date(fechaGasto + 'T00:00:00')).toISOString().slice(0,10);
 }
 
 // ── Mes "de pago" de un período, para fines de clasificación visual (Este mes / A futuro) ──
@@ -3843,21 +3830,19 @@ function renderGastosTarjetas() {
   gruposNormales.forEach(grupo => {
     const key = grupo.tarjeta.id + '|' + grupo.cierre;
     if (conciliaciones[key]) { gruposConciliados.push(grupo); return; }
-    const mesDeCierre = mesDeClasificacion(grupo.cierre);
-    const forzarEsteMes = !!(grupo.tarjeta && grupo.tarjeta.mostrarComoEsteMes);
-    // Auto: si hoy >= inicio del período (= el gasto más antiguo del grupo ya existe y su fecha <= hoy)
-    // el período ya arrancó → mostrarlo en "Este mes"
-    let periodoYaArrancoHoy = false;
-    try {
-      const cierreDate = new Date(grupo.cierre + 'T00:00:00');
-      if (cierreDate > hoy && grupo.gastos.length > 0) {
-        // El inicio del período = fecha mínima de los gastos del grupo
-        const fechaMinGasto = grupo.gastos.map(g => g.fecha).sort()[0];
-        const inicioDate = new Date(fechaMinGasto + 'T00:00:00');
-        periodoYaArrancoHoy = inicioDate <= hoy;
-      }
-    } catch(e) {}
-    if (mesDeCierre <= mesActual || forzarEsteMes || periodoYaArrancoHoy) gruposEsteMes.push(grupo);
+    // Buscar el período manual que corresponde a este cierre
+    const periodos = (grupo.tarjeta.periodos || []).filter(p => p.inicio && p.cierre);
+    const periodoManual = periodos.find(p => p.cierre === grupo.cierre);
+    // "Este mes" si: el período ya arrancó (inicio <= hoy) O el cierre ya pasó
+    const cierreDate = new Date(grupo.cierre + 'T00:00:00');
+    let esEsteMes = false;
+    if (periodoManual) {
+      const inicioDate = new Date(periodoManual.inicio + 'T00:00:00');
+      esEsteMes = inicioDate <= hoy; // período ya arrancó
+    } else {
+      esEsteMes = mesDeClasificacion(grupo.cierre) <= mesActual;
+    }
+    if (esEsteMes) gruposEsteMes.push(grupo);
     else gruposFuturos.push(grupo);
   });
 
