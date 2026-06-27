@@ -3477,6 +3477,9 @@ function aplicarDebitosRecurrentes(mes) {
       const cierreDelPeriodo = periodoDeGasto(tarjetaDelRec, fecha);
       if (!cierreDelPeriodo) return; // fecha fuera de todos los períodos → no insertar
 
+      // No insertar hasta que llegue la fecha del recurrente
+      if (fecha > new Date().toISOString().slice(0,10)) return;
+
       // No duplicar: ya existe un recurrente con este id para este cierre de período
       const yaExisteEnTarjetas = gastosTarjetas.some(g =>
         g.recurrenteId === r.id && periodoDeGasto(tarjetaDelRec, g.fecha) === cierreDelPeriodo
