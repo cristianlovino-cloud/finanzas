@@ -3730,16 +3730,27 @@ function guardarEdicionMontoGasto(id) {
   const lista = getGastosTarjetas();
   const g = lista.find(g => g.id === id);
   if (!g) return;
-  const nuevaTarjetaId = document.getElementById('edit-tarjeta-' + id)?.value || g.tarjetaId;
-  const nuevaMoneda = document.getElementById('edit-moneda-' + id).value;
-  const nuevoValor = parseFloat(document.getElementById('edit-valor-' + id).value);
+  const nuevoTipo    = document.getElementById('edit-tipo-' + id)?.value.trim() || g.tipo;
+  const nuevaFecha   = document.getElementById('edit-fecha-' + id)?.value || g.fechaCompra || g.fecha;
+  const periodoVal   = document.getElementById('edit-periodo-' + id)?.value || '';
+  const nuevaMoneda  = document.getElementById('edit-moneda-' + id).value;
+  const nuevoValor   = parseFloat(document.getElementById('edit-valor-' + id).value);
   if (!nuevoValor || nuevoValor <= 0) { showToast('Ingresá un monto válido', '#f43f5e'); return; }
-  g.monto = nuevoValor;
-  g.moneda = nuevaMoneda;
-  g.tarjetaId = nuevaTarjetaId;
+  g.tipo    = nuevoTipo;
+  g.fechaCompra = nuevaFecha;
+  g.monto   = nuevoValor;
+  g.moneda  = nuevaMoneda;
+  // Período: si cambió, actualizar tarjetaId y fecha de cierre
+  if (periodoVal && periodoVal.includes('|')) {
+    const [nuevoTarjetaId, nuevoCierre] = periodoVal.split('|');
+    g.tarjetaId = nuevoTarjetaId;
+    g.fecha     = nuevoCierre;
+  } else {
+    const nuevaTarjetaId = document.getElementById('edit-tarjeta-' + id)?.value || g.tarjetaId;
+    g.tarjetaId = nuevaTarjetaId;
+  }
   saveGastosTarjetas(lista);
-  if (window.cfActualizarGastoFirestore) window.cfActualizarGastoFirestore(id, { monto: nuevoValor, moneda: nuevaMoneda, tarjetaId: nuevaTarjetaId });
-  showToast('✓ Gasto actualizado: ' + (nuevaMoneda==='USD' ? 'U$S '+nuevoValor : fmt(nuevoValor)));
+  showToast('✓ Gasto actualizado');
   renderGastosTarjetas();
 }
 
@@ -4131,7 +4142,20 @@ function renderTarjetaCard(grupo, conciliaciones, colapsadoPorDefault) {
     </div>
     <div id="detalle-${safeKey}" style="${colapsadoPorDefault ? 'display:none' : ''}">
     <div style="display:flex;flex-direction:column;gap:6px;margin:10px 0">
-      ${grupo.gastos.sort((a,b)=>b.fecha.localeCompare(a.fecha)).map(g => {
+      ${grupo.gastos.sort((a,b) => {
+        // 1. Gastos manuales primero (no recurrente, no cuota)
+        const aCuota = !!(a.compraId || a.esCuotaEnCurso);
+        const bCuota = !!(b.compraId || b.esCuotaEnCurso);
+        const aRec   = !!a.recurrenteId;
+        const bRec   = !!b.recurrenteId;
+        const aTipo  = aRec ? 2 : aCuota ? 1 : 0;
+        const bTipo  = bRec ? 2 : bCuota ? 1 : 0;
+        if (aTipo !== bTipo) return aTipo - bTipo;
+        // Dentro del mismo tipo, ordenar por fecha real asc
+        const aFecha = a.fechaCompra || a.fecha || '';
+        const bFecha = b.fechaCompra || b.fecha || '';
+        return aFecha.localeCompare(bFecha);
+      }).map(g => {
         const esUSD = g.moneda === 'USD';
         const montoDisplay = esUSD ? `U$S ${Number(g.monto).toFixed(2)}` : fmt(g.monto);
         const quienColores = { 'Cris':'var(--blue)', 'Lara':'var(--purple)', 'Emma':'var(--green)', 'Recurrente automático':'var(--muted)' };
@@ -4155,11 +4179,28 @@ function renderTarjetaCard(grupo, conciliaciones, colapsadoPorDefault) {
           ${!estaConciliado ? `<button onclick="eliminarGastoTarjeta('${g.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.8rem;padding:2px 5px;flex-shrink:0">✕</button>` : ''}
         </div>
         ${!estaConciliado ? `
-        <div id="edit-monto-${g.id}" style="display:none;margin-top:8px;padding:8px;background:var(--s1);border-radius:6px">
-          <div style="margin-bottom:6px">
+        <div id="edit-monto-${g.id}" style="display:none;margin-top:8px;padding:8px;background:var(--s1);border-radius:6px;display:none;flex-direction:column;gap:6px">
+          <div>
+            <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">TIPO / CATEGORÍA</div>
+            <input type="text" id="edit-tipo-${g.id}" value="${g.tipo}" class="fi" style="width:100%;font-size:.7rem;padding:6px 8px">
+          </div>
+          <div>
+            <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">FECHA DE COMPRA</div>
+            <input type="date" id="edit-fecha-${g.id}" value="${g.fechaCompra || g.fecha}" class="fi" style="width:100%;font-size:.7rem;padding:6px 8px">
+          </div>
+          <div>
             <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">TARJETA</div>
             <select id="edit-tarjeta-${g.id}" class="fi" style="width:100%;font-size:.7rem;padding:6px 6px">
               ${tarjetasDisponiblesEdit.map(t => `<option value="${t.id}" ${g.tarjetaId===t.id?'selected':''}>${t.nombre}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">PERÍODO (cierre)</div>
+            <select id="edit-periodo-${g.id}" class="fi" style="width:100%;font-size:.7rem;padding:6px 6px">
+              ${tarjetasDisponiblesEdit.map(t => {
+                const ps = (t.periodos||[]).filter(p=>p.inicio&&p.cierre);
+                return ps.map(p=>`<option value="${t.id}|${p.cierre}" ${g.tarjetaId===t.id&&g.fecha===p.cierre?'selected':''}>${t.nombre} → ${new Date(p.cierre+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'})}</option>`).join('');
+              }).join('')}
             </select>
           </div>
           <div style="display:flex;gap:6px">
