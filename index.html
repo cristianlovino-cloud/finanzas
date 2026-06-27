@@ -576,18 +576,18 @@ window.cfGuardarGasto = async function() {
 
 /* ── RESET & VARS ── */
 :root {
-  --bg:#080a0f; --s1:#0e1117; --s2:#141920; --s3:#1c2233;
-  --border:rgba(255,255,255,0.07); --border2:rgba(255,255,255,0.13);
-  --text:#e2e8f0; --muted:#64748b; --muted2:#94a3b8;
+  --bg:#07090e; --s1:#0f1318; --s2:#161c26; --s3:#1e2738;
+  --border:rgba(255,255,255,0.09); --border2:rgba(255,255,255,0.18);
+  --text:#f1f5f9; --muted:#8899aa; --muted2:#b0bfcc;
   --green:#22d3a0; --red:#f43f5e; --yellow:#fbbf24;
   --blue:#38bdf8; --purple:#a78bfa; --orange:#fb923c;
   --fh:'Syne',sans-serif; --fm:'JetBrains Mono',monospace;
   --r:10px;
 }
 [data-theme="light"] {
-  --bg:#f0f4f8; --s1:#ffffff; --s2:#f1f5f9; --s3:#e2e8f0;
-  --border:rgba(0,0,0,0.08); --border2:rgba(0,0,0,0.15);
-  --text:#1a202c; --muted:#64748b; --muted2:#475569;
+  --bg:#edf2f7; --s1:#ffffff; --s2:#f8fafc; --s3:#e2e8f0;
+  --border:rgba(0,0,0,0.10); --border2:rgba(0,0,0,0.18);
+  --text:#0f172a; --muted:#4b6070; --muted2:#334155;
   --green:#059669; --red:#dc2626; --yellow:#d97706;
   --blue:#0284c7; --purple:#7c3aed; --orange:#ea580c;
 }
@@ -1606,18 +1606,23 @@ nav::-webkit-scrollbar{display:none}
 <div class="page" id="page-tarjetas">
 
   <div class="card" style="margin-bottom:14px">
-    <div class="ct">💳 Gastos con tarjetas — desglose del resumen</div>
-    <p style="font-size:.75rem;color:var(--muted2);margin-bottom:12px;line-height:1.5">
-      Acá vas mapeando todo el consumo del período (vos, Lara y Emma) por categoría y tipo de gasto, para totalizar y comparar contra el resumen real cuando lo emite el banco. No toca Flujo ni Overview en ningún momento — el pago del resumen lo seguís cargando vos, donde siempre, cuando vence.
-    </p>
-    <div style="background:var(--s2);border-radius:8px;padding:10px;margin-bottom:12px;font-size:.68rem;color:var(--muted2);line-height:1.6">
-      <b style="color:var(--text)">¿Cómo se arma cada resumen?</b><br>
-      Cierre anterior → ━━━ consumos de ese período ━━━ → Cierre actual<br>
-      Cada gasto se agrupa entre el cierre previo y el siguiente cierre de esa tarjeta, no por mes calendario. Por eso podés ver dos cards de la misma tarjeta a la vez: una recién cerrada (lista para pagar) y otra todavía corriendo.
+    <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="toggleTarjetasIntro()">
+      <div class="ct" style="margin-bottom:0">💳 Gastos con tarjetas — desglose del resumen</div>
+      <span id="tarjetas-intro-chevron" style="color:var(--muted);font-size:.8rem;transition:transform .2s">▶</span>
     </div>
-    <button onclick="copiarLinkCargaFamiliar('Lara')" class="btn btn-g" style="width:100%;margin-bottom:6px">🔗 Link para Lara</button>
-    <button onclick="copiarLinkCargaFamiliar('Emma')" class="btn btn-g" style="width:100%;margin-bottom:6px">🔗 Link para Emma</button>
-    <button onclick="window.cfSincronizarAhora && window.cfSincronizarAhora()" class="btn btn-o" style="width:100%">🔄 Sincronizar ahora</button>
+    <div id="tarjetas-intro-body" style="display:none;margin-top:12px">
+      <p style="font-size:.75rem;color:var(--muted2);margin-bottom:12px;line-height:1.5">
+        Acá vas mapeando todo el consumo del período (vos, Lara y Emma) por categoría y tipo de gasto, para totalizar y comparar contra el resumen real cuando lo emite el banco. No toca Flujo ni Overview en ningún momento — el pago del resumen lo seguís cargando vos, donde siempre, cuando vence.
+      </p>
+      <div style="background:var(--s2);border-radius:8px;padding:10px;margin-bottom:12px;font-size:.68rem;color:var(--muted2);line-height:1.6">
+        <b style="color:var(--text)">¿Cómo se arma cada resumen?</b><br>
+        Cierre anterior → ━━━ consumos de ese período ━━━ → Cierre actual<br>
+        Cada gasto se agrupa entre el cierre previo y el siguiente cierre de esa tarjeta, no por mes calendario. Por eso podés ver dos cards de la misma tarjeta a la vez: una recién cerrada (lista para pagar) y otra todavía corriendo.
+      </div>
+      <button onclick="copiarLinkCargaFamiliar('Lara')" class="btn btn-g" style="width:100%;margin-bottom:6px">🔗 Link para Lara</button>
+      <button onclick="copiarLinkCargaFamiliar('Emma')" class="btn btn-g" style="width:100%;margin-bottom:6px">🔗 Link para Emma</button>
+      <button onclick="window.cfSincronizarAhora && window.cfSincronizarAhora()" class="btn btn-o" style="width:100%">🔄 Sincronizar ahora</button>
+    </div>
   </div>
 
   <div class="card" style="margin-bottom:14px">
@@ -1681,12 +1686,17 @@ nav::-webkit-scrollbar{display:none}
   <div style="max-width:600px">
 
     <div class="card" style="margin-bottom:14px">
-      <div class="ct">🔁 Débitos automáticos recurrentes</div>
-      <p style="font-size:.75rem;color:var(--muted2);margin-bottom:12px;line-height:1.5">
-        Para gastos fijos que se debitan solos (seguros, suscripciones). La app los carga automáticamente cada mes con el monto que configurés acá — no lee tu banco, así que si el monto cambia, actualizalo vos.
-      </p>
-      <div id="cfg-recurrentes-list" style="margin-bottom:10px"></div>
-      <button onclick="agregarRecurrenteCfg()" class="btn btn-o" style="width:100%;font-size:.72rem">＋ Agregar débito recurrente</button>
+      <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="toggleRecurrentesCfg()">
+        <div class="ct" style="margin-bottom:0">🔁 Débitos automáticos recurrentes</div>
+        <span id="rec-cfg-chevron" style="color:var(--muted);font-size:.8rem;transition:transform .2s">▶</span>
+      </div>
+      <div id="rec-cfg-body" style="display:none;margin-top:12px">
+        <p style="font-size:.75rem;color:var(--muted2);margin-bottom:12px;line-height:1.5">
+          Para gastos fijos que se debitan solos (seguros, suscripciones). La app los carga automáticamente cada mes con el monto que configurés acá — no lee tu banco, así que si el monto cambia, actualizalo vos.
+        </p>
+        <div id="cfg-recurrentes-list" style="margin-bottom:10px"></div>
+        <button onclick="agregarRecurrenteCfg()" class="btn btn-o" style="width:100%;font-size:.72rem">＋ Agregar débito recurrente</button>
+      </div>
     </div>
 
     <div class="card" style="margin-bottom:14px">
@@ -2275,7 +2285,7 @@ function go(id, btn) {
   if (id === 'flujo')       renderFlujo();
   if (id === 'patrimonio')  updatePatrimonio();
   if (id === 'cuentas')   { renderCuentas(); updateMediosDePago(); updateOverviewSaldos(); renderHistorialTransf(); }
-  if (id === 'config')     { renderTarjetasCfg(); renderRecurrentesCfg(); renderNormalizadorCategorias(); }
+  if (id === 'config')     { rotarPeriodosTarjetas(); renderTarjetasCfg(); renderRecurrentesCfg(); renderNormalizadorCategorias(); }
   if (id === 'tarjetas')    {
     renderGastosTarjetas();
     renderOwnTarjetaSelector();
@@ -2293,6 +2303,52 @@ window.cfCerrarSesion = function() {
   localStorage.removeItem('cf_quien');
   location.href = location.origin + location.pathname; // recarga sin query params
 };
+
+// ── Toggle intro tarjetas y recurrentes ──
+function toggleTarjetasIntro() {
+  const body = document.getElementById('tarjetas-intro-body');
+  const chev = document.getElementById('tarjetas-intro-chevron');
+  const open = body.style.display === 'none';
+  body.style.display = open ? 'block' : 'none';
+  chev.textContent = open ? '▼' : '▶';
+}
+function toggleRecurrentesCfg() {
+  const body = document.getElementById('rec-cfg-body');
+  const chev = document.getElementById('rec-cfg-chevron');
+  const open = body.style.display === 'none';
+  body.style.display = open ? 'block' : 'none';
+  chev.textContent = open ? '▼' : '▶';
+}
+
+// ── Rotación automática de períodos al entrar a Config ──
+function rotarPeriodosTarjetas() {
+  const hoy = new Date().toISOString().slice(0,10);
+  const tarjetas = getTarjetas();
+  let huboCambio = false;
+  tarjetas.forEach(t => {
+    if (!t.periodos) return;
+    const actual = t.periodos[1] || {};
+    if (!actual.cierre) return;
+    if (hoy > actual.cierre) {
+      // Rotar: anterior = actual, actual = próximo, próximo = vacío
+      t.periodos[0] = { ...actual };
+      t.periodos[1] = { ...(t.periodos[2] || {inicio:'',cierre:''}) };
+      t.periodos[2] = { inicio: '', cierre: '' };
+      // Auto inicio del próximo = cierre actual + 1 día
+      if (t.periodos[1].cierre) {
+        const d = new Date(t.periodos[1].cierre + 'T00:00:00');
+        d.setDate(d.getDate() + 1);
+        t.periodos[2].inicio = d.toISOString().slice(0,10);
+      }
+      huboCambio = true;
+    }
+  });
+  if (huboCambio) {
+    saveTarjetas(tarjetas);
+    renderTarjetasCfg();
+    if (typeof renderGastosTarjetas === 'function') renderGastosTarjetas();
+  }
+}
 
 // ── Badge "cargas nuevas de Lara/Emma" en tab Tarjetas ──
 function actualizarBadgeTarjetas() {
