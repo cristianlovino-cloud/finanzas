@@ -3989,13 +3989,15 @@ function renderGastosTarjetas() {
       const inicioDate = new Date(periodoManual.inicio + 'T00:00:00');
       esEsteMes = inicioDate <= hoy; // período ya arrancó
     } else {
-      // Sin período manual exacto: verificar si algún período activo cubre este cierre
-      // (ej: cuota con cierre viejo 30/07 cuando el período actual es 26/06→23/07)
-      const periodoActivo = periodos.find(p => {
+      // Sin período manual exacto: solo mover a "Este mes" si el cierre del grupo
+      // cae dentro del rango de algún período ya configurado (anterior, actual o próximo)
+      // y ese período ya arrancó. Evita traer cuotas lejanas.
+      const periodoQueLoCubre = periodos.find(p => {
         const inicioDate = new Date(p.inicio + 'T00:00:00');
-        return inicioDate <= hoy; // período ya arrancó
+        const cierreConfigDate = new Date(p.cierre + 'T00:00:00');
+        return inicioDate <= hoy && grupo.cierre <= p.cierre;
       });
-      if (periodoActivo) esEsteMes = true;
+      if (periodoQueLoCubre) esEsteMes = true;
       else esEsteMes = mesDeClasificacion(grupo.cierre) <= mesActual;
     }
     if (esEsteMes) gruposEsteMes.push(grupo);
