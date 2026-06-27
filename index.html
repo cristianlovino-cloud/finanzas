@@ -3898,9 +3898,24 @@ function agruparGastosPorPeriodo() {
 
   gastosFamilia.forEach(g => {
     const tarjeta = tarjetas.find(t => t.id === g.tarjetaId);
-    if (!tarjeta) { huerfanos.push(g); return; } // no los perdemos: van a un grupo aparte
-    const cierre = periodoDeGasto(tarjeta, g.fecha);
-    if (!cierre) return; // gasto fuera de todos los períodos definidos → ignorar
+    if (!tarjeta) { huerfanos.push(g); return; }
+
+    let cierre;
+    const esCuota = !!(g.compraId || g.esCuotaEnCurso);
+
+    if (esCuota) {
+      // Cuotas: g.fecha YA ES el cierre del período — va directo sin buscar por rango
+      cierre = g.fecha;
+    } else if (g.recurrenteId) {
+      // Recurrentes: también van directo por g.fecha (ya filtrados los futuros arriba)
+      cierre = periodoDeGasto(tarjeta, g.fecha);
+      if (!cierre) return; // fuera de períodos → ignorar
+    } else {
+      // Gastos sueltos: buscar por rango de fechas en los períodos configurados
+      cierre = periodoDeGasto(tarjeta, g.fecha);
+      if (!cierre) return; // fuera de períodos → ignorar (aparece en sección "sin período")
+    }
+
     const key = tarjeta.id + '|' + cierre;
     if (!grupos[key]) grupos[key] = { tarjeta, cierre, gastos: [] };
     grupos[key].gastos.push(g);
@@ -4054,6 +4069,8 @@ function renderGastosTarjetas() {
   const hoyISOr = new Date().toISOString().slice(0,10);
   const sinPeriodo = todosSinFiltro.filter(g => {
     if (!g.tarjetaId) return false;
+    if (g.recurrenteId) return false; // recurrentes no necesitan período
+    if (g.compraId || g.esCuotaEnCurso) return false; // cuotas van directo por g.fecha
     const tj = tarjetas.find(t => t.id === g.tarjetaId);
     if (!tj) return false;
     const periodos = (tj.periodos||[]).filter(p=>p.inicio&&p.cierre);
