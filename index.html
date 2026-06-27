@@ -3411,25 +3411,24 @@ function aplicarDebitosRecurrentes(mes) {
 
     if (r.tarjetaId) {
       // Tiene tarjeta asociada: va SOLO al desglose de gastos_tarjetas, nunca a Flujo.
-      // El pago real del resumen lo sigue cargando el usuario a mano cuando vence, como siempre.
-      const yaExisteEnTarjetas = gastosTarjetas.some(g => g.recurrenteId === r.id && g.fecha.slice(0,7) === mes);
-      if (yaExisteEnTarjetas) return;
+      const tarjetaDelRec = getTarjetas().find(t => t.id === r.tarjetaId);
+      if (!tarjetaDelRec) return;
 
       const diaSeguro = Math.min(r.diaDelMes || 1, new Date(parseInt(mes.slice(0,4)), parseInt(mes.slice(5,7)), 0).getDate());
       const fecha = mes + '-' + String(diaSeguro).padStart(2,'0');
 
-      // Verificar que la fecha del recurrente caiga dentro del período correcto de la tarjeta.
-      // Ej: BSF cierra el 25/06 — un recurrente del día 26 pertenece al período siguiente, no a junio.
-      const tarjetaDelRec = getTarjetas().find(t => t.id === r.tarjetaId);
-      if (tarjetaDelRec) {
-        const cierreDelPeriodo = periodoDeGasto(tarjetaDelRec, fecha);
-        const mesDelCierre = mesDeClasificacion(cierreDelPeriodo);
-        if (mesDelCierre !== mes) return; // cae en otro período, no insertar acá
-      }
-      // Dentro del desglose de tarjeta sí podemos guardar el monto en su moneda original
-      // (USD o ARS), porque ese desglose no se suma a los totales de Flujo.
+      // Verificar que la fecha caiga en un período definido de la tarjeta
+      const cierreDelPeriodo = periodoDeGasto(tarjetaDelRec, fecha);
+      if (!cierreDelPeriodo) return; // fecha fuera de todos los períodos → no insertar
+
+      // No duplicar: ya existe un recurrente con este id para este cierre de período
+      const yaExisteEnTarjetas = gastosTarjetas.some(g =>
+        g.recurrenteId === r.id && periodoDeGasto(tarjetaDelRec, g.fecha) === cierreDelPeriodo
+      );
+      if (yaExisteEnTarjetas) return;
+
       gastosTarjetas.push({
-        id: 'gt_rec_' + r.id + '_' + mes,
+        id: 'gt_rec_' + r.id + '_' + cierreDelPeriodo,
         tarjetaId: r.tarjetaId, fecha, tipo: r.nombre, monto: r.monto, moneda: r.moneda || 'ARS',
         cargadoPor: 'Recurrente automático', ts: Date.now(), recurrenteId: r.id,
       });
@@ -3466,22 +3465,22 @@ function aplicarDebitosRecurrentes(mes) {
     DB.set('txs', txsAll);
     if (window.FBsave) window.FBsave('txs', txsAll);
   }
-  // Limpiar gastos (recurrentes y de Lara/Emma) que quedaron en el mes calendario equivocado
-  // porque su fecha es posterior al cierre de la tarjeta de ese mes.
-  // Ej: BSF cierra el 25/06 — cualquier gasto del 26/06 pertenece al período siguiente.
+  // Limpiar recurrentes duplicados — con la nueva lógica de períodos pueden haber quedado
+  // duplicados del mismo recurrente para el mismo cierre de período
   try {
     const tarjetasActuales = getTarjetas();
     const antesLimpiar = gastosTarjetas.length;
+    const vistos = new Set();
     gastosTarjetas = gastosTarjetas.filter(g => {
-      if (!g.tarjetaId || !g.fecha) return true;
+      if (!g.recurrenteId || !g.tarjetaId) return true; // no es recurrente, no tocar
       const tj = tarjetasActuales.find(t => t.id === g.tarjetaId);
       if (!tj) return true;
-      // El cierre real del período al que pertenece este gasto
-      const cierreReal = periodoDeGasto(tj, g.fecha);
-      // El cierre esperado para el mes que se está procesando (usamos el día 15 como referencia)
-      const cierreEsperado = periodoDeGasto(tj, mes + '-15');
-      // Si el cierre real es posterior al esperado, el gasto pertenece a un período futuro → no va acá
-      return cierreReal <= cierreEsperado;
+      const cierre = periodoDeGasto(tj, g.fecha);
+      if (!cierre) return false; // fuera de todos los períodos → eliminar
+      const key = g.recurrenteId + '|' + cierre;
+      if (vistos.has(key)) return false; // duplicado → eliminar
+      vistos.add(key);
+      return true;
     });
     if (huboCambiosTarjetas || gastosTarjetas.length !== antesLimpiar) {
       saveGastosTarjetas(gastosTarjetas);
