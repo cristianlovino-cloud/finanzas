@@ -3853,7 +3853,11 @@ function ownCargarGastoTarjeta() {
 // Agrupa todos los gastos por tarjeta + período de resumen (cierre que les corresponde)
 function agruparGastosPorPeriodo() {
   const tarjetas = getTarjetas();
-  const gastosFamilia = getGastosTarjetas();
+  const hoyISO = new Date().toISOString().slice(0,10);
+  // Excluir recurrentes con fecha futura — no mostrar hasta que llegue su día
+  const gastosFamilia = getGastosTarjetas().filter(g =>
+    !g.recurrenteId || g.fecha <= hoyISO
+  );
   const grupos = {}; // key: tarjetaId + '|' + cierreISO -> { tarjeta, cierre, gastos: [] }
   const huerfanos = []; // gastos cuyo tarjetaId ya no coincide con ninguna tarjeta configurada
 
