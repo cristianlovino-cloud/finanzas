@@ -753,6 +753,9 @@ nav::-webkit-scrollbar{display:none}
 
 /* ── TOAST ── */
 .toast-wrap{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:9999;pointer-events:none}
+.chip{display:inline-block;padding:5px 11px;border-radius:20px;font-size:.7rem;cursor:pointer;border:1px solid var(--border2);background:var(--s2);color:var(--muted2);transition:all .15s;white-space:nowrap}
+.chip:active{transform:scale(.93)}
+.chip.sel{background:var(--green);color:var(--bg);border-color:var(--green);font-weight:600}
 #fab-btn:hover{transform:scale(1.08)!important;box-shadow:0 6px 24px rgba(34,211,160,.5)}
 #fab-btn:active{transform:scale(.88)!important}
 .toast{background:rgba(34,211,160,.12);border:1px solid rgba(34,211,160,.3);color:var(--green);padding:10px 20px;border-radius:8px;font-size:.78rem;white-space:nowrap;animation:fadeUp .3s ease;display:none}
@@ -1270,11 +1273,10 @@ nav::-webkit-scrollbar{display:none}
         </div>
         <div class="field"><label>Descripción</label><input type="text" id="tx-desc" class="fi" placeholder="ej: supermercado, nafta..." onkeydown="if(event.key==='Enter')submitTx()"></div>
         <div class="r2">
-          <div class="field">
+          <div class="field" style="grid-column:1/-1">
             <label>Categoría</label>
-            <select id="tx-cat" class="fi">
-              <option value="">— elegir —</option>
-            </select>
+            <input type="hidden" id="tx-cat" value="">
+            <div id="tx-cat-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px"></div>
           </div>
           <div class="field">
             <label>Medio de pago</label>
@@ -2579,15 +2581,19 @@ function setTipo(tipo, btn) {
 function populateCatDropdown() {
   const sel = document.getElementById('tx-cat');
   if (!sel) return;
-  
+
   const fechaEl = document.getElementById('tx-fecha');
   const fecha = fechaEl?.value || new Date().toISOString().split('T')[0];
   const mes = fecha.slice(0,7);
   const plan = getPlan(mes);
-  
-  sel.innerHTML = '<option value="">— elegir —</option>';
+
+  // Ingreso y TC siguen usando select oculto — mostrar select, ocultar chips
+  const chipsEl = document.getElementById('tx-cat-chips');
 
   if (curTipo === 'ingreso') {
+    if (chipsEl) chipsEl.style.display = 'none';
+    sel.style.display = '';
+    sel.innerHTML = '<option value="">— elegir —</option>';
     const g0 = document.createElement('optgroup');
     g0.label = 'Ingresos del mes';
     plan.ing.forEach(r => { const o=document.createElement('option'); o.value=r.l; o.text=r.l; g0.appendChild(o); });
@@ -2599,7 +2605,9 @@ function populateCatDropdown() {
   }
 
   if (curTipo === 'tc') {
-    // Solo tarjetas: vars que empiezan con TC
+    if (chipsEl) chipsEl.style.display = 'none';
+    sel.style.display = '';
+    sel.innerHTML = '<option value="">— elegir —</option>';
     const g1 = document.createElement('optgroup');
     g1.label = 'Tarjetas';
     const tcVars = plan.vars.filter(r => r.l.toUpperCase().startsWith('TC '));
@@ -2609,24 +2617,11 @@ function populateCatDropdown() {
     return;
   }
 
-  // Gasto directo: fijos + variables SIN tarjetas
-  if (plan.fijos.length) {
-    const g1 = document.createElement('optgroup');
-    g1.label = 'Gastos fijos';
-    plan.fijos.forEach(r => { const o=document.createElement('option'); o.value=r.l; o.text=r.l; g1.appendChild(o); });
-    sel.appendChild(g1);
-  }
-  const noTC = plan.vars.filter(r => !r.l.toUpperCase().startsWith('TC '));
-  if (noTC.length) {
-    const g2 = document.createElement('optgroup');
-    g2.label = 'Variables';
-    noTC.forEach(r => { const o=document.createElement('option'); o.value=r.l; o.text=r.l; g2.appendChild(o); });
-    sel.appendChild(g2);
-  }
-  const g3 = document.createElement('optgroup');
-  g3.label = 'Sin categoría';
-  const oOtros = document.createElement('option'); oOtros.value='Otros'; oOtros.text='Otros';
-  g3.appendChild(oOtros); sel.appendChild(g3);
+  // Gasto directo → chips ordenados alfabéticamente
+  sel.style.display = 'none';
+  if (chipsEl) chipsEl.style.display = 'flex';
+  sel.value = '';
+  renderCatChips('');
 }
 
 function submitTx() {
@@ -2673,6 +2668,7 @@ function submitTx() {
   }
 
   showToast(`✓ ${curTipo === 'ingreso' ? 'Ingreso' : 'Gasto'} registrado — datos actualizados`);
+  if (curTipo === 'gasto') renderCatChips('');
 }
 
 function renderRecentTxs() {
@@ -2978,6 +2974,22 @@ const CATEGORIAS_CONSUMO_DEFAULT = [
   'Supermercado', 'Nafta', 'Ropa', 'Comida afuera', 'Delivery', 'Farmacia',
   'Entretenimiento', 'Salidas', 'Regalos', 'Hogar', 'Tecnología', 'Salud', 'Otros',
 ];
+
+function renderCatChips(seleccionada) {
+  const container = document.getElementById('tx-cat-chips');
+  if (!container) return;
+  const cats = getCategoriasConsumo(); // ya vienen ordenadas alfabéticamente
+  container.innerHTML = cats.map(c => `
+    <span class="chip${c === seleccionada ? ' sel' : ''}" onclick="seleccionarChip(this,'${c.replace(/'/g,"\'")}')">
+      ${c}
+    </span>`).join('');
+}
+
+function seleccionarChip(el, valor) {
+  document.getElementById('tx-cat').value = valor;
+  document.querySelectorAll('#tx-cat-chips .chip').forEach(c => c.classList.remove('sel'));
+  el.classList.add('sel');
+}
 
 function getCategoriasConsumo() {
   const lista = DB.get('categorias_consumo', CATEGORIAS_CONSUMO_DEFAULT);
