@@ -216,6 +216,16 @@ function iniciarEscuchaGastosFamiliares() {
   });
 }
 
+// ── Sube un gasto que Cris cargó "en nombre de" Lara/Emma a la colección pública,
+// para que ella lo vea en su historial y no lo recargue duplicado ──
+window.cfSubirGastoDeOtro = async function(gasto) {
+  try {
+    await addDoc(CF_COL_GASTOS, gasto);
+  } catch(e) {
+    console.error('cfSubirGastoDeOtro error:', e);
+  }
+};
+
 // ── Sincronización manual: trae TODOS los gastos de Firestore de una sola vez, sin depender del listener en vivo ──
 window.cfSincronizarAhora = async function() {
   try {
@@ -371,10 +381,13 @@ window.cfCargarMiHistorial = async function() {
   if (el) el.innerHTML = '<div style="font-size:.7rem;color:var(--muted)">⟳ Cargando tu historial...</div>';
 
   try {
-    const q = query(CF_COL_GASTOS, where('cargadoPor', '==', quien));
-    const snap = await getDocs(q);
-    const gastos = [];
-    snap.forEach(d => gastos.push(d.data()));
+    // Traemos TODOS los gastos (no solo los propios) para poder marcar los que
+    // Cris ya cargó por esta persona, y así evitar que los recarguen duplicados.
+    const snap = await getDocs(CF_COL_GASTOS);
+    const todos = [];
+    snap.forEach(d => todos.push(d.data()));
+    // Filtramos a lo que es de ESTA persona: lo que cargó ella misma + lo que Cris cargó marcándola como "quien"
+    const gastos = todos.filter(g => g.cargadoPor === quien || g.gastoDe === quien);
     gastos.sort((a,b) => (b.ts||0) - (a.ts||0));
 
     if (!el) return;
@@ -388,7 +401,7 @@ window.cfCargarMiHistorial = async function() {
 
     const totalHtml = `
       <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--s2);border-radius:8px;margin-bottom:8px">
-        <span style="font-size:.7rem;color:var(--muted)">Total cargado por vos</span>
+        <span style="font-size:.7rem;color:var(--muted)">Total cargado</span>
         <div style="text-align:right">
           <span style="font-size:.78rem;font-weight:700">${fmt(totalARS)}</span>
           ${totalUSD > 0 ? `<span style="font-size:.72rem;font-weight:700;color:var(--yellow);margin-left:8px">U$S ${totalUSD.toLocaleString('es-AR')}</span>` : ''}
@@ -400,10 +413,12 @@ window.cfCargarMiHistorial = async function() {
       const montoDisplay = esUSD ? `U$S ${Number(g.monto).toFixed(2)}` : fmt(g.monto);
       const fechaReal = g.fechaCompra || g.fecha;
       const fechaLabel = fechaReal ? new Date(fechaReal+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
+      // Si lo cargó Cris en nombre de esta persona, lo marcamos para que no lo recargue
+      const cargadoPorOtro = g.cargadoPor !== quien;
       return `
-      <div style="padding:8px 10px;background:var(--s2);border-radius:8px;margin-bottom:6px;font-size:.74rem;display:flex;justify-content:space-between;align-items:center;gap:8px">
+      <div style="padding:8px 10px;background:${cargadoPorOtro ? 'rgba(34,211,160,.08)' : 'var(--s2)'};border:${cargadoPorOtro ? '1px solid rgba(34,211,160,.3)' : 'none'};border-radius:8px;margin-bottom:6px;font-size:.74rem;display:flex;justify-content:space-between;align-items:center;gap:8px">
         <div style="min-width:0">
-          <div style="font-weight:600">${g.tipo || ''}</div>
+          <div style="font-weight:600">${g.tipo || ''}${cargadoPorOtro ? ' <span style="color:var(--green);font-weight:700">✓ ya cargado por Cris</span>' : ''}</div>
           <div style="font-size:.62rem;color:var(--muted)">${fechaLabel}</div>
         </div>
         <span style="font-weight:700;color:var(--red);white-space:nowrap">${montoDisplay}</span>
@@ -3856,7 +3871,7 @@ function ownCargarGastoTarjeta() {
       lista.push({
         id: 'gt_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2,5),
         tarjetaId, fecha: cierre, fechaCompra: fecha, tipo: `${tipo} (cuota ${numeroCuota}/${cecTotal})`, monto,
-        cargadoPor: quien, ts: Date.now(), compraId, cuotaNum: numeroCuota, cuotaTotal: cecTotal,
+        cargadoPor: 'Cris', gastoDe: quien, ts: Date.now(), compraId, cuotaNum: numeroCuota, cuotaTotal: cecTotal,
         esCuotaEnCurso: true,
       });
     });
@@ -3869,7 +3884,7 @@ function ownCargarGastoTarjeta() {
       lista.push({
         id: 'gt_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2,5),
         tarjetaId, fecha: cierre, fechaCompra: fecha, tipo: `${tipo} (cuota ${i+1}/${cantCuotas})`, monto: montos[i],
-        cargadoPor: quien, ts: Date.now(), compraId, cuotaNum: i+1, cuotaTotal: cantCuotas,
+        cargadoPor: 'Cris', gastoDe: quien, ts: Date.now(), compraId, cuotaNum: i+1, cuotaTotal: cantCuotas,
       });
     });
     showToast(`✓ ${tipo} en ${cantCuotas} cuotas de ~${fmt(montos[1] || montos[0])}`);
@@ -3877,12 +3892,20 @@ function ownCargarGastoTarjeta() {
     lista.push({
       id: 'gt_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
       tarjetaId, fecha, tipo, monto,
-      cargadoPor: quien, ts: Date.now(),
+      cargadoPor: 'Cris', gastoDe: quien, ts: Date.now(),
     });
     showToast('✓ Gasto registrado: ' + tipo + ' — ' + fmt(monto));
   }
 
   saveGastosTarjetas(lista);
+
+  // Si el gasto es "de" Lara/Emma (Cris cargó en su nombre), también lo subimos
+  // a la colección pública para que ella lo vea marcado en su form y no lo duplique.
+  if (quien !== 'Cris' && window.cfSubirGastoDeOtro) {
+    const tsActual = lista[lista.length-1]?.ts;
+    const recienAgregados = lista.filter(g => g.ts === tsActual);
+    recienAgregados.forEach(g => window.cfSubirGastoDeOtro(g));
+  }
 
   document.getElementById('own-tj-tipo').value = '';
   document.getElementById('own-tj-monto').value = '';
