@@ -303,10 +303,12 @@ let _cfTarjetasDisponibles = [];
 window.cfPublicarConfig = async function(pin, tarjetas) {
   try {
     const categorias = (typeof getCategoriasConsumo === 'function') ? getCategoriasConsumo() : [];
+    const conciliaciones = DB.get('tarjetas_conciliadas', {});
     await setDoc(CF_DOC_PIN, {
       pin,
       tarjetas: tarjetas.map(t => ({ id: t.id, nombre: t.nombre, tipoCierre: t.tipoCierre, diaFijo: t.diaFijo })),
       categorias,
+      conciliaciones,
     }, { merge: true });
     return true;
   } catch(e) {
@@ -373,7 +375,7 @@ window.cfValidarPin = async function() {
   }
 };
 
-// ── Trae y muestra el historial real de la persona logueada en este link (no solo lo de la sesión actual) ──
+// ── Trae y muestra el historial de la persona: pendiente de conciliar (detalle) + resumen histórico (totales por mes) ──
 window.cfCargarMiHistorial = async function() {
   const quien = document.getElementById('cf-quien')?.value;
   if (!quien) return;
@@ -381,12 +383,9 @@ window.cfCargarMiHistorial = async function() {
   if (el) el.innerHTML = '<div style="font-size:.7rem;color:var(--muted)">⟳ Cargando tu historial...</div>';
 
   try {
-    // Traemos TODOS los gastos (no solo los propios) para poder marcar los que
-    // Cris ya cargó por esta persona, y así evitar que los recarguen duplicados.
     const snap = await getDocs(CF_COL_GASTOS);
     const todos = [];
     snap.forEach(d => todos.push(d.data()));
-    // Filtramos a lo que es de ESTA persona: lo que cargó ella misma + lo que Cris cargó marcándola como "quien"
     const gastos = todos.filter(g => g.cargadoPor === quien || g.gastoDe === quien);
     gastos.sort((a,b) => (b.ts||0) - (a.ts||0));
 
@@ -396,36 +395,88 @@ window.cfCargarMiHistorial = async function() {
       return;
     }
 
-    const totalARS = gastos.filter(g => g.moneda !== 'USD').reduce((s,g) => s + (g.monto||0), 0);
-    const totalUSD = gastos.filter(g => g.moneda === 'USD').reduce((s,g) => s + (g.monto||0), 0);
+    // Traer conciliaciones publicadas (las marca Cris desde la app principal)
+    let conciliaciones = {};
+    try {
+      const pinSnap = await getDoc(CF_DOC_PIN);
+      if (pinSnap.exists()) conciliaciones = pinSnap.data().conciliaciones || {};
+    } catch(e) { /* sin conexión, seguimos sin filtrar */ }
 
-    const totalHtml = `
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--s2);border-radius:8px;margin-bottom:8px">
-        <span style="font-size:.7rem;color:var(--muted)">Total cargado</span>
-        <div style="text-align:right">
-          <span style="font-size:.78rem;font-weight:700">${fmt(totalARS)}</span>
-          ${totalUSD > 0 ? `<span style="font-size:.72rem;font-weight:700;color:var(--yellow);margin-left:8px">U$S ${totalUSD.toLocaleString('es-AR')}</span>` : ''}
-        </div>
-      </div>`;
+    // Necesitamos saber a qué período (cierre) pertenece cada gasto para chequear si está conciliado.
+    // Los gastos ya traen su tarjetaId; el "cierre" lo inferimos de g.fecha si es cuota,
+    // o lo dejamos sin filtrar si no podemos determinarlo (mejor mostrar de más que ocultar de menos).
+    const pendientes = gastos.filter(g => {
+      const key = g.tarjetaId + '|' + g.fecha;
+      return !conciliaciones[key];
+    });
+    const conciliados = gastos.filter(g => {
+      const key = g.tarjetaId + '|' + g.fecha;
+      return !!conciliaciones[key];
+    });
 
-    const itemsHtml = gastos.map(g => {
-      const esUSD = g.moneda === 'USD';
-      const montoDisplay = esUSD ? `U$S ${Number(g.monto).toFixed(2)}` : fmt(g.monto);
-      const fechaReal = g.fechaCompra || g.fecha;
-      const fechaLabel = fechaReal ? new Date(fechaReal+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
-      // Si lo cargó Cris en nombre de esta persona, lo marcamos para que no lo recargue
-      const cargadoPorOtro = g.cargadoPor !== quien;
-      return `
-      <div style="padding:8px 10px;background:${cargadoPorOtro ? 'rgba(34,211,160,.08)' : 'var(--s2)'};border:${cargadoPorOtro ? '1px solid rgba(34,211,160,.3)' : 'none'};border-radius:8px;margin-bottom:6px;font-size:.74rem;display:flex;justify-content:space-between;align-items:center;gap:8px">
-        <div style="min-width:0">
-          <div style="font-weight:600">${g.tipo || ''}${cargadoPorOtro ? ' <span style="color:var(--green);font-weight:700">✓ ya cargado por Cris</span>' : ''}</div>
-          <div style="font-size:.62rem;color:var(--muted)">${fechaLabel}</div>
-        </div>
-        <span style="font-weight:700;color:var(--red);white-space:nowrap">${montoDisplay}</span>
-      </div>`;
-    }).join('');
+    // ── Sección 1: pendientes de conciliar (detalle) ──
+    let html = '';
+    if (pendientes.length > 0) {
+      const totalARS = pendientes.filter(g => g.moneda !== 'USD').reduce((s,g) => s + (g.monto||0), 0);
+      const totalUSD = pendientes.filter(g => g.moneda === 'USD').reduce((s,g) => s + (g.monto||0), 0);
+      html += `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--s2);border-radius:8px;margin-bottom:8px">
+          <span style="font-size:.7rem;color:var(--muted)">Pendiente de conciliar</span>
+          <div style="text-align:right">
+            <span style="font-size:.78rem;font-weight:700">${fmt(totalARS)}</span>
+            ${totalUSD > 0 ? `<span style="font-size:.72rem;font-weight:700;color:var(--yellow);margin-left:8px">U$S ${totalUSD.toLocaleString('es-AR')}</span>` : ''}
+          </div>
+        </div>`;
+      html += pendientes.map(g => {
+        const esUSD = g.moneda === 'USD';
+        const montoDisplay = esUSD ? `U$S ${Number(g.monto).toFixed(2)}` : fmt(g.monto);
+        const fechaReal = g.fechaCompra || g.fecha;
+        const fechaLabel = fechaReal ? new Date(fechaReal+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
+        const cargadoPorOtro = g.cargadoPor !== quien;
+        return `
+        <div style="padding:8px 10px;background:${cargadoPorOtro ? 'rgba(34,211,160,.08)' : 'var(--s2)'};border:${cargadoPorOtro ? '1px solid rgba(34,211,160,.3)' : 'none'};border-radius:8px;margin-bottom:6px;font-size:.74rem;display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <div style="min-width:0">
+            <div style="font-weight:600">${g.tipo || ''}${cargadoPorOtro ? ' <span style="color:var(--green);font-weight:700">✓ ya cargado por Cris</span>' : ''}</div>
+            <div style="font-size:.62rem;color:var(--muted)">${fechaLabel}</div>
+          </div>
+          <span style="font-weight:700;color:var(--red);white-space:nowrap">${montoDisplay}</span>
+        </div>`;
+      }).join('');
+    } else {
+      html += '<div style="font-size:.7rem;color:var(--muted);padding:6px 0">✓ Sin pendientes — todo conciliado.</div>';
+    }
 
-    el.innerHTML = totalHtml + itemsHtml;
+    // ── Sección 2: resumen histórico, agrupado por mes (solo totales) ──
+    if (conciliados.length > 0) {
+      const porMes = {};
+      conciliados.forEach(g => {
+        const fechaRef = g.fechaCompra || g.fecha || '';
+        const mes = fechaRef.slice(0,7);
+        if (!porMes[mes]) porMes[mes] = { ars: 0, usd: 0 };
+        if (g.moneda === 'USD') porMes[mes].usd += (g.monto||0);
+        else porMes[mes].ars += (g.monto||0);
+      });
+      const mesesOrdenados = Object.keys(porMes).sort().reverse();
+      const filasHistorico = mesesOrdenados.map(mes => {
+        const d = porMes[mes];
+        const label = mes ? new Date(mes + '-01T00:00:00').toLocaleDateString('es-AR',{month:'long',year:'numeric'}) : 'Sin fecha';
+        const totalLabel = d.usd > 0
+          ? (d.ars > 0 ? `${fmt(d.ars)} · U$S ${d.usd.toLocaleString('es-AR')}` : `U$S ${d.usd.toLocaleString('es-AR')}`)
+          : fmt(d.ars);
+        return `
+        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:.7rem">
+          <span style="text-transform:capitalize;color:var(--muted2)">${label}</span>
+          <span style="font-weight:600">${totalLabel}</span>
+        </div>`;
+      }).join('');
+      html += `
+        <div style="margin-top:14px;padding-top:10px;border-top:1px dashed var(--border)">
+          <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Histórico conciliado</div>
+          ${filasHistorico}
+        </div>`;
+    }
+
+    el.innerHTML = html;
   } catch(e) {
     console.error('cfCargarMiHistorial error:', e);
     if (el) el.innerHTML = '<div style="font-size:.7rem;color:var(--red)">No se pudo cargar tu historial (revisá tu conexión)</div>';
@@ -3974,6 +4025,10 @@ function marcarPeriodoConciliado(tarjetaId, cierre, conciliado) {
   conciliaciones[key] = conciliado;
   DB.set('tarjetas_conciliadas', conciliaciones);
   if (window.FBsave) window.FBsave('tarjetas_conciliadas', conciliaciones);
+  // Republicar la config pública con las conciliaciones actualizadas, así Lara/Emma
+  // dejan de ver en su historial lo que ya está conciliado.
+  const pin = DB.get('pin_carga_familiar', null);
+  if (pin && window.cfPublicarConfig) window.cfPublicarConfig(pin, getTarjetas());
   renderGastosTarjetas();
 }
 
