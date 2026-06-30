@@ -306,7 +306,7 @@ window.cfPublicarConfig = async function(pin, tarjetas) {
     const conciliaciones = DB.get('tarjetas_conciliadas', {});
     await setDoc(CF_DOC_PIN, {
       pin,
-      tarjetas: tarjetas.map(t => ({ id: t.id, nombre: t.nombre, tipoCierre: t.tipoCierre, diaFijo: t.diaFijo })),
+      tarjetas: tarjetas.map(t => ({ id: t.id, nombre: t.nombre, tipoCierre: t.tipoCierre, diaFijo: t.diaFijo, periodos: t.periodos || [] })),
       categorias,
       conciliaciones,
     }, { merge: true });
@@ -402,15 +402,23 @@ window.cfCargarMiHistorial = async function() {
       if (pinSnap.exists()) conciliaciones = pinSnap.data().conciliaciones || {};
     } catch(e) { /* sin conexión, seguimos sin filtrar */ }
 
-    // Necesitamos saber a qué período (cierre) pertenece cada gasto para chequear si está conciliado.
-    // Los gastos ya traen su tarjetaId; el "cierre" lo inferimos de g.fecha si es cuota,
-    // o lo dejamos sin filtrar si no podemos determinarlo (mejor mostrar de más que ocultar de menos).
+    // Para cada gasto, calculamos a qué período (cierre) pertenece según la tarjeta,
+    // y con eso chequeamos si ese período ya fue marcado como conciliado por Cris.
+    // Cuotas: g.fecha YA ES el cierre. Gastos sueltos: hay que buscarlo por rango.
+    function cierreDelGasto(g) {
+      const esCuota = !!(g.compraId || g.esCuotaEnCurso);
+      if (esCuota) return g.fecha;
+      const tarjeta = _cfTarjetasDisponibles.find(t => t.id === g.tarjetaId);
+      if (!tarjeta) return g.fecha;
+      return periodoDeGasto(tarjeta, g.fecha) || g.fecha;
+    }
+
     const pendientes = gastos.filter(g => {
-      const key = g.tarjetaId + '|' + g.fecha;
+      const key = g.tarjetaId + '|' + cierreDelGasto(g);
       return !conciliaciones[key];
     });
     const conciliados = gastos.filter(g => {
-      const key = g.tarjetaId + '|' + g.fecha;
+      const key = g.tarjetaId + '|' + cierreDelGasto(g);
       return !!conciliaciones[key];
     });
 
