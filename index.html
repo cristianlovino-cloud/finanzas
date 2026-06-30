@@ -644,6 +644,11 @@ window.cfGuardarGasto = async function() {
   --blue:#38bdf8; --purple:#a78bfa; --orange:#fb923c;
   --fh:'Syne',sans-serif; --fm:'JetBrains Mono',monospace;
   --r:10px;
+  /* ── Color dinámico según salud financiera ── */
+  --accent:#22d3a0;          /* saludable: verde */
+  --accent-rgb:34,211,160;
+  --accent-glow:rgba(34,211,160,.15);
+  --health-mode:'saludable';
 }
 [data-theme="light"] {
   --bg:#edf2f7; --s1:#ffffff; --s2:#f8fafc; --s3:#e2e8f0;
@@ -659,7 +664,9 @@ window.cfGuardarGasto = async function() {
 [data-theme="light"] .plan-label { color:var(--text); }
 [data-theme="light"] .plan-val { color:var(--text); background:var(--s2); }
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--text);font-family:var(--fm);font-size:13px;font-weight:500;min-height:100vh;overflow-x:hidden;-webkit-tap-highlight-color:transparent}
+body{background:var(--bg);color:var(--text);font-family:var(--fm);font-size:13px;font-weight:500;min-height:100vh;overflow-x:hidden;-webkit-tap-highlight-color:transparent;transition:--accent .8s ease}
+/* Los elementos que usan accent heredan la transición */
+.nb.active,.mes-badge,.kv.pos,.logo em,.btn-g,.kpi::after{transition:color .8s ease,background .8s ease,border-color .8s ease,box-shadow .8s ease}
 body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 60% 40% at 80% 10%,rgba(34,211,160,.04) 0%,transparent 60%),radial-gradient(ellipse 40% 30% at 10% 80%,rgba(56,189,248,.03) 0%,transparent 60%);pointer-events:none;z-index:0}
 button,select,input{touch-action:manipulation}
 
@@ -931,6 +938,7 @@ nav::-webkit-scrollbar{display:none}
   <div class="logo"><em>CL</em> · Finanzas</div>
   <div style="display:flex;align-items:center;gap:8px">
     <span id="sync-indicator" title="Estado de sincronización" style="font-size:.8rem;cursor:pointer;color:#64748b;letter-spacing:0" onclick="go('config',document.querySelector('.nb:last-child'))">⊙</span>
+    <span id="health-badge" data-modo="saludable" style="font-size:.6rem;color:var(--muted);transition:color .8s ease" title="Salud financiera"></span>
     <button id="theme-btn" onclick="toggleTheme()" style="background:none;border:1px solid var(--border2);border-radius:20px;padding:4px 12px;color:var(--muted2);font-family:var(--fm);font-size:.7rem;cursor:pointer;transition:all .2s" title="Cambiar tema">🌙</button>
     <div class="mes-badge" id="header-mes">Mar 2026</div>
   </div>
@@ -2473,6 +2481,59 @@ function fabAccion() {
       if (montoEl) montoEl.focus();
     }, 150);
   }
+}
+
+// ══════════════════════════════════════════════════════
+// SALUD FINANCIERA — color dinámico del acento
+// ══════════════════════════════════════════════════════
+function calcularSaludFinanciera({ totalIng, totalGas, totalInv, totalTarjetasEsteMes }) {
+  const neto  = totalIng - totalGas - totalInv;
+  const tasa  = totalIng > 0 ? (totalIng - totalGas) / totalIng : 0;
+  const cargaTarjetas = totalIng > 0 ? totalTarjetasEsteMes / totalIng : 0;
+
+  // Modo FRUGAL: neto muy ajustado o ingresos no cargados
+  if (totalIng === 0 || (neto >= 0 && neto < totalIng * 0.05)) {
+    return {
+      modo: 'frugal',
+      accent: '#6b7a8d',        // gris metalizado azulado
+      accentRGB: '107,122,141',
+      glow: 'rgba(107,122,141,.12)',
+      label: '⚫ Modo frugal',
+    };
+  }
+  // Modo ALERTA: tarjetas van a comerse la liquidez o neto negativo
+  if (neto < 0 || cargaTarjetas > 0.5 || tasa < 0.08) {
+    return {
+      modo: 'alerta',
+      accent: '#fbbf24',        // ámbar
+      accentRGB: '251,191,36',
+      glow: 'rgba(251,191,36,.12)',
+      label: '🟡 Presión de caja',
+    };
+  }
+  // Modo SALUDABLE
+  return {
+    modo: 'saludable',
+    accent: '#22d3a0',          // verde esmeralda
+    accentRGB: '34,211,160',
+    glow: 'rgba(34,211,160,.15)',
+    label: '🟢 En target',
+  };
+}
+
+function aplicarSaludFinanciera(salud) {
+  const r = document.documentElement;
+  r.style.setProperty('--accent',     salud.accent);
+  r.style.setProperty('--accent-rgb', salud.accentRGB);
+  r.style.setProperty('--accent-glow',salud.glow);
+  // Actualizar también --green para que todo lo que usa --green cambie
+  r.style.setProperty('--green', salud.accent);
+  // Actualizar el glow de body::before con el nuevo accent
+  const gradiente = `radial-gradient(ellipse 60% 40% at 80% 10%,rgba(${salud.accentRGB},.05) 0%,transparent 60%),radial-gradient(ellipse 40% 30% at 10% 80%,rgba(56,189,248,.03) 0%,transparent 60%)`;
+  document.body.style.setProperty('--body-glow', gradiente);
+  // Badge de salud en el header (si existe)
+  const badge = document.getElementById('health-badge');
+  if (badge) { badge.textContent = salud.label; badge.dataset.modo = salud.modo; }
 }
 
 // ══════════════════════════════════════════════════════
@@ -5013,6 +5074,21 @@ function updateOverview() {
   if (typeof buildAnualChart     === 'function') buildAnualChart();
   if (typeof updateOverviewSaldos=== 'function') updateOverviewSaldos();
   if (typeof renderPlataOciosa   === 'function') renderPlataOciosa();
+
+  // ── Color dinámico según salud financiera ──
+  try {
+    const tarjetasData = getGastosTarjetas ? getGastosTarjetas() : [];
+    const conciliaciones = DB.get('tarjetas_conciliadas', {});
+    const grupos = typeof agruparGastosPorPeriodo === 'function' ? agruparGastosPorPeriodo() : [];
+    const gruposEsteMes = grupos.filter(g => !g.esHuerfano && !conciliaciones[g.tarjeta.id+'|'+g.cierre]);
+    const totalTarjetas = gruposEsteMes.reduce((s, g) =>
+      s + g.gastos.filter(x => x.moneda !== 'USD').reduce((a, x) => a + (x.monto||0), 0), 0);
+    const salud = calcularSaludFinanciera({
+      totalIng, totalGas, totalInv,
+      totalTarjetasEsteMes: totalTarjetas,
+    });
+    aplicarSaludFinanciera(salud);
+  } catch(e) { /* no romper overview si falla el cálculo de salud */ }
 }
 
 // ══════════════════════════════════════════════════════
