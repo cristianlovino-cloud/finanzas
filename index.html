@@ -1641,6 +1641,14 @@ nav::-webkit-scrollbar{display:none}
         <input type="date" id="own-tj-fecha" class="fi" style="font-size:.78rem;padding:8px 6px">
       </div>
     </div>
+    <div style="margin-bottom:8px">
+      <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">¿QUIÉN GASTÓ?</div>
+      <select id="own-tj-quien" class="fi" style="font-size:.78rem;padding:8px 6px;width:100%">
+        <option value="Cris">Cris (yo)</option>
+        <option value="Lara">Lara</option>
+        <option value="Emma">Emma</option>
+      </select>
+    </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
       <div>
         <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">TIPO DE GASTO</div>
@@ -3815,6 +3823,7 @@ function ownToggleCuotaEnCurso() {
 function ownCargarGastoTarjeta() {
   const tarjetaId = document.getElementById('own-tj-tarjeta').value;
   const fecha     = document.getElementById('own-tj-fecha').value;
+  const quien     = document.getElementById('own-tj-quien')?.value || 'Cris';
   const tipo      = document.getElementById('own-tj-tipo').value.trim();
   const monto     = parseFloat(document.getElementById('own-tj-monto').value);
   const enCuotas  = document.getElementById('own-tj-cuotas-check').checked;
@@ -3847,7 +3856,7 @@ function ownCargarGastoTarjeta() {
       lista.push({
         id: 'gt_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2,5),
         tarjetaId, fecha: cierre, fechaCompra: fecha, tipo: `${tipo} (cuota ${numeroCuota}/${cecTotal})`, monto,
-        cargadoPor: 'Cris', ts: Date.now(), compraId, cuotaNum: numeroCuota, cuotaTotal: cecTotal,
+        cargadoPor: quien, ts: Date.now(), compraId, cuotaNum: numeroCuota, cuotaTotal: cecTotal,
         esCuotaEnCurso: true,
       });
     });
@@ -3860,7 +3869,7 @@ function ownCargarGastoTarjeta() {
       lista.push({
         id: 'gt_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2,5),
         tarjetaId, fecha: cierre, fechaCompra: fecha, tipo: `${tipo} (cuota ${i+1}/${cantCuotas})`, monto: montos[i],
-        cargadoPor: 'Cris', ts: Date.now(), compraId, cuotaNum: i+1, cuotaTotal: cantCuotas,
+        cargadoPor: quien, ts: Date.now(), compraId, cuotaNum: i+1, cuotaTotal: cantCuotas,
       });
     });
     showToast(`✓ ${tipo} en ${cantCuotas} cuotas de ~${fmt(montos[1] || montos[0])}`);
@@ -3868,7 +3877,7 @@ function ownCargarGastoTarjeta() {
     lista.push({
       id: 'gt_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
       tarjetaId, fecha, tipo, monto,
-      cargadoPor: 'Cris', ts: Date.now(),
+      cargadoPor: quien, ts: Date.now(),
     });
     showToast('✓ Gasto registrado: ' + tipo + ' — ' + fmt(monto));
   }
