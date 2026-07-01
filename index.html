@@ -4390,7 +4390,7 @@ function renderTarjetaCard(grupo, conciliaciones, colapsadoPorDefault) {
     <div id="detalle-${safeKey}" style="${colapsadoPorDefault ? 'display:none' : ''}">
     <div style="display:flex;flex-direction:column;gap:6px;margin:10px 0">
       ${grupo.gastos.sort((a,b) => {
-        // 1. Gastos manuales primero (no recurrente, no cuota)
+        // 1. Gastos manuales primero, luego cuotas, luego recurrentes
         const aCuota = !!(a.compraId || a.esCuotaEnCurso);
         const bCuota = !!(b.compraId || b.esCuotaEnCurso);
         const aRec   = !!a.recurrenteId;
@@ -4398,16 +4398,22 @@ function renderTarjetaCard(grupo, conciliaciones, colapsadoPorDefault) {
         const aTipo  = aRec ? 2 : aCuota ? 1 : 0;
         const bTipo  = bRec ? 2 : bCuota ? 1 : 0;
         if (aTipo !== bTipo) return aTipo - bTipo;
-        // Dentro del mismo tipo, ordenar por fecha real asc
-        const aFecha = a.fechaCompra || a.fecha || '';
-        const bFecha = b.fechaCompra || b.fecha || '';
-        return aFecha.localeCompare(bFecha);
+        // Orden por fecha real asc:
+        // - Gastos manuales: g.fecha es la fecha real de la compra
+        // - Cuotas: g.fechaCompra es la fecha real, g.fecha es el cierre del período
+        // - Recurrentes: g.fecha es la fecha del débito
+        const getFechaReal = g => {
+          if (g.compraId || g.esCuotaEnCurso) return g.fechaCompra || g.fecha;
+          return g.fecha || '';
+        };
+        return getFechaReal(a).localeCompare(getFechaReal(b));
       }).map(g => {
         const esUSD = g.moneda === 'USD';
         const montoDisplay = esUSD ? `U$S ${Number(g.monto).toFixed(2)}` : fmt(g.monto);
         const quienColores = { 'Cris':'var(--blue)', 'Lara':'var(--purple)', 'Emma':'var(--green)', 'Recurrente automático':'var(--muted)' };
-        const quienColor = quienColores[g.cargadoPor] || 'var(--yellow)';
-        const quienBadge = `<span style="font-size:.6rem;font-weight:700;color:${quienColor};background:${quienColor}1a;padding:1px 6px;border-radius:4px;white-space:nowrap">${g.cargadoPor}</span>`;
+        const quienNombre = g.gastoDe || g.cargadoPor;
+        const quienColor = quienColores[quienNombre] || 'var(--yellow)';
+        const quienBadge = `<span style="font-size:.6rem;font-weight:700;color:${quienColor};background:${quienColor}1a;padding:1px 6px;border-radius:4px;white-space:nowrap">${quienNombre}</span>`;
 
         return `
         <div style="padding:8px 0;border-bottom:1px solid var(--border)">
