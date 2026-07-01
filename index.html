@@ -26,17 +26,17 @@
       <!-- Header -->
       <div style="background:var(--s2);border-bottom:1px solid var(--border);padding:14px 18px;display:flex;align-items:center;justify-content:space-between">
         <div>
-          <div style="font-family:var(--fh);font-weight:700;font-size:.95rem;color:var(--blue)">📥 Revisar importación del xlsx</div>
-          <div style="font-size:.63rem;color:var(--muted);margin-top:2px">Editá montos, descripciones o eliminá filas antes de importar</div>
+          <div style="font-family:var(--fh);font-weight:700;font-size:var(--fs-lg);color:var(--blue)">📥 Revisar importación del xlsx</div>
+          <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:2px">Editá montos, descripciones o eliminá filas antes de importar</div>
         </div>
         <button onclick="cerrarEditorImport()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.1rem;padding:4px 8px">✕</button>
       </div>
 
       <!-- Selector de mes -->
       <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <select id="import-mes-sel" class="fi" style="width:auto;padding:7px 12px;font-size:.78rem" onchange="renderEditorMes()"></select>
-        <div id="import-mes-summary" style="font-size:.72rem;color:var(--muted)"></div>
-        <button onclick="agregarFilaImport()" style="background:rgba(34,211,160,.1);border:1px solid rgba(34,211,160,.25);color:var(--green);border-radius:6px;padding:6px 12px;font-size:.72rem;font-weight:600;cursor:pointer;margin-left:auto">＋ Agregar fila</button>
+        <select id="import-mes-sel" class="fi" style="width:auto;padding:7px 12px;font-size:var(--fs-md)" onchange="renderEditorMes()"></select>
+        <div id="import-mes-summary" style="font-size:var(--fs-sm);color:var(--muted)"></div>
+        <button onclick="agregarFilaImport()" style="background:rgba(34,211,160,.1);border:1px solid rgba(34,211,160,.25);color:var(--green);border-radius:6px;padding:6px 12px;font-size:var(--fs-sm);font-weight:600;cursor:pointer;margin-left:auto">＋ Agregar fila</button>
       </div>
 
       <!-- Tabla editable -->
@@ -46,10 +46,10 @@
 
       <!-- Footer -->
       <div style="padding:14px 18px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:space-between;align-items:center;flex-wrap:wrap">
-        <div style="font-size:.68rem;color:var(--muted)">Los cambios se aplican al importar</div>
+        <div style="font-size:var(--fs-xs);color:var(--muted)">Los cambios se aplican al importar</div>
         <div style="display:flex;gap:8px">
-          <button onclick="cerrarEditorImport()" class="btn btn-o" style="font-size:.72rem;padding:9px 16px">Cancelar</button>
-          <button onclick="confirmarImport()" class="btn btn-b" style="font-size:.75rem;font-weight:700;padding:9px 20px">✓ Importar todo</button>
+          <button onclick="cerrarEditorImport()" class="btn btn-o" style="font-size:var(--fs-sm);padding:9px 16px">Cancelar</button>
+          <button onclick="confirmarImport()" class="btn btn-b" style="font-size:var(--fs-sm);font-weight:700;padding:9px 20px">✓ Importar todo</button>
         </div>
       </div>
     </div>
@@ -380,7 +380,7 @@ window.cfCargarMiHistorial = async function() {
   const quien = document.getElementById('cf-quien')?.value;
   if (!quien) return;
   const el = document.getElementById('cf-recientes');
-  if (el) el.innerHTML = '<div style="font-size:.7rem;color:var(--muted)">⟳ Cargando tu historial...</div>';
+  if (el) el.innerHTML = '<div style="font-size:var(--fs-sm);color:var(--muted)">⟳ Cargando tu historial...</div>';
 
   try {
     const snap = await getDocs(CF_COL_GASTOS);
@@ -391,7 +391,7 @@ window.cfCargarMiHistorial = async function() {
 
     if (!el) return;
     if (gastos.length === 0) {
-      el.innerHTML = '<div style="font-size:.7rem;color:var(--muted)">Todavía no cargaste nada.</div>';
+      el.innerHTML = '<div style="font-size:var(--fs-sm);color:var(--muted)">Todavía no cargaste nada.</div>';
       return;
     }
 
@@ -412,10 +412,10 @@ window.cfCargarMiHistorial = async function() {
       const totalUSD = pendientes.filter(g => g.moneda === 'USD').reduce((s,g) => s + (g.monto||0), 0);
       html += `
         <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--s2);border-radius:8px;margin-bottom:8px">
-          <span style="font-size:.7rem;color:var(--muted)">Pendiente de conciliar</span>
+          <span style="font-size:var(--fs-sm);color:var(--muted)">Pendiente de conciliar</span>
           <div style="text-align:right">
-            <span style="font-size:.78rem;font-weight:700">${fmt(totalARS)}</span>
-            ${totalUSD > 0 ? `<span style="font-size:.72rem;font-weight:700;color:var(--yellow);margin-left:8px">U$S ${totalUSD.toLocaleString('es-AR')}</span>` : ''}
+            <span style="font-size:var(--fs-md);font-weight:700">${fmt(totalARS)}</span>
+            ${totalUSD > 0 ? `<span style="font-size:var(--fs-sm);font-weight:700;color:var(--yellow);margin-left:8px">U$S ${totalUSD.toLocaleString('es-AR')}</span>` : ''}
           </div>
         </div>`;
       html += pendientes.map(g => {
@@ -425,16 +425,16 @@ window.cfCargarMiHistorial = async function() {
         const fechaLabel = fechaReal ? new Date(fechaReal+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
         const cargadoPorOtro = g.cargadoPor !== quien;
         return `
-        <div style="padding:8px 10px;background:${cargadoPorOtro ? 'rgba(34,211,160,.08)' : 'var(--s2)'};border:${cargadoPorOtro ? '1px solid rgba(34,211,160,.3)' : 'none'};border-radius:8px;margin-bottom:6px;font-size:.74rem;display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <div style="padding:8px 10px;background:${cargadoPorOtro ? 'rgba(34,211,160,.08)' : 'var(--s2)'};border:${cargadoPorOtro ? '1px solid rgba(34,211,160,.3)' : 'none'};border-radius:8px;margin-bottom:6px;font-size:var(--fs-sm);display:flex;justify-content:space-between;align-items:center;gap:8px">
           <div style="min-width:0">
             <div style="font-weight:600">${g.tipo || ''}${cargadoPorOtro ? ' <span style="color:var(--green);font-weight:700">✓ ya cargado por Cris</span>' : ''}</div>
-            <div style="font-size:.62rem;color:var(--muted)">${fechaLabel}</div>
+            <div style="font-size:var(--fs-xs);color:var(--muted)">${fechaLabel}</div>
           </div>
           <span style="font-weight:700;color:var(--red);white-space:nowrap">${montoDisplay}</span>
         </div>`;
       }).join('');
     } else {
-      html += '<div style="font-size:.7rem;color:var(--muted);padding:6px 0">✓ Sin pendientes — todo conciliado.</div>';
+      html += '<div style="font-size:var(--fs-sm);color:var(--muted);padding:6px 0">✓ Sin pendientes — todo conciliado.</div>';
     }
 
     // ── Sección 2: resumen histórico, agrupado por mes (solo totales) ──
@@ -455,14 +455,14 @@ window.cfCargarMiHistorial = async function() {
           ? (d.ars > 0 ? `${fmt(d.ars)} · U$S ${d.usd.toLocaleString('es-AR')}` : `U$S ${d.usd.toLocaleString('es-AR')}`)
           : fmt(d.ars);
         return `
-        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:.7rem">
+        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:var(--fs-sm)">
           <span style="text-transform:capitalize;color:var(--muted2)">${label}</span>
           <span style="font-weight:600">${totalLabel}</span>
         </div>`;
       }).join('');
       html += `
         <div style="margin-top:14px;padding-top:10px;border-top:1px dashed var(--border)">
-          <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Histórico conciliado</div>
+          <div style="font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Histórico conciliado</div>
           ${filasHistorico}
         </div>`;
     }
@@ -470,7 +470,7 @@ window.cfCargarMiHistorial = async function() {
     el.innerHTML = html;
   } catch(e) {
     console.error('cfCargarMiHistorial error:', e);
-    if (el) el.innerHTML = '<div style="font-size:.7rem;color:var(--red)">No se pudo cargar tu historial (revisá tu conexión)</div>';
+    if (el) el.innerHTML = '<div style="font-size:var(--fs-sm);color:var(--red)">No se pudo cargar tu historial (revisá tu conexión)</div>';
   }
 };
 
@@ -575,7 +575,7 @@ window.cfGuardarGasto = async function() {
         });
       }
       const item = document.createElement('div');
-      item.style.cssText = 'padding:8px 10px;background:var(--s2);border-radius:8px;margin-bottom:6px;font-size:.74rem;display:flex;justify-content:space-between';
+      item.style.cssText = 'padding:8px 10px;background:var(--s2);border-radius:8px;margin-bottom:6px;font-size:var(--fs-sm);display:flex;justify-content:space-between';
       item.innerHTML = `<span>${tipo} (cuota ${cecActual}/${cecTotal} + ${cuotasFaltantes-1} restantes)</span><span style="color:var(--green);font-weight:700">${fmt(monto)} c/u</span>`;
       document.getElementById('cf-recientes').prepend(item);
     } else if (enCuotas && tarjeta && typeof generarSecuenciaCierres === 'function') {
@@ -590,7 +590,7 @@ window.cfGuardarGasto = async function() {
         });
       }
       const item = document.createElement('div');
-      item.style.cssText = 'padding:8px 10px;background:var(--s2);border-radius:8px;margin-bottom:6px;font-size:.74rem;display:flex;justify-content:space-between';
+      item.style.cssText = 'padding:8px 10px;background:var(--s2);border-radius:8px;margin-bottom:6px;font-size:var(--fs-sm);display:flex;justify-content:space-between';
       item.innerHTML = `<span>${tipo} (${cantCuotas} cuotas)</span><span style="color:var(--green);font-weight:700">${fmt(monto)} total</span>`;
       document.getElementById('cf-recientes').prepend(item);
     } else {
@@ -605,7 +605,7 @@ window.cfGuardarGasto = async function() {
       };
       await addDoc(CF_COL_GASTOS, gasto);
       const item = document.createElement('div');
-      item.style.cssText = 'padding:8px 10px;background:var(--s2);border-radius:8px;margin-bottom:6px;font-size:.74rem;display:flex;justify-content:space-between';
+      item.style.cssText = 'padding:8px 10px;background:var(--s2);border-radius:8px;margin-bottom:6px;font-size:var(--fs-sm);display:flex;justify-content:space-between';
       item.innerHTML = `<span>${tipo}</span><span style="color:var(--green);font-weight:700">${fmt(monto)}</span>`;
       document.getElementById('cf-recientes').prepend(item);
     }
@@ -644,6 +644,8 @@ window.cfGuardarGasto = async function() {
   --blue:#38bdf8; --purple:#a78bfa; --orange:#fb923c;
   --fh:'Syne',sans-serif; --fm:'JetBrains Mono',monospace;
   --r:10px;
+  /* ── Escala tipográfica ── */
+  --fs-xs:.65rem; --fs-sm:.75rem; --fs-md:.85rem; --fs-lg:.95rem;
   /* ── Color dinámico según salud financiera ── */
   --accent:#22d3a0;          /* saludable: verde */
   --accent-rgb:34,211,160;
@@ -674,12 +676,12 @@ button,select,input{touch-action:manipulation}
 header{position:sticky;top:0;z-index:200;background:rgba(8,10,15,.92);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);padding:0 20px;height:52px;display:flex;align-items:center;justify-content:space-between}
 .logo{font-family:var(--fh);font-size:1rem;font-weight:800;letter-spacing:-.03em}
 .logo em{color:var(--green);font-style:normal}
-.mes-badge{background:var(--s2);border:1px solid var(--border2);border-radius:20px;padding:4px 12px;font-size:.72rem;color:var(--green)}
+.mes-badge{background:var(--s2);border:1px solid var(--border2);border-radius:20px;padding:4px 12px;font-size:var(--fs-sm);color:var(--green)}
 
 /* ── NAV ── */
 nav{position:sticky;top:52px;z-index:199;background:var(--s1);border-bottom:1px solid var(--border);display:flex;overflow-x:auto;padding:0 16px;scrollbar-width:none}
 nav::-webkit-scrollbar{display:none}
-.nb{padding:12px 14px;font-family:var(--fm);font-size:.72rem;color:var(--muted);background:none;border:none;cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;white-space:nowrap}
+.nb{padding:12px 14px;font-family:var(--fm);font-size:var(--fs-sm);color:var(--muted);background:none;border:none;cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;white-space:nowrap}
 .nb.active{color:var(--green);border-bottom-color:var(--green)}
 .nb:hover:not(.active){color:var(--text)}
 
@@ -690,7 +692,7 @@ nav::-webkit-scrollbar{display:none}
 
 /* ── CARDS ── */
 .card{background:var(--s1);border:1px solid var(--border);border-radius:var(--r);padding:18px}
-.ct{font-family:var(--fh);font-size:.7rem;font-weight:600;color:var(--muted2);text-transform:uppercase;letter-spacing:.1em;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.ct{font-family:var(--fh);font-size:var(--fs-xs);font-weight:600;color:var(--muted2);text-transform:uppercase;letter-spacing:.1em;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
 .ct span{color:var(--text)}
 
 /* ── KPI GRID ── */
@@ -698,11 +700,11 @@ nav::-webkit-scrollbar{display:none}
 .kpi{background:var(--s1);border:1px solid var(--border);border-radius:var(--r);padding:16px 18px;position:relative;overflow:hidden;transition:border-color .2s}
 .kpi::after{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:var(--kc,var(--green))}
 .kpi:hover{border-color:var(--kc,var(--green))}
-.kl{font-size:.63rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;font-weight:600}
+.kl{font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;font-weight:600}
 .kv{font-family:var(--fh);font-size:1.5rem;font-weight:700;line-height:1}
 .kv.pos{color:var(--green)} .kv.neg{color:var(--red)} .kv.warn{color:var(--yellow)}
-.ks{font-size:.68rem;color:var(--muted);margin-top:6px;font-weight:500}
-.chip{display:inline-block;padding:1px 6px;border-radius:4px;font-size:.63rem;font-weight:500}
+.ks{font-size:var(--fs-xs);color:var(--muted);margin-top:6px;font-weight:500}
+.chip{display:inline-block;padding:1px 6px;border-radius:4px;font-size:var(--fs-xs);font-weight:500}
 .chip.up{background:rgba(244,63,94,.15);color:var(--red)}
 .chip.dn{background:rgba(34,211,160,.12);color:var(--green)}
 .chip.neu{background:rgba(251,191,36,.12);color:var(--yellow)}
@@ -713,12 +715,12 @@ nav::-webkit-scrollbar{display:none}
 
 /* ── FORMS ── */
 .field{margin-bottom:12px}
-.field label{display:block;font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px}
-.fi{width:100%;background:var(--s2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-family:var(--fm);font-size:.82rem;padding:9px 12px;outline:none;transition:border-color .2s;-webkit-appearance:none}
+.field label{display:block;font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px}
+.fi{width:100%;background:var(--s2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-family:var(--fm);font-size:var(--fs-md);padding:9px 12px;outline:none;transition:border-color .2s;-webkit-appearance:none}
 .fi:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(34,211,160,.06)}
 .fi select option{background:var(--s2)}
 .r2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.btn{padding:11px 18px;border-radius:7px;font-family:var(--fm);font-size:.78rem;font-weight:600;border:none;cursor:pointer;transition:all .2s}
+.btn{padding:11px 18px;border-radius:7px;font-family:var(--fm);font-size:var(--fs-md);font-weight:600;border:none;cursor:pointer;transition:all .2s}
 .btn-g{background:var(--green);color:var(--bg)} .btn-g:hover{background:#34ecca;transform:translateY(-1px)}
 .btn-b{background:var(--blue);color:var(--bg)} .btn-b:hover{background:#60d5fc}
 .btn-p{background:var(--purple);color:white} .btn-p:hover{opacity:.88}
@@ -728,36 +730,36 @@ nav::-webkit-scrollbar{display:none}
 /* ── PLAN ROWS ── */
 .plan-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
 .plan-row:last-child{border-bottom:none}
-.plan-label{flex:1;background:none;border:none;color:var(--text);font-family:var(--fh);font-size:.85rem;font-weight:600;outline:none;min-width:0;letter-spacing:-.01em}
+.plan-label{flex:1;background:none;border:none;color:var(--text);font-family:var(--fh);font-size:var(--fs-md);font-weight:600;outline:none;min-width:0;letter-spacing:-.01em}
 .plan-label::placeholder{color:var(--muted);font-weight:400}
-.plan-val{width:100px;background:var(--s2);border:1px solid var(--border);border-radius:7px;font-family:var(--fm);font-size:.95rem;font-weight:700;padding:7px 10px;text-align:right;outline:none;transition:border-color .2s,background .2s;color:var(--text)}
+.plan-val{width:100px;background:var(--s2);border:1px solid var(--border);border-radius:7px;font-family:var(--fm);font-size:var(--fs-lg);font-weight:700;padding:7px 10px;text-align:right;outline:none;transition:border-color .2s,background .2s;color:var(--text)}
 .plan-val:focus{border-color:var(--green);background:var(--s3)}
-.plan-del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:.9rem;padding:2px 4px;transition:color .15s}
+.plan-del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:var(--fs-lg);padding:2px 4px;transition:color .15s}
 .plan-del:hover{color:var(--red)}
 .add-row{display:flex;gap:8px;margin-top:10px}
-.add-row input{flex:1;background:var(--s2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--fm);font-size:.75rem;padding:7px 10px;outline:none}
+.add-row input{flex:1;background:var(--s2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--fm);font-size:var(--fs-sm);padding:7px 10px;outline:none}
 .add-row input:focus{border-color:var(--green)}
 .add-row .add-val{width:90px;text-align:right}
-.add-btn{padding:7px 12px;border-radius:6px;font-family:var(--fm);font-size:.78rem;font-weight:600;border:none;cursor:pointer;transition:all .2s}
+.add-btn{padding:7px 12px;border-radius:6px;font-family:var(--fm);font-size:var(--fs-md);font-weight:600;border:none;cursor:pointer;transition:all .2s}
 
 /* ── PRESUP VS REAL BARS ── */
 .pvr-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04)}
 .pvr-row:last-child{border-bottom:none}
-.pvr-label{width:120px;font-size:.75rem;color:var(--muted2);flex-shrink:0;text-align:right}
+.pvr-label{width:120px;font-size:var(--fs-sm);font-weight:600;color:var(--text);flex-shrink:0;text-align:right}
 .pvr-bars{flex:1;display:flex;flex-direction:column;gap:3px}
 .pvr-bar-wrap{height:8px;background:var(--s3);border-radius:4px;overflow:hidden}
 .pvr-bar{height:100%;border-radius:4px;transition:width .6s cubic-bezier(.22,1,.36,1)}
-.pvr-vals{width:100px;text-align:right;font-size:.7rem;color:var(--muted);flex-shrink:0}
-.pvr-pct{width:42px;text-align:right;font-size:.7rem;font-weight:600;flex-shrink:0}
+.pvr-vals{width:100px;text-align:right;font-size:var(--fs-md);font-weight:700;color:var(--text);flex-shrink:0}
+.pvr-pct{width:42px;text-align:right;font-size:var(--fs-sm);font-weight:700;flex-shrink:0}
 
 /* ── TX TABLE ── */
-.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
-.tbl th{padding:8px 10px;text-align:left;font-size:.63rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid var(--border)}
+.tbl{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
+.tbl th{padding:8px 10px;text-align:left;font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid var(--border)}
 .tbl td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.04)}
 .tbl tr:hover td{background:var(--s2)}
 .tbl td:last-child{text-align:right;font-variant-numeric:tabular-nums}
 .tbl .pos{color:var(--green)} .tbl .neg{color:var(--red)}
-.tag{display:inline-block;padding:2px 7px;border-radius:4px;font-size:.62rem;background:var(--s3);color:var(--muted2)}
+.tag{display:inline-block;padding:2px 7px;border-radius:4px;font-size:var(--fs-xs);background:var(--s3);color:var(--muted2)}
 
 /* ── ALERTS BANNER ── */
 .alerts-banner{border-radius:var(--r);overflow:hidden;margin-bottom:14px}
@@ -766,15 +768,15 @@ nav::-webkit-scrollbar{display:none}
 .alerts-header.has-danger{background:rgba(244,63,94,.10);border:1px solid rgba(244,63,94,.22)}
 .alerts-header.has-warn{background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.20)}
 .alerts-header.all-ok{background:rgba(34,211,160,.07);border:1px solid rgba(34,211,160,.20)}
-.alerts-badge{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;border-radius:10px;font-size:.68rem;font-weight:700;padding:0 6px;margin-left:6px}
+.alerts-badge{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;border-radius:10px;font-size:var(--fs-xs);font-weight:700;padding:0 6px;margin-left:6px}
 .alerts-badge.danger{background:var(--red);color:#fff}
 .alerts-badge.warn{background:var(--yellow);color:#080a0f}
 .alerts-badge.ok{background:var(--green);color:#080a0f}
-.alerts-chevron{font-size:.75rem;color:var(--muted);transition:transform .22s;flex-shrink:0}
+.alerts-chevron{font-size:var(--fs-sm);color:var(--muted);transition:transform .22s;flex-shrink:0}
 .alerts-chevron.open{transform:rotate(180deg)}
 .alerts-body{display:none;border-left:1px solid var(--border2);border-right:1px solid var(--border2);border-bottom:1px solid var(--border2);border-radius:0 0 var(--r) var(--r);overflow:hidden}
 .alerts-body.open{display:block}
-.alert-item{display:flex;align-items:flex-start;gap:10px;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,.04);font-size:.75rem;line-height:1.45}
+.alert-item{display:flex;align-items:flex-start;gap:10px;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,.04);font-size:var(--fs-sm);line-height:1.45}
 .alert-item:last-child{border-bottom:none}
 .alert-item.danger{color:var(--red);background:rgba(244,63,94,.05)}
 .alert-item.warn{color:var(--yellow);background:rgba(251,191,36,.04)}
@@ -786,59 +788,59 @@ nav::-webkit-scrollbar{display:none}
 
 /* ── AI CARGA NATURAL ── */
 .ai-input-wrap{position:relative;margin-bottom:14px}
-.ai-input{width:100%;background:linear-gradient(135deg,rgba(167,139,250,.06),rgba(56,189,248,.06));border:1px solid rgba(167,139,250,.3);border-radius:12px;color:var(--text);font-family:var(--fm);font-size:.88rem;padding:14px 50px 14px 16px;outline:none;transition:border-color .2s,box-shadow .2s;resize:none;line-height:1.5}
+.ai-input{width:100%;background:linear-gradient(135deg,rgba(167,139,250,.06),rgba(56,189,248,.06));border:1px solid rgba(167,139,250,.3);border-radius:12px;color:var(--text);font-family:var(--fm);font-size:var(--fs-md);padding:14px 50px 14px 16px;outline:none;transition:border-color .2s,box-shadow .2s;resize:none;line-height:1.5}
 .ai-input:focus{border-color:rgba(167,139,250,.6);box-shadow:0 0 0 3px rgba(167,139,250,.08)}
 .ai-input::placeholder{color:var(--muted)}
 .ai-mic-btn{position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:1.2rem;padding:6px;border-radius:8px;transition:all .2s;color:var(--muted2)}
 .ai-mic-btn:hover{color:var(--purple);background:rgba(167,139,250,.1)}
 .ai-mic-btn.recording{color:var(--red);animation:pulse-mic .8s infinite}
 @keyframes pulse-mic{0%,100%{transform:translateY(-50%) scale(1)}50%{transform:translateY(-50%) scale(1.2)}}
-.ai-send-btn{width:100%;padding:13px;border-radius:10px;border:none;cursor:pointer;font-family:var(--fh);font-size:.82rem;font-weight:700;letter-spacing:.02em;transition:all .2s;background:linear-gradient(135deg,var(--purple),var(--blue));color:white;display:flex;align-items:center;justify-content:center;gap:8px}
+.ai-send-btn{width:100%;padding:13px;border-radius:10px;border:none;cursor:pointer;font-family:var(--fh);font-size:var(--fs-md);font-weight:700;letter-spacing:.02em;transition:all .2s;background:linear-gradient(135deg,var(--purple),var(--blue));color:white;display:flex;align-items:center;justify-content:center;gap:8px}
 .ai-send-btn:hover{opacity:.9;transform:translateY(-1px)}
 .ai-send-btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
 .ai-preview{background:var(--s2);border:1px solid var(--border2);border-radius:10px;padding:14px 16px;margin-top:10px;display:none}
 .ai-preview.show{display:block;animation:fadeUp .2s ease}
-.ai-preview-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:.78rem}
+.ai-preview-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:var(--fs-md)}
 .ai-preview-row:last-child{border-bottom:none}
-.ai-preview-label{color:var(--muted);font-size:.68rem;text-transform:uppercase;letter-spacing:.06em}
+.ai-preview-label{color:var(--muted);font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.06em}
 .ai-preview-val{color:var(--text);font-weight:600;text-align:right}
 .ai-preview-val.amount{font-family:var(--fh);font-size:1.1rem;color:var(--green)}
-.ai-confidence{display:inline-block;font-size:.62rem;padding:2px 7px;border-radius:4px;margin-left:6px;font-weight:500}
+.ai-confidence{display:inline-block;font-size:var(--fs-xs);padding:2px 7px;border-radius:4px;margin-left:6px;font-weight:500}
 .ai-confidence.high{background:rgba(34,211,160,.12);color:var(--green)}
 .ai-confidence.mid{background:rgba(251,191,36,.12);color:var(--yellow)}
-.ai-tab-btn{flex:1;padding:10px 8px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--muted);font-family:var(--fm);font-size:.72rem;cursor:pointer;text-align:center;transition:all .2s}
+.ai-tab-btn{flex:1;padding:10px 8px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--muted);font-family:var(--fm);font-size:var(--fs-sm);cursor:pointer;text-align:center;transition:all .2s}
 .ai-tab-btn.active{border-color:var(--purple);background:rgba(167,139,250,.08);color:var(--purple)}
 .ai-spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:white;border-radius:50%;animation:spin .6s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 .inv-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
 .inv-row:last-child{border-bottom:none}
-.inv-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:.9rem;flex-shrink:0}
+.inv-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:var(--fs-lg);flex-shrink:0}
 .inv-body{flex:1;min-width:0}
-.inv-name{font-size:.82rem;color:var(--text);font-weight:500}
-.inv-meta{font-size:.65rem;color:var(--muted);margin-top:2px}
+.inv-name{font-size:var(--fs-md);color:var(--text);font-weight:500}
+.inv-meta{font-size:var(--fs-xs);color:var(--muted);margin-top:2px}
 .inv-val{font-family:var(--fh);font-size:1rem;font-weight:700;flex-shrink:0}
-.inv-rend{font-size:.68rem;font-weight:500;flex-shrink:0;width:50px;text-align:right}
+.inv-rend{font-size:var(--fs-xs);font-weight:500;flex-shrink:0;width:50px;text-align:right}
 
 /* ── TOAST ── */
 .toast-wrap{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:9999;pointer-events:none}
-.chip{display:inline-block;padding:5px 11px;border-radius:20px;font-size:.7rem;cursor:pointer;border:1px solid var(--border2);background:var(--s2);color:var(--muted2);transition:all .15s;white-space:nowrap}
+.chip{display:inline-block;padding:5px 11px;border-radius:20px;font-size:var(--fs-sm);cursor:pointer;border:1px solid var(--border2);background:var(--s2);color:var(--muted2);transition:all .15s;white-space:nowrap}
 .chip:active{transform:scale(.93)}
 .chip.sel{background:var(--green);color:var(--bg);border-color:var(--green);font-weight:600}
 #fab-btn:hover{transform:scale(1.08)!important;box-shadow:0 6px 24px rgba(34,211,160,.5)}
 #fab-btn:active{transform:scale(.88)!important}
-.toast{background:rgba(34,211,160,.12);border:1px solid rgba(34,211,160,.3);color:var(--green);padding:10px 20px;border-radius:8px;font-size:.78rem;white-space:nowrap;animation:fadeUp .3s ease;display:none}
+.toast{background:rgba(34,211,160,.12);border:1px solid rgba(34,211,160,.3);color:var(--green);padding:10px 20px;border-radius:8px;font-size:var(--fs-md);white-space:nowrap;animation:fadeUp .3s ease;display:none}
 .toast.show{display:block}
 
 /* ── RESPONSIVE ── */
 @media(max-width:900px){.kg{grid-template-columns:1fr 1fr}.g2{grid-template-columns:1fr}.span2{grid-column:1}}
 @media(max-width:680px){
-  .page{padding:12px 10px} header{padding:0 12px;height:48px} .logo{font-size:.9rem}
-  nav{top:48px;padding:0 8px} .nb{padding:10px 10px;font-size:.68rem}
+  .page{padding:12px 10px} header{padding:0 12px;height:48px} .logo{font-size:var(--fs-lg)}
+  nav{top:48px;padding:0 8px} .nb{padding:10px 10px;font-size:var(--fs-xs)}
   .kg{gap:8px} .kpi{padding:12px 14px} .kv{font-size:1.1rem}
-  .r2{grid-template-columns:1fr} .pvr-label{width:80px;font-size:.68rem}
-  .pvr-vals{display:none} .tbl{font-size:.72rem} .tbl th{font-size:.58rem;padding:7px 6px} .tbl td{padding:7px 6px}
+  .r2{grid-template-columns:1fr} .pvr-label{width:80px;font-size:var(--fs-xs)}
+  .pvr-vals{display:none} .tbl{font-size:var(--fs-sm)} .tbl th{font-size:.58rem;padding:7px 6px} .tbl td{padding:7px 6px}
 }
-@media(max-width:360px){.kg{grid-template-columns:1fr} .kv{font-size:.95rem}}
+@media(max-width:360px){.kg{grid-template-columns:1fr} .kv{font-size:var(--fs-lg)}}
 </style>
 </head>
 <body>
@@ -848,8 +850,8 @@ nav::-webkit-scrollbar{display:none}
   <div style="max-width:480px;margin:0 auto;padding:24px 18px">
     <div style="text-align:center;margin-bottom:24px">
       <div style="font-family:var(--fh);font-weight:700;font-size:1.3rem">💳 Cargar gasto</div>
-      <div style="font-size:.78rem;color:var(--muted);margin-top:4px">CL · Finanzas</div>
-      <button onclick="cfCerrarSesion()" style="margin-top:10px;background:none;border:none;color:var(--muted);font-size:.65rem;cursor:pointer;text-decoration:underline">Cerrar sesión</button>
+      <div style="font-size:var(--fs-md);color:var(--muted);margin-top:4px">CL · Finanzas</div>
+      <button onclick="cfCerrarSesion()" style="margin-top:10px;background:none;border:none;color:var(--muted);font-size:var(--fs-xs);cursor:pointer;text-decoration:underline">Cerrar sesión</button>
     </div>
 
     <!-- Paso 1: PIN -->
@@ -857,7 +859,7 @@ nav::-webkit-scrollbar{display:none}
       <div class="ct">Ingresá el PIN</div>
       <input type="tel" inputmode="numeric" maxlength="4" id="cf-pin-input" class="fi" placeholder="••••" style="text-align:center;font-size:1.6rem;letter-spacing:.5em;padding:14px">
       <button onclick="cfValidarPin()" class="btn btn-g" style="width:100%;margin-top:12px">Entrar</button>
-      <div id="cf-pin-error" style="color:var(--red);font-size:.74rem;text-align:center;margin-top:8px"></div>
+      <div id="cf-pin-error" style="color:var(--red);font-size:var(--fs-sm);text-align:center;margin-top:8px"></div>
     </div>
 
     <!-- Paso 2: formulario -->
@@ -896,10 +898,10 @@ nav::-webkit-scrollbar{display:none}
       <div class="card" style="margin-bottom:14px">
         <div style="display:flex;align-items:center;gap:8px">
           <input type="checkbox" id="cf-cuotas-check" onchange="cfToggleCuotas()" style="width:16px;height:16px">
-          <label for="cf-cuotas-check" style="font-size:.82rem;cursor:pointer">¿En cuotas? <span style="font-size:.65rem;color:var(--muted)">(compra nueva)</span></label>
+          <label for="cf-cuotas-check" style="font-size:var(--fs-md);cursor:pointer">¿En cuotas? <span style="font-size:var(--fs-xs);color:var(--muted)">(compra nueva)</span></label>
         </div>
         <div id="cf-cuotas-wrap" style="display:none;margin-top:10px">
-          <div style="font-size:.7rem;color:var(--muted);margin-bottom:4px">¿En cuántas cuotas?</div>
+          <div style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:4px">¿En cuántas cuotas?</div>
           <input type="number" id="cf-cuotas-cant" min="2" max="24" placeholder="6" class="fi" style="width:80px;text-align:center">
         </div>
       </div>
@@ -907,27 +909,27 @@ nav::-webkit-scrollbar{display:none}
       <div class="card" style="margin-bottom:14px">
         <div style="display:flex;align-items:center;gap:8px">
           <input type="checkbox" id="cf-cuota-en-curso" onchange="cfToggleCuotaEnCurso()" style="width:16px;height:16px">
-          <label for="cf-cuota-en-curso" style="font-size:.82rem;cursor:pointer">Cuota en curso <span style="font-size:.65rem;color:var(--muted)">(ya está en el resumen)</span></label>
+          <label for="cf-cuota-en-curso" style="font-size:var(--fs-md);cursor:pointer">Cuota en curso <span style="font-size:var(--fs-xs);color:var(--muted)">(ya está en el resumen)</span></label>
         </div>
         <div id="cf-cec-wrap" style="display:none;margin-top:10px">
-          <div style="font-size:.65rem;color:var(--muted);margin-bottom:6px">El monto de arriba es el de ESTA cuota.</div>
+          <div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:6px">El monto de arriba es el de ESTA cuota.</div>
           <div style="display:flex;gap:8px">
             <div style="flex:1">
-              <div style="font-size:.65rem;color:var(--muted);margin-bottom:4px">ESTA ES LA CUOTA N°</div>
+              <div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:4px">ESTA ES LA CUOTA N°</div>
               <input type="number" id="cf-cec-actual" min="1" max="24" placeholder="3" class="fi" style="width:100%;text-align:center">
             </div>
             <div style="flex:1">
-              <div style="font-size:.65rem;color:var(--muted);margin-bottom:4px">DE UN TOTAL DE</div>
+              <div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:4px">DE UN TOTAL DE</div>
               <input type="number" id="cf-cec-total" min="1" max="24" placeholder="6" class="fi" style="width:100%;text-align:center">
             </div>
           </div>
         </div>
       </div>
 
-      <button onclick="cfGuardarGasto()" class="btn btn-g" style="width:100%;padding:14px;font-size:.9rem">✓ Registrar gasto</button>
+      <button onclick="cfGuardarGasto()" class="btn btn-g" style="width:100%;padding:14px;font-size:var(--fs-lg)">✓ Registrar gasto</button>
 
       <div style="margin-top:24px">
-        <div style="font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Cargados recién</div>
+        <div style="font-size:var(--fs-sm);color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Cargados recién</div>
         <div id="cf-recientes"></div>
       </div>
     </div>
@@ -937,9 +939,9 @@ nav::-webkit-scrollbar{display:none}
 <header>
   <div class="logo"><em>CL</em> · Finanzas</div>
   <div style="display:flex;align-items:center;gap:8px">
-    <span id="sync-indicator" title="Estado de sincronización" style="font-size:.8rem;cursor:pointer;color:#64748b;letter-spacing:0" onclick="go('config',document.querySelector('.nb:last-child'))">⊙</span>
-    <span id="health-badge" data-modo="saludable" style="font-size:.6rem;color:var(--muted);transition:color .8s ease" title="Salud financiera"></span>
-    <button id="theme-btn" onclick="toggleTheme()" style="background:none;border:1px solid var(--border2);border-radius:20px;padding:4px 12px;color:var(--muted2);font-family:var(--fm);font-size:.7rem;cursor:pointer;transition:all .2s" title="Cambiar tema">🌙</button>
+    <span id="sync-indicator" title="Estado de sincronización" style="font-size:var(--fs-md);cursor:pointer;color:#64748b;letter-spacing:0" onclick="go('config',document.querySelector('.nb:last-child'))">⊙</span>
+    <span id="health-badge" data-modo="saludable" style="font-size:var(--fs-xs);color:var(--muted);transition:color .8s ease" title="Salud financiera"></span>
+    <button id="theme-btn" onclick="toggleTheme()" style="background:none;border:1px solid var(--border2);border-radius:20px;padding:4px 12px;color:var(--muted2);font-family:var(--fm);font-size:var(--fs-sm);cursor:pointer;transition:all .2s" title="Cambiar tema">🌙</button>
     <div class="mes-badge" id="header-mes">Mar 2026</div>
   </div>
 </header>
@@ -951,7 +953,7 @@ nav::-webkit-scrollbar{display:none}
   <button class="nb" onclick="go('cargar',this)">＋ Cargar</button>
   <button class="nb" onclick="go('cuentas',this)">◈ Cuentas</button>
   <button class="nb" onclick="go('inversiones',this)">◈ Inversiones</button>
-  <button class="nb" onclick="go('tarjetas',this)" id="nb-tarjetas" style="position:relative">💳 Gastos Tarjetas<span id="badge-tarjetas" style="display:none;position:absolute;top:4px;right:4px;background:#f43f5e;color:#fff;font-size:.6rem;font-weight:700;min-width:16px;height:16px;border-radius:8px;padding:0 4px;line-height:16px;text-align:center;"></span></button>
+  <button class="nb" onclick="go('tarjetas',this)" id="nb-tarjetas" style="position:relative">💳 Gastos Tarjetas<span id="badge-tarjetas" style="display:none;position:absolute;top:4px;right:4px;background:#f43f5e;color:#fff;font-size:var(--fs-xs);font-weight:700;min-width:16px;height:16px;border-radius:8px;padding:0 4px;line-height:16px;text-align:center;"></span></button>
   <button class="nb" onclick="go('patrimonio',this)" style="display:none">⬟ Patrimonio</button>
   <button class="nb" onclick="go('config',this)">⚙ Config</button>
 </nav>
@@ -987,12 +989,12 @@ nav::-webkit-scrollbar{display:none}
   <!-- Year selector + summary bar -->
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">
     <div style="display:flex;gap:8px;align-items:center">
-      <span style="font-size:.7rem;color:var(--muted)">Año:</span>
-      <button onclick="setOverviewYear('2024',this)" class="yr-btn" style="padding:4px 12px;border-radius:16px;border:1px solid var(--border);background:var(--s2);color:var(--muted);font-family:var(--fm);font-size:.72rem;cursor:pointer">2024</button>
-      <button onclick="setOverviewYear('2025',this)" class="yr-btn" style="padding:4px 12px;border-radius:16px;border:1px solid var(--border);background:var(--s2);color:var(--muted);font-family:var(--fm);font-size:.72rem;cursor:pointer">2025</button>
-      <button onclick="setOverviewYear('2026',this)" class="yr-btn active-yr" style="padding:4px 12px;border-radius:16px;border:1px solid var(--green);background:rgba(34,211,160,.1);color:var(--green);font-family:var(--fm);font-size:.72rem;cursor:pointer">2026</button>
+      <span style="font-size:var(--fs-sm);color:var(--muted)">Año:</span>
+      <button onclick="setOverviewYear('2024',this)" class="yr-btn" style="padding:4px 12px;border-radius:16px;border:1px solid var(--border);background:var(--s2);color:var(--muted);font-family:var(--fm);font-size:var(--fs-sm);cursor:pointer">2024</button>
+      <button onclick="setOverviewYear('2025',this)" class="yr-btn" style="padding:4px 12px;border-radius:16px;border:1px solid var(--border);background:var(--s2);color:var(--muted);font-family:var(--fm);font-size:var(--fs-sm);cursor:pointer">2025</button>
+      <button onclick="setOverviewYear('2026',this)" class="yr-btn active-yr" style="padding:4px 12px;border-radius:16px;border:1px solid var(--green);background:rgba(34,211,160,.1);color:var(--green);font-family:var(--fm);font-size:var(--fs-sm);cursor:pointer">2026</button>
     </div>
-    <div id="yr-summary" style="font-size:.72rem;color:var(--muted)"></div>
+    <div id="yr-summary" style="font-size:var(--fs-sm);color:var(--muted)"></div>
   </div>
 
   <!-- ── ALERTS BANNER ── -->
@@ -1049,10 +1051,10 @@ nav::-webkit-scrollbar{display:none}
     <div class="card span2">
       <div class="ct">Evolución mensual
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <button onclick="setMesAMesYear('2024',this)" class="yr-btn-mm" style="padding:3px 10px;border-radius:14px;border:1px solid var(--border);background:var(--s2);color:var(--muted);font-family:var(--fm);font-size:.68rem;cursor:pointer">2024</button>
-          <button onclick="setMesAMesYear('2025',this)" class="yr-btn-mm" style="padding:3px 10px;border-radius:14px;border:1px solid var(--border);background:var(--s2);color:var(--muted);font-family:var(--fm);font-size:.68rem;cursor:pointer">2025</button>
-          <button onclick="setMesAMesYear('2026',this)" class="yr-btn-mm yr-mm-active" style="padding:3px 10px;border-radius:14px;border:1px solid var(--green);background:rgba(34,211,160,.1);color:var(--green);font-family:var(--fm);font-size:.68rem;cursor:pointer">2026</button>
-          <span id="inflacion-badge" style="font-size:.62rem;color:var(--yellow);margin-left:4px"></span>
+          <button onclick="setMesAMesYear('2024',this)" class="yr-btn-mm" style="padding:3px 10px;border-radius:14px;border:1px solid var(--border);background:var(--s2);color:var(--muted);font-family:var(--fm);font-size:var(--fs-xs);cursor:pointer">2024</button>
+          <button onclick="setMesAMesYear('2025',this)" class="yr-btn-mm" style="padding:3px 10px;border-radius:14px;border:1px solid var(--border);background:var(--s2);color:var(--muted);font-family:var(--fm);font-size:var(--fs-xs);cursor:pointer">2025</button>
+          <button onclick="setMesAMesYear('2026',this)" class="yr-btn-mm yr-mm-active" style="padding:3px 10px;border-radius:14px;border:1px solid var(--green);background:rgba(34,211,160,.1);color:var(--green);font-family:var(--fm);font-size:var(--fs-xs);cursor:pointer">2026</button>
+          <span id="inflacion-badge" style="font-size:var(--fs-xs);color:var(--yellow);margin-left:4px"></span>
         </div>
       </div>
       <div id="mesames-tabla" style="overflow-x:auto"></div>
@@ -1071,16 +1073,16 @@ nav::-webkit-scrollbar{display:none}
   <div id="sticky-save" style="position:sticky;top:96px;z-index:150;background:var(--bg);padding:8px 0 12px;margin-bottom:4px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
     <div>
       <div style="font-family:var(--fh);font-size:1rem;font-weight:700">Planificación mensual</div>
-      <div style="font-size:.68rem;color:var(--muted)">Cargá una vez al inicio del mes.</div>
+      <div style="font-size:var(--fs-xs);color:var(--muted)">Cargá una vez al inicio del mes.</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center">
-      <select id="plan-sel-top" onchange="setGlobalMes(this.value)" class="fi" style="width:auto;padding:5px 10px;font-size:.7rem">
+      <select id="plan-sel-top" onchange="setGlobalMes(this.value)" class="fi" style="width:auto;padding:5px 10px;font-size:var(--fs-sm)">
         <!-- populated dynamically -->
       </select>
-      <button onclick="copyPrevMonth()" style="padding:8px 14px;background:none;border:1px solid var(--border2);color:var(--muted2);border-radius:20px;font-family:var(--fh);font-size:.72rem;cursor:pointer;white-space:nowrap" title="Copiar variables del mes anterior">
+      <button onclick="copyPrevMonth()" style="padding:8px 14px;background:none;border:1px solid var(--border2);color:var(--muted2);border-radius:20px;font-family:var(--fh);font-size:var(--fs-sm);cursor:pointer;white-space:nowrap" title="Copiar variables del mes anterior">
         ↩ Copiar anterior
       </button>
-      <button onclick="savePlan()" style="padding:8px 16px;background:var(--green);color:var(--bg);border:none;border-radius:20px;font-family:var(--fh);font-size:.78rem;font-weight:700;cursor:pointer;white-space:nowrap">
+      <button onclick="savePlan()" style="padding:8px 16px;background:var(--green);color:var(--bg);border:none;border-radius:20px;font-family:var(--fh);font-size:var(--fs-md);font-weight:700;cursor:pointer;white-space:nowrap">
         💾 Guardar
       </button>
     </div>
@@ -1122,7 +1124,7 @@ nav::-webkit-scrollbar{display:none}
 
     <!-- GASTOS FIJOS -->
     <div class="card">
-      <div class="ct">📌 Gastos fijos <span style="color:var(--muted);font-size:.63rem;font-weight:400">(se repiten cada mes)</span></div>
+      <div class="ct">📌 Gastos fijos <span style="color:var(--muted);font-size:var(--fs-xs);font-weight:400">(se repiten cada mes)</span></div>
       <div id="plan-fijos-rows"></div>
       <div class="add-row">
         <input type="text" id="nf-label" placeholder="Concepto">
@@ -1138,7 +1140,7 @@ nav::-webkit-scrollbar{display:none}
       <div class="add-row">
         <input type="text" id="nva-label" placeholder="Concepto (TC BSF, efectivo...)">
         <input type="number" id="nva-val" class="add-val fi" placeholder="0" step="0.01" style="width:90px;padding:7px 8px;text-align:right">
-        <button class="add-btn" style="background:rgba(251,146,60,.15);border:1px solid var(--orange);color:var(--orange);padding:7px 12px;border-radius:6px;font-size:.78rem;font-weight:600;cursor:pointer" onclick="addPlanRow('vars')">＋</button>
+        <button class="add-btn" style="background:rgba(251,146,60,.15);border:1px solid var(--orange);color:var(--orange);padding:7px 12px;border-radius:6px;font-size:var(--fs-md);font-weight:600;cursor:pointer" onclick="addPlanRow('vars')">＋</button>
       </div>
     </div>
   </div>
@@ -1150,7 +1152,7 @@ nav::-webkit-scrollbar{display:none}
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
     <div>
       <div style="font-family:var(--fh);font-size:1.1rem;font-weight:700">Flujo mensual</div>
-      <div style="font-size:.72rem;color:var(--muted);margin-top:2px">Presupuestado vs Real — calculado desde tus gastos cargados</div>
+      <div style="font-size:var(--fs-sm);color:var(--muted);margin-top:2px">Presupuestado vs Real — calculado desde tus gastos cargados</div>
     </div>
     <select id="flujo-sel" onchange="setGlobalMes(this.value)" class="fi" style="width:auto;padding:6px 12px">
       <!-- populated dynamically -->
@@ -1185,7 +1187,7 @@ nav::-webkit-scrollbar{display:none}
   <!-- Detector de fugas -->
   <div class="card" style="margin-bottom:14px">
     <div class="ct">🔍 Detector de fugas — vs tu propio promedio histórico</div>
-    <div style="font-size:.72rem;color:var(--muted2);margin-bottom:12px;line-height:1.5">
+    <div style="font-size:var(--fs-sm);color:var(--muted2);margin-bottom:12px;line-height:1.5">
       Compara cada categoría contra su promedio histórico, ajustado por inflación real (INDEC). Si gastás más de lo normal en una categoría, no es porque todo subió de precio — es un cambio de comportamiento real.
     </div>
     <div id="fugas-detalle"></div>
@@ -1194,7 +1196,7 @@ nav::-webkit-scrollbar{display:none}
   <!-- Comparativa interanual -->
   <div class="card" style="margin-bottom:14px" id="flujo-interanual-card">
     <div class="ct">📅 Mismo mes — año anterior</div>
-    <div id="flujo-interanual-content" style="font-size:.78rem;color:var(--muted);padding:8px 0">Cargando...</div>
+    <div id="flujo-interanual-content" style="font-size:var(--fs-md);color:var(--muted);padding:8px 0">Cargando...</div>
   </div>
 
   <!-- Transacciones del mes -->
@@ -1214,14 +1216,14 @@ nav::-webkit-scrollbar{display:none}
           </div>
           <input type="hidden" id="edit-mes">
           <input type="hidden" id="edit-idx">
-          <div class="field" style="margin-bottom:10px"><label style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Fecha</label>
+          <div class="field" style="margin-bottom:10px"><label style="font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Fecha</label>
             <input type="date" id="edit-fecha" class="fi"></div>
-          <div class="field" style="margin-bottom:10px"><label style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Monto $</label>
+          <div class="field" style="margin-bottom:10px"><label style="font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Monto $</label>
             <input type="number" id="edit-monto" class="fi" placeholder="0"></div>
-          <div class="field" style="margin-bottom:10px"><label style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Descripción</label>
+          <div class="field" style="margin-bottom:10px"><label style="font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Descripción</label>
             <input type="text" id="edit-desc" class="fi"></div>
           <div class="field" style="margin-bottom:16px">
-            <label style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Categoría</label>
+            <label style="font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:5px">Categoría</label>
             <select id="edit-cat" class="fi"></select>
           </div>
           <div style="display:flex;gap:8px">
@@ -1251,7 +1253,7 @@ nav::-webkit-scrollbar{display:none}
     <!-- ── AI MODE ── -->
     <div id="cargar-ai-mode" style="display:none">
       <div class="card" style="margin-bottom:14px">
-        <div style="font-family:var(--fh);font-size:.75rem;font-weight:700;color:var(--purple);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">✨ Describí el gasto en tus palabras</div>
+        <div style="font-family:var(--fh);font-size:var(--fs-sm);font-weight:700;color:var(--purple);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">✨ Describí el gasto en tus palabras</div>
 
         <div class="ai-input-wrap">
           <textarea id="ai-input" class="ai-input" rows="2"
@@ -1267,7 +1269,7 @@ nav::-webkit-scrollbar{display:none}
 
         <!-- Preview de lo que parseó -->
         <div class="ai-preview" id="ai-preview">
-          <div style="font-size:.65rem;color:var(--purple);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;font-weight:700">Interpretado por IA — confirmá o editá</div>
+          <div style="font-size:var(--fs-xs);color:var(--purple);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;font-weight:700">Interpretado por IA — confirmá o editá</div>
           <div class="ai-preview-row">
             <span class="ai-preview-label">Tipo</span>
             <span class="ai-preview-val" id="prev-tipo">—</span>
@@ -1293,19 +1295,19 @@ nav::-webkit-scrollbar{display:none}
             <span class="ai-preview-val" id="prev-fecha">—</span>
           </div>
           <div style="margin-top:12px;display:flex;gap:8px">
-            <button onclick="aiConfirmar()" class="btn btn-g" style="flex:1;font-size:.8rem">✓ Confirmar y guardar</button>
-            <button onclick="aiEditar()" class="btn btn-o" style="padding:11px 14px;font-size:.78rem">✏ Editar</button>
+            <button onclick="aiConfirmar()" class="btn btn-g" style="flex:1;font-size:var(--fs-md)">✓ Confirmar y guardar</button>
+            <button onclick="aiEditar()" class="btn btn-o" style="padding:11px 14px;font-size:var(--fs-md)">✏ Editar</button>
           </div>
         </div>
 
         <!-- Ejemplos rápidos -->
         <div id="ai-ejemplos" style="margin-top:12px">
-          <div style="font-size:.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Ejemplos</div>
+          <div style="font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Ejemplos</div>
           <div style="display:flex;flex-wrap:wrap;gap:6px">
-            <button onclick="aiEjemplo(this)" class="chip neu" style="cursor:pointer;border:none;padding:5px 10px;font-size:.68rem">gasté 8500 en nafta</button>
-            <button onclick="aiEjemplo(this)" class="chip neu" style="cursor:pointer;border:none;padding:5px 10px;font-size:.68rem">supermercado 22000 con débito BSF</button>
-            <button onclick="aiEjemplo(this)" class="chip neu" style="cursor:pointer;border:none;padding:5px 10px;font-size:.68rem">pagué TC BSF 85000</button>
-            <button onclick="aiEjemplo(this)" class="chip neu" style="cursor:pointer;border:none;padding:5px 10px;font-size:.68rem">cobré sueldo 450000</button>
+            <button onclick="aiEjemplo(this)" class="chip neu" style="cursor:pointer;border:none;padding:5px 10px;font-size:var(--fs-xs)">gasté 8500 en nafta</button>
+            <button onclick="aiEjemplo(this)" class="chip neu" style="cursor:pointer;border:none;padding:5px 10px;font-size:var(--fs-xs)">supermercado 22000 con débito BSF</button>
+            <button onclick="aiEjemplo(this)" class="chip neu" style="cursor:pointer;border:none;padding:5px 10px;font-size:var(--fs-xs)">pagué TC BSF 85000</button>
+            <button onclick="aiEjemplo(this)" class="chip neu" style="cursor:pointer;border:none;padding:5px 10px;font-size:var(--fs-xs)">cobré sueldo 450000</button>
           </div>
         </div>
       </div>
@@ -1315,13 +1317,13 @@ nav::-webkit-scrollbar{display:none}
     <div id="cargar-manual-mode" style="display:block">
       <!-- Tipo selector -->
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px" id="tipo-btns">
-        <button onclick="setTipo('gasto',this)" class="tipo-btn active-tipo" style="padding:12px 8px;border-radius:8px;border:1px solid var(--green);background:rgba(34,211,160,.08);color:var(--green);font-family:var(--fm);font-size:.72rem;cursor:pointer;text-align:center">
+        <button onclick="setTipo('gasto',this)" class="tipo-btn active-tipo" style="padding:12px 8px;border-radius:8px;border:1px solid var(--green);background:rgba(34,211,160,.08);color:var(--green);font-family:var(--fm);font-size:var(--fs-sm);cursor:pointer;text-align:center">
           <div style="font-size:1.1rem;margin-bottom:4px">💸</div>Gasto directo
         </button>
-        <button onclick="setTipo('tc',this)" class="tipo-btn" style="padding:12px 8px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--muted);font-family:var(--fm);font-size:.72rem;cursor:pointer;text-align:center">
+        <button onclick="setTipo('tc',this)" class="tipo-btn" style="padding:12px 8px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--muted);font-family:var(--fm);font-size:var(--fs-sm);cursor:pointer;text-align:center">
           <div style="font-size:1.1rem;margin-bottom:4px">💳</div>Pago TC
         </button>
-        <button onclick="setTipo('ingreso',this)" class="tipo-btn" style="padding:12px 8px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--muted);font-family:var(--fm);font-size:.72rem;cursor:pointer;text-align:center">
+        <button onclick="setTipo('ingreso',this)" class="tipo-btn" style="padding:12px 8px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--muted);font-family:var(--fm);font-size:var(--fs-sm);cursor:pointer;text-align:center">
           <div style="font-size:1.1rem;margin-bottom:4px">💰</div>Ingreso
         </button>
       </div>
@@ -1363,7 +1365,7 @@ nav::-webkit-scrollbar{display:none}
     <!-- Últimas transacciones -->
     <div class="card">
       <div class="ct">Últimas registradas</div>
-      <div id="recent-txs"><div style="color:var(--muted);font-size:.75rem;text-align:center;padding:20px 0">Sin registros aún</div></div>
+      <div id="recent-txs"><div style="color:var(--muted);font-size:var(--fs-sm);text-align:center;padding:20px 0">Sin registros aún</div></div>
     </div>
   </div>
 </div>
@@ -1390,7 +1392,7 @@ nav::-webkit-scrollbar{display:none}
     <div class="ct" style="display:flex;justify-content:space-between;align-items:center">
       <span>Mis cuentas</span>
       <button onclick="toggleNuevaCuenta()" id="btn-nueva-cuenta"
-        style="background:var(--green);color:var(--bg);border:none;border-radius:6px;padding:4px 12px;font-family:var(--fh);font-size:.7rem;font-weight:700;cursor:pointer">
+        style="background:var(--green);color:var(--bg);border:none;border-radius:6px;padding:4px 12px;font-family:var(--fh);font-size:var(--fs-sm);font-weight:700;cursor:pointer">
         + Nueva cuenta
       </button>
     </div>
@@ -1423,7 +1425,7 @@ nav::-webkit-scrollbar{display:none}
       </div>
     </div>
     <div id="cuentas-list" style="margin-top:8px">
-      <div style="color:var(--muted);font-size:.75rem;text-align:center;padding:20px 0">Sin cuentas</div>
+      <div style="color:var(--muted);font-size:var(--fs-sm);text-align:center;padding:20px 0">Sin cuentas</div>
     </div>
   </div>
 
@@ -1448,21 +1450,21 @@ nav::-webkit-scrollbar{display:none}
     <!-- Historial -->
     <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:6px">
-        <div style="font-family:var(--fh);font-size:.72rem;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.08em">Historial de movimientos</div>
+        <div style="font-family:var(--fh);font-size:var(--fs-sm);font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.08em">Historial de movimientos</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <select id="ct-tipo-fil" class="fi" style="width:auto;padding:4px 8px;font-size:.68rem" onchange="renderHistorialTransf()">
+          <select id="ct-tipo-fil" class="fi" style="width:auto;padding:4px 8px;font-size:var(--fs-xs)" onchange="renderHistorialTransf()">
             <option value="">Todos</option>
             <option value="transferencia">Transferencias</option>
             <option value="gasto">Gastos</option>
             <option value="ingreso">Ingresos</option>
           </select>
-          <select id="ct-transf-mes-fil" class="fi" style="width:auto;padding:4px 8px;font-size:.68rem" onchange="renderHistorialTransf()">
+          <select id="ct-transf-mes-fil" class="fi" style="width:auto;padding:4px 8px;font-size:var(--fs-xs)" onchange="renderHistorialTransf()">
             <option value="">Todos los meses</option>
           </select>
         </div>
       </div>
       <div id="ct-historial-transf">
-        <div style="color:var(--muted);font-size:.75rem;text-align:center;padding:10px 0">Sin movimientos</div>
+        <div style="color:var(--muted);font-size:var(--fs-sm);text-align:center;padding:10px 0">Sin movimientos</div>
       </div>
     </div>
   </div>
@@ -1483,18 +1485,18 @@ nav::-webkit-scrollbar{display:none}
     <div class="card span2" style="margin-bottom:0">
       <div class="ct">Portafolio
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <button class="btn btn-o" onclick="toggleRotarModal()" id="inv-rotar-btn" style="padding:5px 12px;font-size:.7rem;color:var(--yellow);border-color:rgba(251,191,36,.3)">＋ Agregar / Rotar</button>
-          <button class="btn btn-o" onclick="toggleInvEditor()" id="inv-edit-btn" style="padding:5px 12px;font-size:.7rem">✏ Editar posiciones</button>
+          <button class="btn btn-o" onclick="toggleRotarModal()" id="inv-rotar-btn" style="padding:5px 12px;font-size:var(--fs-sm);color:var(--yellow);border-color:rgba(251,191,36,.3)">＋ Agregar / Rotar</button>
+          <button class="btn btn-o" onclick="toggleInvEditor()" id="inv-edit-btn" style="padding:5px 12px;font-size:var(--fs-sm)">✏ Editar posiciones</button>
         </div>
       </div>
 
       <!-- Editor de posiciones -->
       <div id="inv-editor" style="display:none;margin-bottom:16px">
-        <div style="font-size:.72rem;color:var(--muted);margin-bottom:12px">Actualizá precio y cantidad. El valor ARS se calcula con el TC configurado.</div>
+        <div style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:12px">Actualizá precio y cantidad. El valor ARS se calcula con el TC configurado.</div>
         <div id="inv-editor-rows" style="overflow-x:auto"></div>
         <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
-          <button class="btn btn-o" onclick="addInvRow()" style="padding:6px 14px;font-size:.72rem">＋ Agregar activo</button>
-          <button class="btn btn-p" onclick="saveInv()" style="padding:6px 16px;font-size:.72rem">Guardar portafolio</button>
+          <button class="btn btn-o" onclick="addInvRow()" style="padding:6px 14px;font-size:var(--fs-sm)">＋ Agregar activo</button>
+          <button class="btn btn-p" onclick="saveInv()" style="padding:6px 16px;font-size:var(--fs-sm)">Guardar portafolio</button>
         </div>
       </div>
 
@@ -1528,28 +1530,28 @@ nav::-webkit-scrollbar{display:none}
       <!-- Header -->
       <div style="background:var(--s2);border-bottom:1px solid var(--border);padding:14px 18px;display:flex;align-items:center;justify-content:space-between">
         <div>
-          <div style="font-family:var(--fh);font-weight:700;font-size:.95rem;color:var(--yellow)">📋 Registrar operaciones</div>
-          <div style="font-size:.63rem;color:var(--muted);margin-top:2px">Cargá instrumentos nuevos o rotá posiciones — agregá varios y guardá todo de una</div>
+          <div style="font-family:var(--fh);font-weight:700;font-size:var(--fs-lg);color:var(--yellow)">📋 Registrar operaciones</div>
+          <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:2px">Cargá instrumentos nuevos o rotá posiciones — agregá varios y guardá todo de una</div>
         </div>
         <button onclick="closeRotarModal()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.1rem;padding:4px 8px">✕</button>
       </div>
 
       <!-- Formulario nueva operación -->
       <div style="padding:16px 18px;border-bottom:1px solid var(--border)">
-        <div style="font-size:.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Nueva operación</div>
+        <div style="font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Nueva operación</div>
 
         <!-- Fila 1: Tipo + Ticker -->
         <div style="display:grid;grid-template-columns:100px 1fr;gap:8px;margin-bottom:8px">
           <div>
             <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">TIPO</div>
-            <select id="op-tipo" class="fi" style="font-size:.75rem;padding:8px 6px" onchange="opTipoChange()">
+            <select id="op-tipo" class="fi" style="font-size:var(--fs-sm);padding:8px 6px" onchange="opTipoChange()">
               <option value="compra">Compra</option>
               <option value="venta">Venta</option>
             </select>
           </div>
           <div>
             <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">TICKER / CEDEAR</div>
-            <select id="op-ticker-sel" class="fi" style="font-size:.75rem;padding:8px 6px" onchange="opTickerChange()">
+            <select id="op-ticker-sel" class="fi" style="font-size:var(--fs-sm);padding:8px 6px" onchange="opTickerChange()">
               <option value="">— seleccioná —</option>
             </select>
           </div>
@@ -1560,16 +1562,16 @@ nav::-webkit-scrollbar{display:none}
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
             <div>
               <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">TICKER (nuevo)</div>
-              <input type="text" id="op-nuevo-ticker" class="fi" placeholder="ej: MSFT" style="font-size:.75rem;text-transform:uppercase">
+              <input type="text" id="op-nuevo-ticker" class="fi" placeholder="ej: MSFT" style="font-size:var(--fs-sm);text-transform:uppercase">
             </div>
             <div>
               <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">DESCRIPCIÓN</div>
-              <input type="text" id="op-nuevo-desc" class="fi" placeholder="ej: Microsoft Corp" style="font-size:.75rem">
+              <input type="text" id="op-nuevo-desc" class="fi" placeholder="ej: Microsoft Corp" style="font-size:var(--fs-sm)">
             </div>
           </div>
           <div>
             <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">TIPO DE INSTRUMENTO</div>
-            <select id="op-nuevo-tipo" class="fi" style="font-size:.75rem;padding:8px 6px">
+            <select id="op-nuevo-tipo" class="fi" style="font-size:var(--fs-sm);padding:8px 6px">
               <option value="CEDEAR">CEDEAR</option>
               <option value="FCI">FCI</option>
               <option value="Bono">Bono</option>
@@ -1583,55 +1585,55 @@ nav::-webkit-scrollbar{display:none}
 
         <!-- Fila 2: Nominales + Precio/Total + Fecha -->
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-          <span style="font-size:.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Ingresar por:</span>
-          <button type="button" id="op-modo-precio-btn" onclick="opToggleModoMonto('precio')" class="op-modo-btn op-modo-active" style="font-size:.65rem;padding:3px 9px;border-radius:5px;border:1px solid var(--border2);background:rgba(34,211,160,.1);color:var(--green);cursor:pointer">Precio unitario</button>
-          <button type="button" id="op-modo-total-btn" onclick="opToggleModoMonto('total')" class="op-modo-btn" style="font-size:.65rem;padding:3px 9px;border-radius:5px;border:1px solid var(--border);background:var(--s2);color:var(--muted);cursor:pointer">Total invertido</button>
+          <span style="font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Ingresar por:</span>
+          <button type="button" id="op-modo-precio-btn" onclick="opToggleModoMonto('precio')" class="op-modo-btn op-modo-active" style="font-size:var(--fs-xs);padding:3px 9px;border-radius:5px;border:1px solid var(--border2);background:rgba(34,211,160,.1);color:var(--green);cursor:pointer">Precio unitario</button>
+          <button type="button" id="op-modo-total-btn" onclick="opToggleModoMonto('total')" class="op-modo-btn" style="font-size:var(--fs-xs);padding:3px 9px;border-radius:5px;border:1px solid var(--border);background:var(--s2);color:var(--muted);cursor:pointer">Total invertido</button>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr 120px;gap:8px;margin-bottom:10px">
           <div>
             <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">NOMINALES</div>
-            <input type="number" id="op-cant" class="fi" placeholder="ej: 68" style="font-size:.82rem;text-align:right" oninput="_opModoMonto==='total' ? opCalcDesdeTotal() : opCalcMonto()">
+            <input type="number" id="op-cant" class="fi" placeholder="ej: 68" style="font-size:var(--fs-md);text-align:right" oninput="_opModoMonto==='total' ? opCalcDesdeTotal() : opCalcMonto()">
           </div>
           <div id="op-precio-wrap">
             <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">PRECIO UNIT. $</div>
-            <input type="number" id="op-precio" class="fi" placeholder="ej: 6430" style="font-size:.82rem;text-align:right" oninput="opCalcMonto()">
+            <input type="number" id="op-precio" class="fi" placeholder="ej: 6430" style="font-size:var(--fs-md);text-align:right" oninput="opCalcMonto()">
           </div>
           <div id="op-total-wrap" style="display:none">
             <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">TOTAL INVERTIDO $</div>
-            <input type="number" id="op-total-input" class="fi" placeholder="ej: 1250000" style="font-size:.82rem;text-align:right" oninput="opCalcDesdeTotal()">
+            <input type="number" id="op-total-input" class="fi" placeholder="ej: 1250000" style="font-size:var(--fs-md);text-align:right" oninput="opCalcDesdeTotal()">
           </div>
           <div>
             <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">FECHA</div>
-            <input type="date" id="op-fecha" class="fi" style="font-size:.72rem;padding:8px 6px">
+            <input type="date" id="op-fecha" class="fi" style="font-size:var(--fs-sm);padding:8px 6px">
           </div>
         </div>
 
         <!-- Preview monto calculado -->
         <div id="op-preview" style="display:none;background:var(--s2);border:1px solid var(--border);border-radius:7px;padding:10px 14px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
-          <span style="font-size:.65rem;color:var(--muted)">MONTO NETO</span>
+          <span style="font-size:var(--fs-xs);color:var(--muted)">MONTO NETO</span>
           <span id="op-preview-monto" style="font-family:var(--fh);font-size:1rem;font-weight:700"></span>
         </div>
 
-        <button onclick="opAgregar()" class="btn btn-full" style="background:var(--s2);border:1px solid var(--border2);color:var(--text);font-size:.75rem;padding:9px">＋ Agregar a la lista</button>
+        <button onclick="opAgregar()" class="btn btn-full" style="background:var(--s2);border:1px solid var(--border2);color:var(--text);font-size:var(--fs-sm);padding:9px">＋ Agregar a la lista</button>
       </div>
 
       <!-- Lista de operaciones cargadas -->
       <div id="op-lista-wrap" style="display:none;padding:14px 18px;border-bottom:1px solid var(--border)">
-        <div style="font-size:.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Operaciones del lote</div>
+        <div style="font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Operaciones del lote</div>
         <div id="op-lista"></div>
       </div>
 
       <!-- Resumen totales -->
       <div id="op-resumen-wrap" style="display:none;padding:12px 18px;border-bottom:1px solid var(--border);background:var(--s2)">
-        <div style="display:flex;justify-content:space-between;font-size:.75rem;margin-bottom:6px">
+        <div style="display:flex;justify-content:space-between;font-size:var(--fs-sm);margin-bottom:6px">
           <span style="color:var(--muted)">Total vendido</span>
           <span id="op-total-venta" style="color:var(--red);font-weight:600"></span>
         </div>
-        <div style="display:flex;justify-content:space-between;font-size:.75rem;margin-bottom:6px">
+        <div style="display:flex;justify-content:space-between;font-size:var(--fs-sm);margin-bottom:6px">
           <span style="color:var(--muted)">Total comprado</span>
           <span id="op-total-compra" style="color:var(--green);font-weight:600"></span>
         </div>
-        <div style="display:flex;justify-content:space-between;font-size:.75rem;padding-top:6px;border-top:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;font-size:var(--fs-sm);padding-top:6px;border-top:1px solid var(--border)">
           <span style="color:var(--muted)">Diferencia neta</span>
           <span id="op-total-dif" style="font-weight:700"></span>
         </div>
@@ -1639,8 +1641,8 @@ nav::-webkit-scrollbar{display:none}
 
       <!-- Footer botones -->
       <div style="padding:14px 18px;display:flex;gap:8px;justify-content:space-between">
-        <button onclick="closeRotarModal()" class="btn btn-o" style="font-size:.72rem;padding:9px 16px">Cancelar</button>
-        <button onclick="opEjecutar()" id="op-ejecutar-btn" class="btn" style="background:var(--yellow);color:var(--bg);font-size:.75rem;font-weight:700;padding:9px 20px;display:none">✓ Confirmar lote</button>
+        <button onclick="closeRotarModal()" class="btn btn-o" style="font-size:var(--fs-sm);padding:9px 16px">Cancelar</button>
+        <button onclick="opEjecutar()" id="op-ejecutar-btn" class="btn" style="background:var(--yellow);color:var(--bg);font-size:var(--fs-sm);font-weight:700;padding:9px 20px;display:none">✓ Confirmar lote</button>
       </div>
 
     </div>
@@ -1680,13 +1682,13 @@ nav::-webkit-scrollbar{display:none}
   <div class="card" style="margin-bottom:14px">
     <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="toggleTarjetasIntro()">
       <div class="ct" style="margin-bottom:0">💳 Gastos con tarjetas — desglose del resumen</div>
-      <span id="tarjetas-intro-chevron" style="color:var(--muted);font-size:.8rem;transition:transform .2s">▶</span>
+      <span id="tarjetas-intro-chevron" style="color:var(--muted);font-size:var(--fs-md);transition:transform .2s">▶</span>
     </div>
     <div id="tarjetas-intro-body" style="display:none;margin-top:12px">
-      <p style="font-size:.75rem;color:var(--muted2);margin-bottom:12px;line-height:1.5">
+      <p style="font-size:var(--fs-sm);color:var(--muted2);margin-bottom:12px;line-height:1.5">
         Acá vas mapeando todo el consumo del período (vos, Lara y Emma) por categoría y tipo de gasto, para totalizar y comparar contra el resumen real cuando lo emite el banco. No toca Flujo ni Overview en ningún momento — el pago del resumen lo seguís cargando vos, donde siempre, cuando vence.
       </p>
-      <div style="background:var(--s2);border-radius:8px;padding:10px;margin-bottom:12px;font-size:.68rem;color:var(--muted2);line-height:1.6">
+      <div style="background:var(--s2);border-radius:8px;padding:10px;margin-bottom:12px;font-size:var(--fs-xs);color:var(--muted2);line-height:1.6">
         <b style="color:var(--text)">¿Cómo se arma cada resumen?</b><br>
         Cierre anterior → ━━━ consumos de ese período ━━━ → Cierre actual<br>
         Cada gasto se agrupa entre el cierre previo y el siguiente cierre de esa tarjeta, no por mes calendario. Por eso podés ver dos cards de la misma tarjeta a la vez: una recién cerrada (lista para pagar) y otra todavía corriendo.
@@ -1701,17 +1703,17 @@ nav::-webkit-scrollbar{display:none}
     <div class="ct">✏ Cargar mi propio consumo</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
       <div>
-        <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">TARJETA</div>
-        <select id="own-tj-tarjeta" class="fi" style="font-size:.78rem;padding:8px 6px"></select>
+        <div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">TARJETA</div>
+        <select id="own-tj-tarjeta" class="fi" style="font-size:var(--fs-md);padding:8px 6px"></select>
       </div>
       <div>
-        <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">FECHA</div>
-        <input type="date" id="own-tj-fecha" class="fi" style="font-size:.78rem;padding:8px 6px">
+        <div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">FECHA</div>
+        <input type="date" id="own-tj-fecha" class="fi" style="font-size:var(--fs-md);padding:8px 6px">
       </div>
     </div>
     <div style="margin-bottom:8px">
-      <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">¿QUIÉN GASTÓ?</div>
-      <select id="own-tj-quien" class="fi" style="font-size:.78rem;padding:8px 6px;width:100%">
+      <div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">¿QUIÉN GASTÓ?</div>
+      <select id="own-tj-quien" class="fi" style="font-size:var(--fs-md);padding:8px 6px;width:100%">
         <option value="Cris">Cris (yo)</option>
         <option value="Lara">Lara</option>
         <option value="Emma">Emma</option>
@@ -1719,38 +1721,38 @@ nav::-webkit-scrollbar{display:none}
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
       <div>
-        <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">TIPO DE GASTO</div>
-        <select id="own-tj-tipo" class="fi" style="font-size:.78rem;padding:8px 6px" onchange="ownTipoCategoriaChange(this)">
+        <div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">TIPO DE GASTO</div>
+        <select id="own-tj-tipo" class="fi" style="font-size:var(--fs-md);padding:8px 6px" onchange="ownTipoCategoriaChange(this)">
           <option value="">— elegí una categoría —</option>
           <option value="__nueva__">＋ Nueva categoría...</option>
         </select>
       </div>
       <div>
-        <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px" id="own-tj-monto-label">MONTO</div>
-        <input type="number" id="own-tj-monto" class="fi" placeholder="0" style="font-size:.78rem;padding:8px 9px;text-align:right">
+        <div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px" id="own-tj-monto-label">MONTO</div>
+        <input type="number" id="own-tj-monto" class="fi" placeholder="0" style="font-size:var(--fs-md);padding:8px 9px;text-align:right">
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
       <input type="checkbox" id="own-tj-cuotas-check" onchange="ownToggleCuotas()" style="width:16px;height:16px">
-      <label for="own-tj-cuotas-check" style="font-size:.74rem;cursor:pointer">¿En cuotas? <span style="font-size:.65rem;color:var(--muted)">(compra nueva, arranca desde la cuota 1)</span></label>
+      <label for="own-tj-cuotas-check" style="font-size:var(--fs-sm);cursor:pointer">¿En cuotas? <span style="font-size:var(--fs-xs);color:var(--muted)">(compra nueva, arranca desde la cuota 1)</span></label>
       <div id="own-tj-cuotas-wrap" style="display:none;margin-left:auto">
-        <input type="number" id="own-tj-cuotas-cant" min="2" max="24" placeholder="6" class="fi" style="width:60px;font-size:.74rem;padding:6px 8px;text-align:center">
+        <input type="number" id="own-tj-cuotas-cant" min="2" max="24" placeholder="6" class="fi" style="width:60px;font-size:var(--fs-sm);padding:6px 8px;text-align:center">
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
       <input type="checkbox" id="own-tj-cuota-en-curso" onchange="ownToggleCuotaEnCurso()" style="width:16px;height:16px">
-      <label for="own-tj-cuota-en-curso" style="font-size:.74rem;cursor:pointer">Cuota en curso <span style="font-size:.65rem;color:var(--muted)">(ya está en el resumen, no es compra nueva)</span></label>
+      <label for="own-tj-cuota-en-curso" style="font-size:var(--fs-sm);cursor:pointer">Cuota en curso <span style="font-size:var(--fs-xs);color:var(--muted)">(ya está en el resumen, no es compra nueva)</span></label>
     </div>
     <div id="own-tj-cec-wrap" style="display:none;margin-bottom:10px;padding:10px;background:var(--s2);border-radius:8px">
-      <div style="font-size:.65rem;color:var(--muted);margin-bottom:6px">El monto de arriba es el de ESTA cuota (no el total de la compra).</div>
+      <div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:6px">El monto de arriba es el de ESTA cuota (no el total de la compra).</div>
       <div style="display:flex;align-items:center;gap:8px">
         <div style="flex:1">
-          <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">ESTA ES LA CUOTA N°</div>
-          <input type="number" id="own-tj-cec-actual" min="1" max="24" placeholder="3" class="fi" style="width:100%;font-size:.74rem;padding:6px 8px;text-align:center">
+          <div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">ESTA ES LA CUOTA N°</div>
+          <input type="number" id="own-tj-cec-actual" min="1" max="24" placeholder="3" class="fi" style="width:100%;font-size:var(--fs-sm);padding:6px 8px;text-align:center">
         </div>
         <div style="flex:1">
-          <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">DE UN TOTAL DE</div>
-          <input type="number" id="own-tj-cec-total" min="1" max="24" placeholder="6" class="fi" style="width:100%;font-size:.74rem;padding:6px 8px;text-align:center">
+          <div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">DE UN TOTAL DE</div>
+          <input type="number" id="own-tj-cec-total" min="1" max="24" placeholder="6" class="fi" style="width:100%;font-size:var(--fs-sm);padding:6px 8px;text-align:center">
         </div>
       </div>
     </div>
@@ -1768,29 +1770,29 @@ nav::-webkit-scrollbar{display:none}
     <div class="card" style="margin-bottom:14px">
       <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="toggleRecurrentesCfg()">
         <div class="ct" style="margin-bottom:0">🔁 Débitos automáticos recurrentes</div>
-        <span id="rec-cfg-chevron" style="color:var(--muted);font-size:.8rem;transition:transform .2s">▶</span>
+        <span id="rec-cfg-chevron" style="color:var(--muted);font-size:var(--fs-md);transition:transform .2s">▶</span>
       </div>
       <div id="rec-cfg-body" style="display:none;margin-top:12px">
-        <p style="font-size:.75rem;color:var(--muted2);margin-bottom:12px;line-height:1.5">
+        <p style="font-size:var(--fs-sm);color:var(--muted2);margin-bottom:12px;line-height:1.5">
           Para gastos fijos que se debitan solos (seguros, suscripciones). La app los carga automáticamente cada mes con el monto que configurés acá — no lee tu banco, así que si el monto cambia, actualizalo vos.
         </p>
         <div id="cfg-recurrentes-list" style="margin-bottom:10px"></div>
-        <button onclick="agregarRecurrenteCfg()" class="btn btn-o" style="width:100%;font-size:.72rem">＋ Agregar débito recurrente</button>
+        <button onclick="agregarRecurrenteCfg()" class="btn btn-o" style="width:100%;font-size:var(--fs-sm)">＋ Agregar débito recurrente</button>
       </div>
     </div>
 
     <div class="card" style="margin-bottom:14px">
       <div class="ct">💳 Tarjetas de crédito — cierre de resumen</div>
-      <p style="font-size:.75rem;color:var(--muted2);margin-bottom:12px;line-height:1.5">
+      <p style="font-size:var(--fs-sm);color:var(--muted2);margin-bottom:12px;line-height:1.5">
         Configurá el día de cierre de cada tarjeta (no el vencimiento) para agrupar automáticamente los gastos por período de resumen.
       </p>
       <div id="cfg-tarjetas-list" style="margin-bottom:10px"></div>
-      <button onclick="agregarTarjetaCfg()" class="btn btn-o" style="width:100%;font-size:.72rem">＋ Agregar tarjeta</button>
+      <button onclick="agregarTarjetaCfg()" class="btn btn-o" style="width:100%;font-size:var(--fs-sm)">＋ Agregar tarjeta</button>
     </div>
 
     <div class="card" style="margin-bottom:14px">
       <div class="ct">🏷 Categorías de consumo — normalizar</div>
-      <p style="font-size:.75rem;color:var(--muted2);margin-bottom:12px;line-height:1.5">
+      <p style="font-size:var(--fs-sm);color:var(--muted2);margin-bottom:12px;line-height:1.5">
         Antes había texto libre, así que pueden existir variantes del mismo gasto (ej. "nafta" y "Nafta"). Acá fusionás cada variante con la categoría correcta de la lista.
       </p>
       <div id="cfg-normalizador-list" style="margin-bottom:10px"></div>
@@ -1798,7 +1800,7 @@ nav::-webkit-scrollbar{display:none}
 
     <div class="card" style="margin-bottom:14px">
       <div class="ct">💱 Tipo de cambio USD/ARS</div>
-      <p style="font-size:.75rem;color:var(--muted2);margin-bottom:12px">Usado para convertir posiciones en USD al portafolio en ARS.</p>
+      <p style="font-size:var(--fs-sm);color:var(--muted2);margin-bottom:12px">Usado para convertir posiciones en USD al portafolio en ARS.</p>
       <div style="display:flex;gap:8px">
         <input type="number" id="cfg-tc" class="fi" placeholder="1250" style="flex:1">
         <button class="btn btn-g" onclick="saveTc()">Guardar</button>
@@ -1807,38 +1809,38 @@ nav::-webkit-scrollbar{display:none}
 
     <div class="card" style="margin-bottom:14px">
       <div class="ct">📲 Instalar como app</div>
-      <p style="font-size:.75rem;color:var(--muted2);line-height:1.7;margin-bottom:8px"><strong>Android (Chrome):</strong> Menú ⋮ → Agregar a pantalla de inicio</p>
-      <p style="font-size:.75rem;color:var(--muted2);line-height:1.7"><strong>iPhone (Safari):</strong> Botón compartir □↑ → Añadir a pantalla de inicio</p>
+      <p style="font-size:var(--fs-sm);color:var(--muted2);line-height:1.7;margin-bottom:8px"><strong>Android (Chrome):</strong> Menú ⋮ → Agregar a pantalla de inicio</p>
+      <p style="font-size:var(--fs-sm);color:var(--muted2);line-height:1.7"><strong>iPhone (Safari):</strong> Botón compartir □↑ → Añadir a pantalla de inicio</p>
     </div>
 
     <div class="card" style="margin-bottom:14px">
       <div class="ct">📥 Importar historial del xlsx</div>
-      <p style="font-size:.75rem;color:var(--muted2);margin-bottom:12px;line-height:1.5">
+      <p style="font-size:var(--fs-sm);color:var(--muted2);margin-bottom:12px;line-height:1.5">
         671 transacciones del xlsx (2024–Mar 2026). Revisá y editá antes de confirmar.
       </p>
-      <div id="import-status" style="font-size:.72rem;color:var(--muted);margin-bottom:10px;line-height:1.6"></div>
+      <div id="import-status" style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:10px;line-height:1.6"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button onclick="abrirEditorImport()" class="btn btn-b" style="flex:1">✏ Revisar y editar</button>
-        <button onclick="importarDesdeXlsx(true)" class="btn btn-o" style="padding:11px 14px;font-size:.72rem" title="Importar sin revisar">⚡ Importar directo</button>
+        <button onclick="importarDesdeXlsx(true)" class="btn btn-o" style="padding:11px 14px;font-size:var(--fs-sm)" title="Importar sin revisar">⚡ Importar directo</button>
       </div>
-      <button onclick="reimportarLimpio()" class="btn btn-o" style="width:100%;margin-top:8px;border-color:var(--red);color:var(--red);font-size:.72rem">🔄 Borrar importación vieja y reimportar limpio</button>
+      <button onclick="reimportarLimpio()" class="btn btn-o" style="width:100%;margin-top:8px;border-color:var(--red);color:var(--red);font-size:var(--fs-sm)">🔄 Borrar importación vieja y reimportar limpio</button>
     </div>
 
     <div class="card" style="margin-bottom:14px">
       <div class="ct">🗑 Limpiar datos</div>
-      <p style="font-size:.75rem;color:var(--muted2);margin-bottom:12px">Borra todos los presupuestos y transacciones guardados en este dispositivo. Los datos pre-cargados del xlsx se mantienen.</p>
+      <p style="font-size:var(--fs-sm);color:var(--muted2);margin-bottom:12px">Borra todos los presupuestos y transacciones guardados en este dispositivo. Los datos pre-cargados del xlsx se mantienen.</p>
       <button class="btn btn-o" onclick="clearAll()" style="border-color:var(--red);color:var(--red)">Borrar datos del dispositivo</button>
     </div>
 
     <div class="card" style="margin-bottom:14px">
       <div class="ct">🔄 Actualizar app</div>
-      <p style="font-size:.75rem;color:var(--muted2);margin-bottom:12px">Si los cambios no aparecen, forzá la actualización completa.</p>
+      <p style="font-size:var(--fs-sm);color:var(--muted2);margin-bottom:12px">Si los cambios no aparecen, forzá la actualización completa.</p>
       <button class="btn btn-o" onclick="forceUpdate()" style="border-color:var(--blue);color:var(--blue)">⟳ Forzar actualización</button>
     </div>
 
     <div class="card">
       <div class="ct">ℹ️ Acerca de</div>
-      <p style="font-size:.75rem;color:var(--muted2);line-height:1.7">
+      <p style="font-size:var(--fs-sm);color:var(--muted2);line-height:1.7">
         Dashboard financiero personal — CL Finanzas <span style="color:var(--muted);font-size:.7em">v1.2.2</span><br>
         Datos sincronizados en la nube con Firebase.<br>
         Form de gastos: <a href="https://forms.gle/cgxE8FDbhaZPkwjn9" target="_blank" style="color:var(--green)">forms.gle/cgxE8FDbhaZPkwjn9</a>
@@ -1850,17 +1852,17 @@ nav::-webkit-scrollbar{display:none}
   <div class="card" style="margin-top:16px">
     <div class="ct">☁ Sincronización en la nube</div>
     <div style="margin-bottom:14px">
-      <div style="font-size:.72rem;color:var(--muted);margin-bottom:4px">Cuenta conectada</div>
-      <div id="fb-user" style="font-size:.8rem;color:var(--text);font-family:var(--fh);font-weight:600">No conectado</div>
+      <div style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:4px">Cuenta conectada</div>
+      <div id="fb-user" style="font-size:var(--fs-md);color:var(--text);font-family:var(--fh);font-weight:600">No conectado</div>
     </div>
-    <p style="font-size:.72rem;color:var(--muted);margin-bottom:14px;line-height:1.5">
+    <p style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:14px;line-height:1.5">
       Iniciá sesión con tu cuenta Google para sincronizar todos tus datos en la nube.
       Al cambiar de celular, solo tenés que iniciar sesión y tus datos se restauran automáticamente.
     </p>
-    <button id="fb-login-btn" onclick="fbLogin()" style="width:100%;padding:12px;background:var(--green);color:var(--bg);border:none;border-radius:8px;font-family:var(--fh);font-size:.8rem;font-weight:700;cursor:pointer">
+    <button id="fb-login-btn" onclick="fbLogin()" style="width:100%;padding:12px;background:var(--green);color:var(--bg);border:none;border-radius:8px;font-family:var(--fh);font-size:var(--fs-md);font-weight:700;cursor:pointer">
       Iniciar sesión con Google
     </button>
-    <div style="margin-top:12px;padding:10px;background:var(--s2);border-radius:6px;font-size:.68rem;color:var(--muted);line-height:1.5">
+    <div style="margin-top:12px;padding:10px;background:var(--s2);border-radius:6px;font-size:var(--fs-xs);color:var(--muted);line-height:1.5">
       <strong style="color:var(--muted2)">Cómo funciona:</strong><br>
       • Cada vez que guardás un gasto o presupuesto, se sincroniza automáticamente<br>
       • El ícono ☁ en el header muestra el estado de la conexión<br>
@@ -1941,7 +1943,7 @@ function actualizarAvisoAutocompletado() {
   if (!el) return;
   if (curPlan && curPlan._autocompletado) {
     el.style.display = 'block';
-    el.innerHTML = `<div class="alert" style="font-size:.72rem;margin-bottom:14px">✨ Este presupuesto se autocompletó con el promedio real reciente de cada categoría (ajustado por inflación) — todavía no lo guardaste a mano. Revisalo y tocá "💾 Guardar" para confirmarlo.</div>`;
+    el.innerHTML = `<div class="alert" style="font-size:var(--fs-sm);margin-bottom:14px">✨ Este presupuesto se autocompletó con el promedio real reciente de cada categoría (ajustado por inflación) — todavía no lo guardaste a mano. Revisalo y tocá "💾 Guardar" para confirmarlo.</div>`;
   } else {
     el.style.display = 'none';
   }
@@ -2835,20 +2837,20 @@ function renderRecentTxs() {
   const el = document.getElementById('recent-txs');
   const allTxs = DB.get('txs', {});
   const recent = Object.values(allTxs).flat().sort((a,b) => b.ts - a.ts).slice(0, 8);
-  if (!recent.length) { el.innerHTML = '<div style="color:var(--muted);font-size:.75rem;text-align:center;padding:20px 0">Sin registros aún</div>'; return; }
+  if (!recent.length) { el.innerHTML = '<div style="color:var(--muted);font-size:var(--fs-sm);text-align:center;padding:20px 0">Sin registros aún</div>'; return; }
   el.innerHTML = recent.map((tx, idx) => {
     const isIng = tx.tipo === 'ingreso';
     const color = isIng ? P.green : P.red;
     const icon  = isIng ? '💰' : tx.tipo === 'tc' ? '💳' : '💸';
     return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)">
-      <div style="width:28px;height:28px;border-radius:7px;background:${color}15;display:flex;align-items:center;justify-content:center;font-size:.85rem;flex-shrink:0">${icon}</div>
+      <div style="width:28px;height:28px;border-radius:7px;background:${color}15;display:flex;align-items:center;justify-content:center;font-size:var(--fs-md);flex-shrink:0">${icon}</div>
       <div style="flex:1;min-width:0">
-        <div style="font-size:.78rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${tx.desc}</div>
-        <div style="font-size:.65rem;color:var(--muted);margin-top:1px">${tx.fecha}${tx.cat ? ' · '+tx.cat : ''}</div>
+        <div style="font-size:var(--fs-md);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${tx.desc}</div>
+        <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:1px">${tx.fecha}${tx.cat ? ' · '+tx.cat : ''}</div>
       </div>
       <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
-        <div style="font-family:var(--fh);font-size:.9rem;font-weight:700;color:${color}">${isIng?'+':'-'}${fmt(tx.monto)}</div>
-        <button onclick="duplicateTx(${idx})" title="Duplicar" style="background:rgba(148,163,184,.1);border:1px solid var(--border);border-radius:5px;color:var(--muted2);cursor:pointer;padding:3px 7px;font-size:.65rem;line-height:1">⎘</button>
+        <div style="font-family:var(--fh);font-size:var(--fs-lg);font-weight:700;color:${color}">${isIng?'+':'-'}${fmt(tx.monto)}</div>
+        <button onclick="duplicateTx(${idx})" title="Duplicar" style="background:rgba(148,163,184,.1);border:1px solid var(--border);border-radius:5px;color:var(--muted2);cursor:pointer;padding:3px 7px;font-size:var(--fs-xs);line-height:1">⎘</button>
       </div>
     </div>`;
   }).join('');
@@ -2993,8 +2995,8 @@ function renderFlujo() {
     const color = isUnmatched ? P.yellow :
                   pv > 0 && rv > pv * 1.05 ? P.red :
                   rv > 0 ? P.green : 'var(--muted)';
-    const badge = isAuto      ? ' <span style="font-size:.6rem;color:var(--muted);background:var(--s3);padding:1px 5px;border-radius:3px">auto</span>' :
-                  isUnmatched ? ' <span style="font-size:.6rem;color:var(--yellow);background:rgba(251,191,36,.1);padding:1px 5px;border-radius:3px" title="Suma al total de gastos pero no tiene categoría en el presupuesto">⚠ sin presup</span>' : '';
+    const badge = isAuto      ? ' <span style="font-size:var(--fs-xs);color:var(--muted);background:var(--s3);padding:1px 5px;border-radius:3px">auto</span>' :
+                  isUnmatched ? ' <span style="font-size:var(--fs-xs);color:var(--yellow);background:rgba(251,191,36,.1);padding:1px 5px;border-radius:3px" title="Suma al total de gastos pero no tiene categoría en el presupuesto">⚠ sin presup</span>' : '';
     return `<tr>
       <td>${cat}${badge}</td>
       <td style="text-align:right;color:var(--muted)">${pv > 0 ? fmt(pv) : '—'}</td>
@@ -3020,7 +3022,7 @@ function renderFlujo() {
     }),
   ].join('') + 
   `<tr style="border-top:2px solid var(--border2);background:var(--s2)">
-    <td style="font-family:var(--fh);font-weight:700;font-size:.8rem;color:var(--text)">TOTAL GASTOS</td>
+    <td style="font-family:var(--fh);font-weight:700;font-size:var(--fs-md);color:var(--text)">TOTAL GASTOS</td>
     <td style="text-align:right;font-weight:700;color:var(--muted2)">${fmt(pt.gastos)}</td>
     <td style="text-align:right;font-weight:700;color:var(--red)">${fmt(Object.values(realTotals).reduce((s,v)=>s+v,0))}</td>
     <td></td><td></td>
@@ -3036,7 +3038,7 @@ function renderFlujo() {
       <td style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${tx.desc}</td>
       <td><span class="tag">${normalizeCat(tx.cat)||'—'}</span></td>
       <td class="${isIng?'pos':'neg'}">${isIng?'+':'-'}${fmt(tx.monto)}</td>
-      <td><button onclick="openEditModal('${flujoMes2}',${i})" style="background:none;border:1px solid var(--border);border-radius:5px;color:var(--muted2);cursor:pointer;padding:3px 8px;font-size:.65rem">✏</button></td>
+      <td><button onclick="openEditModal('${flujoMes2}',${i})" style="background:none;border:1px solid var(--border);border-radius:5px;color:var(--muted2);cursor:pointer;padding:3px 8px;font-size:var(--fs-xs)">✏</button></td>
     </tr>`;
   }).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:16px">Sin transacciones en este mes</td></tr>';
 
@@ -3055,7 +3057,7 @@ function renderFlujo() {
     const hasPrevData = !!savedTxs[prevMes] || !!DB.get('plans', {})[prevMes];
 
     if (!hasPrevData && prevGas === 0) {
-      card.innerHTML = `<span style="color:var(--muted);font-size:.75rem">Sin datos para ${MESES[parseInt(mo)-1]} ${prevYr}</span>`;
+      card.innerHTML = `<span style="color:var(--muted);font-size:var(--fs-sm)">Sin datos para ${MESES[parseInt(mo)-1]} ${prevYr}</span>`;
       return;
     }
 
@@ -3067,19 +3069,19 @@ function renderFlujo() {
     card.innerHTML = `
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;align-items:center">
       <div>
-        <div style="font-size:.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">${MESES[parseInt(mo)-1]} ${prevYr}</div>
+        <div style="font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">${MESES[parseInt(mo)-1]} ${prevYr}</div>
         <div style="font-family:var(--fh);font-size:1rem;font-weight:700;color:var(--muted2)">${fmt(prevGas)}</div>
-        <div style="font-size:.65rem;color:var(--muted);margin-top:2px">gastos reales</div>
+        <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:2px">gastos reales</div>
       </div>
       <div style="text-align:center">
-        <div style="font-size:.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">${MESES[parseInt(mo)-1]} ${yr}</div>
+        <div style="font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">${MESES[parseInt(mo)-1]} ${yr}</div>
         <div style="font-family:var(--fh);font-size:1rem;font-weight:700;color:var(--text)">${fmt(realTotal)}</div>
-        <div style="font-size:.65rem;color:var(--muted);margin-top:2px">este mes</div>
+        <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:2px">este mes</div>
       </div>
       <div style="text-align:right">
-        <div style="font-size:.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Variación</div>
+        <div style="font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Variación</div>
         <div style="font-family:var(--fh);font-size:1rem;font-weight:700;color:${difColor}">${difSign}${fmt(Math.abs(difGas))}</div>
-        ${difPct !== null ? `<div style="font-size:.65rem;color:${difColor};margin-top:2px">${difSign}${difPct.toFixed(1)}% interanual</div>` : ''}
+        ${difPct !== null ? `<div style="font-size:var(--fs-xs);color:${difColor};margin-top:2px">${difSign}${difPct.toFixed(1)}% interanual</div>` : ''}
       </div>
     </div>`;
   })();
@@ -3199,15 +3201,15 @@ function renderNormalizadorCategorias() {
   if (!el) return;
   const variantes = detectarVariantesCategoria();
   if (variantes.length === 0) {
-    el.innerHTML = '<div style="font-size:.72rem;color:var(--muted);padding:8px 0">✓ No hay variantes sueltas — todo está usando la lista de categorías.</div>';
+    el.innerHTML = '<div style="font-size:var(--fs-sm);color:var(--muted);padding:8px 0">✓ No hay variantes sueltas — todo está usando la lista de categorías.</div>';
     return;
   }
   const categorias = getCategoriasConsumo();
   el.innerHTML = variantes.map(v => `
     <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--s2);border-radius:8px;margin-bottom:6px">
-      <span style="flex:1;font-size:.76rem;font-weight:600">${v}</span>
-      <span style="color:var(--muted);font-size:.7rem">→</span>
-      <select onchange="fusionarVarianteCategoria('${v.replace(/'/g,"\\'")}', this.value)" class="fi" style="width:150px;font-size:.72rem;padding:6px 6px">
+      <span style="flex:1;font-size:var(--fs-sm);font-weight:600">${v}</span>
+      <span style="color:var(--muted);font-size:var(--fs-sm)">→</span>
+      <select onchange="fusionarVarianteCategoria('${v.replace(/'/g,"\\'")}', this.value)" class="fi" style="width:150px;font-size:var(--fs-sm);padding:6px 6px">
         <option value="">— elegir —</option>
         ${categorias.map(c => `<option value="${c}">${c}</option>`).join('')}
         <option value="__nueva__">＋ Nueva...</option>
@@ -3373,7 +3375,7 @@ function renderTarjetasCfg() {
   if (!el) return;
   const tarjetas = getTarjetas();
   if (tarjetas.length === 0) {
-    el.innerHTML = '<div style="font-size:.72rem;color:var(--muted);padding:8px 0">No hay tarjetas configuradas todavía.</div>';
+    el.innerHTML = '<div style="font-size:var(--fs-sm);color:var(--muted);padding:8px 0">No hay tarjetas configuradas todavía.</div>';
     return;
   }
   const periodoLabels = ['anterior', 'actual', 'próximo'];
@@ -3383,15 +3385,15 @@ function renderTarjetasCfg() {
       const p = periodos[i] || {inicio:'',cierre:''};
       return `
       <div style="background:var(--bg);border-radius:6px;padding:8px;margin-top:4px">
-        <div style="font-size:.6rem;color:var(--muted);font-weight:600;text-transform:uppercase;margin-bottom:4px">Período ${label}</div>
+        <div style="font-size:var(--fs-xs);color:var(--muted);font-weight:600;text-transform:uppercase;margin-bottom:4px">Período ${label}</div>
         <div style="display:flex;gap:6px;align-items:center">
           <div style="flex:1">
             <div style="font-size:.55rem;color:var(--muted);margin-bottom:2px">Inicio</div>
-            <input type="date" value="${p.inicio||''}" onchange="guardarPeriodoTarjeta('${t.id}',${i},'inicio',this.value)" class="fi" style="width:100%;font-size:.7rem;padding:5px 7px">
+            <input type="date" value="${p.inicio||''}" onchange="guardarPeriodoTarjeta('${t.id}',${i},'inicio',this.value)" class="fi" style="width:100%;font-size:var(--fs-sm);padding:5px 7px">
           </div>
           <div style="flex:1">
             <div style="font-size:.55rem;color:var(--muted);margin-bottom:2px">Cierre</div>
-            <input type="date" value="${p.cierre||''}" onchange="guardarPeriodoTarjeta('${t.id}',${i},'cierre',this.value)" class="fi" style="width:100%;font-size:.7rem;padding:5px 7px">
+            <input type="date" value="${p.cierre||''}" onchange="guardarPeriodoTarjeta('${t.id}',${i},'cierre',this.value)" class="fi" style="width:100%;font-size:var(--fs-sm);padding:5px 7px">
           </div>
         </div>
       </div>`;
@@ -3399,12 +3401,12 @@ function renderTarjetasCfg() {
     return `
     <div style="display:flex;flex-direction:column;gap:6px;padding:10px;background:var(--s2);border-radius:8px;margin-bottom:8px">
       <div style="display:flex;gap:6px;align-items:center">
-        <input type="text" value="${t.nombre}" oninput="actualizarTarjetaCfg('${t.id}','nombre',this.value)" class="fi" style="flex:1;font-size:.78rem;padding:7px 9px">
-        <button onclick="toggleTarjetaCfg('${t.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.75rem;padding:4px 6px" id="tj-cfg-chev-${t.id}">▶</button>
-        <button onclick="eliminarTarjetaCfg('${t.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.85rem;padding:4px 6px">✕</button>
+        <input type="text" value="${t.nombre}" oninput="actualizarTarjetaCfg('${t.id}','nombre',this.value)" class="fi" style="flex:1;font-size:var(--fs-md);padding:7px 9px">
+        <button onclick="toggleTarjetaCfg('${t.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:var(--fs-sm);padding:4px 6px" id="tj-cfg-chev-${t.id}">▶</button>
+        <button onclick="eliminarTarjetaCfg('${t.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:var(--fs-md);padding:4px 6px">✕</button>
       </div>
       <div id="tj-cfg-body-${t.id}" style="display:none">
-        <div style="font-size:.62rem;color:var(--muted);margin-top:2px;margin-bottom:4px">📅 Períodos de resumen</div>
+        <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:2px;margin-bottom:4px">📅 Períodos de resumen</div>
         ${periodosHTML}
       </div>
     </div>`;
@@ -3500,7 +3502,7 @@ function renderRecurrentesCfg() {
   if (!el) return;
   const lista = getRecurrentes();
   if (lista.length === 0) {
-    el.innerHTML = '<div style="font-size:.72rem;color:var(--muted);padding:8px 0">No hay débitos recurrentes configurados.</div>';
+    el.innerHTML = '<div style="font-size:var(--fs-sm);color:var(--muted);padding:8px 0">No hay débitos recurrentes configurados.</div>';
     return;
   }
   const categoriasDisponibles = obtenerCategoriasUsadas();
@@ -3512,10 +3514,10 @@ function renderRecurrentesCfg() {
 
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;margin-bottom:8px;border-bottom:1px solid var(--border)">
-      <span style="font-size:.72rem;color:var(--muted)">Total mensual estimado</span>
+      <span style="font-size:var(--fs-sm);color:var(--muted)">Total mensual estimado</span>
       <div style="text-align:right">
-        <div style="font-weight:700;font-size:.85rem;color:var(--text)">${fmt(totalMensualARS)}</div>
-        ${totalMensualUSD > 0 ? `<div style="font-weight:700;font-size:.78rem;color:var(--yellow)">U$S ${Number(totalMensualUSD).toFixed(2)}</div>` : ''}
+        <div style="font-weight:700;font-size:var(--fs-md);color:var(--text)">${fmt(totalMensualARS)}</div>
+        ${totalMensualUSD > 0 ? `<div style="font-weight:700;font-size:var(--fs-md);color:var(--yellow)">U$S ${Number(totalMensualUSD).toFixed(2)}</div>` : ''}
       </div>
     </div>` +
   lista.map(r => {
@@ -3527,55 +3529,55 @@ function renderRecurrentesCfg() {
     <div style="background:var(--s2);border-radius:8px;margin-bottom:8px;overflow:hidden">
       <div style="display:flex;align-items:center;gap:8px;padding:10px;cursor:pointer" onclick="toggleRecurrenteDetalle('${r.id}')">
         <div style="flex:1;min-width:0">
-          <div style="font-weight:600;font-size:.78rem">${r.nombre || 'Sin nombre'}</div>
-          <div style="font-size:.64rem;color:var(--muted)">${r.categoria || '—'} · día ${r.diaDelMes||1} · ${destinoLabel}</div>
+          <div style="font-weight:600;font-size:var(--fs-md)">${r.nombre || 'Sin nombre'}</div>
+          <div style="font-size:var(--fs-xs);color:var(--muted)">${r.categoria || '—'} · día ${r.diaDelMes||1} · ${destinoLabel}</div>
         </div>
-        <span style="font-weight:700;font-size:.8rem;color:var(--text);white-space:nowrap">${r.moneda==='USD' ? 'U$S '+r.monto : fmt(r.monto||0)}</span>
-        <span id="rec-toggle-${r.id}" style="color:var(--muted);font-size:.75rem">▶</span>
+        <span style="font-weight:700;font-size:var(--fs-md);color:var(--text);white-space:nowrap">${r.moneda==='USD' ? 'U$S '+r.monto : fmt(r.monto||0)}</span>
+        <span id="rec-toggle-${r.id}" style="color:var(--muted);font-size:var(--fs-sm)">▶</span>
       </div>
       <div id="rec-detalle-${r.id}" style="display:none;padding:0 10px 10px;border-top:1px solid var(--border)">
         <div style="display:flex;gap:6px;align-items:center;margin-top:8px">
-          <input type="text" value="${r.nombre}" oninput="actualizarRecurrenteCfg('${r.id}','nombre',this.value)" class="fi" style="flex:1;font-size:.78rem;padding:7px 9px" placeholder="ej: Seguro Taos">
-          <button onclick="eliminarRecurrenteCfg('${r.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.85rem;padding:4px 6px">✕</button>
+          <input type="text" value="${r.nombre}" oninput="actualizarRecurrenteCfg('${r.id}','nombre',this.value)" class="fi" style="flex:1;font-size:var(--fs-md);padding:7px 9px" placeholder="ej: Seguro Taos">
+          <button onclick="eliminarRecurrenteCfg('${r.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:var(--fs-md);padding:4px 6px">✕</button>
         </div>
         <div style="margin-top:8px">
-          <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">CATEGORÍA</div>
-          <select id="cat-sel-${r.id}" onchange="recurrenteCategoriaChange('${r.id}', this)" class="fi" style="width:100%;font-size:.74rem;padding:7px 8px">
+          <div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">CATEGORÍA</div>
+          <select id="cat-sel-${r.id}" onchange="recurrenteCategoriaChange('${r.id}', this)" class="fi" style="width:100%;font-size:var(--fs-sm);padding:7px 8px">
             <option value="">— elegí una categoría —</option>
             ${categoriasDisponibles.map(c => `<option value="${c}" ${r.categoria===c?'selected':''}>${c}</option>`).join('')}
             <option value="__nueva__">＋ Nueva categoría...</option>
           </select>
         </div>
         <div style="margin-top:8px">
-          <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">TARJETA POR LA QUE SE DEBITA</div>
-          <select onchange="actualizarRecurrenteCfg('${r.id}','tarjetaId',this.value)" class="fi" style="width:100%;font-size:.74rem;padding:7px 8px">
+          <div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">TARJETA POR LA QUE SE DEBITA</div>
+          <select onchange="actualizarRecurrenteCfg('${r.id}','tarjetaId',this.value)" class="fi" style="width:100%;font-size:var(--fs-sm);padding:7px 8px">
             <option value="">— ninguna —</option>
             ${tarjetasDisponibles.map(t => `<option value="${t.id}" ${r.tarjetaId===t.id?'selected':''}>${t.nombre}</option>`).join('')}
           </select>
         </div>
         ${r.tarjetaId && contarEntradasFlujo(r.id) > 0 ? `
         <div style="margin-top:8px;padding:8px;background:rgba(251,146,60,.1);border-radius:6px">
-          <div style="font-size:.62rem;color:var(--orange);margin-bottom:6px">⚠ Tiene ${contarEntradasFlujo(r.id)} entrada${contarEntradasFlujo(r.id)>1?'s':''} en Flujo de cuando todavía no tenía tarjeta asignada. Revisalas: si ya pagaste esos meses, dejalas; si no, podés borrarlas.</div>
-          <button onclick="limpiarRecurrenteFlujoManual('${r.id}')" class="btn btn-o" style="width:100%;font-size:.68rem;padding:6px">🧹 Quitar de Flujo todo lo de este recurrente</button>
+          <div style="font-size:var(--fs-xs);color:var(--orange);margin-bottom:6px">⚠ Tiene ${contarEntradasFlujo(r.id)} entrada${contarEntradasFlujo(r.id)>1?'s':''} en Flujo de cuando todavía no tenía tarjeta asignada. Revisalas: si ya pagaste esos meses, dejalas; si no, podés borrarlas.</div>
+          <button onclick="limpiarRecurrenteFlujoManual('${r.id}')" class="btn btn-o" style="width:100%;font-size:var(--fs-xs);padding:6px">🧹 Quitar de Flujo todo lo de este recurrente</button>
         </div>` : ''}
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
           <div>
-            <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">MONEDA</div>
-            <select onchange="actualizarRecurrenteCfg('${r.id}','moneda',this.value)" class="fi" style="width:100%;font-size:.74rem;padding:7px 8px">
+            <div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">MONEDA</div>
+            <select onchange="actualizarRecurrenteCfg('${r.id}','moneda',this.value)" class="fi" style="width:100%;font-size:var(--fs-sm);padding:7px 8px">
               <option value="ARS" ${(r.moneda||'ARS')==='ARS'?'selected':''}>ARS</option>
               <option value="USD" ${r.moneda==='USD'?'selected':''}>USD</option>
             </select>
           </div>
           <div>
-            <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">MONTO</div>
-            <input type="number" value="${r.monto||''}" oninput="actualizarRecurrenteCfg('${r.id}','monto',this.value)" class="fi" style="width:100%;font-size:.74rem;padding:7px 8px;text-align:right" placeholder="0">
+            <div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">MONTO</div>
+            <input type="number" value="${r.monto||''}" oninput="actualizarRecurrenteCfg('${r.id}','monto',this.value)" class="fi" style="width:100%;font-size:var(--fs-sm);padding:7px 8px;text-align:right" placeholder="0">
           </div>
         </div>
         <div style="margin-top:8px">
-          <div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">DÍA DEL MES EN QUE SE DEBITA</div>
-          <input type="number" min="1" max="31" value="${r.diaDelMes||1}" oninput="actualizarRecurrenteCfg('${r.id}','diaDelMes',this.value)" class="fi" style="width:70px;font-size:.74rem;padding:7px 8px;text-align:center">
+          <div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">DÍA DEL MES EN QUE SE DEBITA</div>
+          <input type="number" min="1" max="31" value="${r.diaDelMes||1}" oninput="actualizarRecurrenteCfg('${r.id}','diaDelMes',this.value)" class="fi" style="width:70px;font-size:var(--fs-sm);padding:7px 8px;text-align:center">
         </div>
-        ${r.moneda==='USD' ? `<div id="conv-label-${r.id}" style="font-size:.64rem;color:var(--muted);margin-top:6px">≈ ${fmt((r.monto||0) * TC)} al TC actual (${fmt(TC)}) — al insertarse, se ajusta al TC vigente ese día.</div>` : ''}
+        ${r.moneda==='USD' ? `<div id="conv-label-${r.id}" style="font-size:var(--fs-xs);color:var(--muted);margin-top:6px">≈ ${fmt((r.monto||0) * TC)} al TC actual (${fmt(TC)}) — al insertarse, se ajusta al TC vigente ese día.</div>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -4117,7 +4119,7 @@ function renderGastosTarjetas() {
 
   const tarjetas = getTarjetas();
   if (tarjetas.length === 0) {
-    el.innerHTML = `<div class="card"><div style="font-size:.78rem;color:var(--muted2);text-align:center;padding:20px 0">
+    el.innerHTML = `<div class="card"><div style="font-size:var(--fs-md);color:var(--muted2);text-align:center;padding:20px 0">
       Todavía no configuraste ninguna tarjeta. Andá a <b>⚙ Config</b> para agregar una y poder agrupar los gastos por período de resumen.
     </div></div>`;
     return;
@@ -4125,7 +4127,7 @@ function renderGastosTarjetas() {
 
   const grupos = agruparGastosPorPeriodo();
   if (grupos.length === 0) {
-    el.innerHTML = `<div class="card"><div style="font-size:.78rem;color:var(--muted2);text-align:center;padding:20px 0">
+    el.innerHTML = `<div class="card"><div style="font-size:var(--fs-md);color:var(--muted2);text-align:center;padding:20px 0">
       Todavía no hay gastos cargados. Compartí el link de carga familiar para que Lara y Emma empiecen a registrar.
     </div></div>`;
     return;
@@ -4187,15 +4189,15 @@ function renderGastosTarjetas() {
 
   const huerfanoHtml = grupoHuerfano ? `
     <div class="card" style="margin-bottom:14px;border:1px solid var(--red)">
-      <div style="font-size:.74rem;font-weight:700;color:var(--red);margin-bottom:6px">⚠ ${grupoHuerfano.gastos.length} gasto${grupoHuerfano.gastos.length>1?'s':''} sin tarjeta válida</div>
-      <div style="font-size:.66rem;color:var(--muted2);margin-bottom:10px;line-height:1.5">Quedaron registrados contra una tarjeta que ya no existe (probablemente se editó o borró después). Reasigná cada uno a una tarjeta actual para que vuelva a sumar en los totales.</div>
+      <div style="font-size:var(--fs-sm);font-weight:700;color:var(--red);margin-bottom:6px">⚠ ${grupoHuerfano.gastos.length} gasto${grupoHuerfano.gastos.length>1?'s':''} sin tarjeta válida</div>
+      <div style="font-size:var(--fs-xs);color:var(--muted2);margin-bottom:10px;line-height:1.5">Quedaron registrados contra una tarjeta que ya no existe (probablemente se editó o borró después). Reasigná cada uno a una tarjeta actual para que vuelva a sumar en los totales.</div>
       ${grupoHuerfano.gastos.map(g => `
         <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
           <div style="flex:1;min-width:0">
-            <div style="font-weight:600;font-size:.76rem">${g.tipo}</div>
-            <div style="font-size:.65rem;color:var(--muted)">${new Date(g.fecha+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'})} · ${g.cargadoPor} · ${g.moneda==='USD' ? 'U$S '+g.monto : fmt(g.monto)}</div>
+            <div style="font-weight:600;font-size:var(--fs-sm)">${g.tipo}</div>
+            <div style="font-size:var(--fs-xs);color:var(--muted)">${new Date(g.fecha+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'})} · ${g.cargadoPor} · ${g.moneda==='USD' ? 'U$S '+g.monto : fmt(g.monto)}</div>
           </div>
-          <select onchange="reasignarTarjetaGasto('${g.id}', this.value)" class="fi" style="width:130px;font-size:.7rem;padding:6px 6px">
+          <select onchange="reasignarTarjetaGasto('${g.id}', this.value)" class="fi" style="width:130px;font-size:var(--fs-sm);padding:6px 6px">
             <option value="">— reasignar —</option>
             ${tarjetas.map(t => `<option value="${t.id}">${t.nombre}</option>`).join('')}
           </select>
@@ -4204,7 +4206,7 @@ function renderGastosTarjetas() {
 
   const headerHtml = `
     <div class="card" style="margin-bottom:14px;background:var(--s1);border:1px solid var(--border2)">
-      <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Este mes — lo que hay que conciliar ahora</div>
+      <div style="font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Este mes — lo que hay que conciliar ahora</div>
       <div style="display:flex;gap:10px;margin-bottom:8px">
         <div style="flex:1;padding:8px 10px;background:var(--s2);border-radius:8px;border-left:3px solid var(--orange)">
           <div style="font-size:.58rem;color:var(--muted);text-transform:uppercase">En pesos</div>
@@ -4218,26 +4220,26 @@ function renderGastosTarjetas() {
       </div>
       ${gruposFuturos.length > 0 ? `
       <div style="border-top:1px solid var(--border);padding-top:8px;margin-top:4px">
-        <div style="font-size:.62rem;color:var(--muted)">A futuro (${gruposFuturos.length} período${gruposFuturos.length!==1?'s':''}, ver abajo): ${fmt(totalFuturoARS)}${totalFuturoUSD>0?` · U$S ${Number(totalFuturoUSD).toFixed(2)}`:''}</div>
+        <div style="font-size:var(--fs-xs);color:var(--muted)">A futuro (${gruposFuturos.length} período${gruposFuturos.length!==1?'s':''}, ver abajo): ${fmt(totalFuturoARS)}${totalFuturoUSD>0?` · U$S ${Number(totalFuturoUSD).toFixed(2)}`:''}</div>
       </div>` : ''}
     </div>` + renderTotalesPorPersona(gruposEsteMes);
 
   const esteMesHtml = gruposEsteMes.length > 0
     ? gruposEsteMes.map(grupo => renderTarjetaCard(grupo, conciliaciones, true)).join('')
-    : `<div class="card" style="margin-bottom:14px"><div style="font-size:.74rem;color:var(--muted);text-align:center;padding:10px 0">Sin períodos que cierren este mes.</div></div>`;
+    : `<div class="card" style="margin-bottom:14px"><div style="font-size:var(--fs-sm);color:var(--muted);text-align:center;padding:10px 0">Sin períodos que cierren este mes.</div></div>`;
 
   const futurosHtml = renderFuturosAgrupados(gruposFuturos);
 
   const conciliadosHtml = `
     <div style="margin-top:18px">
       <div style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 0" onclick="toggleSeccionConciliados()">
-        <span style="font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700">✓ Conciliados (${gruposConciliados.length})</span>
-        <span id="toggle-icon-conciliados" style="color:var(--muted);font-size:.75rem">▶</span>
+        <span style="font-size:var(--fs-sm);color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700">✓ Conciliados (${gruposConciliados.length})</span>
+        <span id="toggle-icon-conciliados" style="color:var(--muted);font-size:var(--fs-sm)">▶</span>
       </div>
       <div id="seccion-conciliados" style="display:none">
         ${gruposConciliados.length > 0
           ? gruposConciliados.map(grupo => renderTarjetaCard(grupo, conciliaciones, true)).join('')
-          : '<div style="font-size:.72rem;color:var(--muted);padding:8px 0">Todavía no conciliaste ningún período.</div>'}
+          : '<div style="font-size:var(--fs-sm);color:var(--muted);padding:8px 0">Todavía no conciliaste ningún período.</div>'}
       </div>
     </div>`;
 
@@ -4256,7 +4258,7 @@ function renderGastosTarjetas() {
   });
   const sinPeriodoHtml = sinPeriodo.length > 0 ? `
     <div class="card" style="margin-bottom:14px;border:1px solid var(--red)">
-      <div style="font-size:.72rem;font-weight:700;color:var(--red);margin-bottom:8px">⚠ ${sinPeriodo.length} gasto${sinPeriodo.length>1?'s':''} sin período asignado — editá el período para moverlos</div>
+      <div style="font-size:var(--fs-sm);font-weight:700;color:var(--red);margin-bottom:8px">⚠ ${sinPeriodo.length} gasto${sinPeriodo.length>1?'s':''} sin período asignado — editá el período para moverlos</div>
       ${sinPeriodo.map(g => {
         const tj = tarjetas.find(t => t.id === g.tarjetaId);
         const esUSD = g.moneda === 'USD';
@@ -4266,16 +4268,16 @@ function renderGastosTarjetas() {
         <div style="padding:8px 0;border-bottom:1px solid var(--border)">
           <div style="display:flex;align-items:center;gap:8px">
             <div style="flex:1;min-width:0">
-              <div style="font-weight:600;font-size:.76rem">${g.tipo}</div>
-              <div style="font-size:.62rem;color:var(--muted)">${tj?.nombre||'?'} · ${g.fecha}</div>
+              <div style="font-weight:600;font-size:var(--fs-sm)">${g.tipo}</div>
+              <div style="font-size:var(--fs-xs);color:var(--muted)">${tj?.nombre||'?'} · ${g.fecha}</div>
             </div>
-            <div style="font-weight:700;color:var(--red);font-size:.8rem;cursor:pointer" onclick="toggleEditarMontoGasto('${g.id}')">${montoDisplay} ✎</div>
-            <button onclick="eliminarGastoTarjeta('${g.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.8rem;padding:2px 5px">✕</button>
+            <div style="font-weight:700;color:var(--red);font-size:var(--fs-md);cursor:pointer" onclick="toggleEditarMontoGasto('${g.id}')">${montoDisplay} ✎</div>
+            <button onclick="eliminarGastoTarjeta('${g.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:var(--fs-md);padding:2px 5px">✕</button>
           </div>
           <div id="edit-monto-${g.id}" style="display:none;margin-top:8px;padding:8px;background:var(--s1);border-radius:6px">
             <div style="margin-bottom:6px">
               <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">MOVER A PERÍODO</div>
-              <select id="edit-periodo-${g.id}" class="fi" style="width:100%;font-size:.7rem;padding:6px 6px">
+              <select id="edit-periodo-${g.id}" class="fi" style="width:100%;font-size:var(--fs-sm);padding:6px 6px">
                 ${tarjetasDisponiblesEdit.map(t => {
                   const ps = (t.periodos||[]).filter(p=>p.inicio&&p.cierre);
                   return ps.map(p=>`<option value="${t.id}|${p.cierre}">${t.nombre} → cierre ${new Date(p.cierre+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'})}</option>`).join('');
@@ -4283,12 +4285,12 @@ function renderGastosTarjetas() {
               </select>
             </div>
             <div style="display:flex;gap:6px">
-              <select id="edit-moneda-${g.id}" class="fi" style="width:80px;font-size:.7rem;padding:6px 4px">
+              <select id="edit-moneda-${g.id}" class="fi" style="width:80px;font-size:var(--fs-sm);padding:6px 4px">
                 <option value="ARS" ${!esUSD?'selected':''}>ARS</option>
                 <option value="USD" ${esUSD?'selected':''}>USD</option>
               </select>
-              <input type="number" id="edit-valor-${g.id}" value="${g.monto}" class="fi" style="flex:1;font-size:.7rem;padding:6px 8px;text-align:right">
-              <button onclick="guardarEdicionMontoGasto('${g.id}')" class="btn btn-g" style="font-size:.68rem;padding:6px 10px">✓</button>
+              <input type="number" id="edit-valor-${g.id}" value="${g.monto}" class="fi" style="flex:1;font-size:var(--fs-sm);padding:6px 8px;text-align:right">
+              <button onclick="guardarEdicionMontoGasto('${g.id}')" class="btn btn-g" style="font-size:var(--fs-xs);padding:6px 10px">✓</button>
             </div>
           </div>
         </div>`;
@@ -4298,7 +4300,7 @@ function renderGastosTarjetas() {
   el.innerHTML = sinPeriodoHtml
     + huerfanoHtml
     + headerHtml
-    + `<div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Este mes</div>`
+    + `<div style="font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Este mes</div>`
     + esteMesHtml
     + futurosHtml
     + conciliadosHtml;
@@ -4328,17 +4330,17 @@ function renderTotalesPorPersona(gruposAbiertos) {
       const color = quienColores[nombre] || 'var(--yellow)';
       return `
       <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;gap:10px">
-        <span style="font-size:.72rem;font-weight:700;color:${color}">${nombre}</span>
+        <span style="font-size:var(--fs-sm);font-weight:700;color:${color}">${nombre}</span>
         <div style="display:flex;gap:10px;align-items:baseline">
-          <span style="font-size:.74rem;font-weight:700">${fmt(d.ars)}</span>
-          ${d.usd > 0 ? `<span style="font-size:.7rem;font-weight:700;color:var(--yellow)">U$S ${d.usd.toLocaleString('es-AR')}</span>` : ''}
+          <span style="font-size:var(--fs-sm);font-weight:700">${fmt(d.ars)}</span>
+          ${d.usd > 0 ? `<span style="font-size:var(--fs-sm);font-weight:700;color:var(--yellow)">U$S ${d.usd.toLocaleString('es-AR')}</span>` : ''}
         </div>
       </div>`;
     }).join('');
 
   return `
     <div class="card" style="margin-bottom:14px">
-      <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Total por persona — este mes</div>
+      <div style="font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Total por persona — este mes</div>
       ${filas}
     </div>`;
 }
@@ -4379,12 +4381,12 @@ function renderTarjetaCard(grupo, conciliaciones, colapsadoPorDefault) {
   <div class="card" style="margin-bottom:14px;${estaConciliado ? 'opacity:.6' : ''}">
     <div class="ct" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;cursor:pointer" onclick="toggleGastosTarjetaDetalle('${key}')">
       <div>
-        <div style="font-size:.75rem;font-weight:700">💳 ${grupo.tarjeta.nombre}${estadoBadge}</div>
-        <div style="font-size:.63rem;color:var(--muted)">cierre ${fechaCierreLabel}</div>
+        <div style="font-size:var(--fs-sm);font-weight:700">💳 ${grupo.tarjeta.nombre}${estadoBadge}</div>
+        <div style="font-size:var(--fs-xs);color:var(--muted)">cierre ${fechaCierreLabel}</div>
       </div>
       <div style="display:flex;align-items:center;gap:8px">
-        <span style="font-size:.8rem;font-weight:700;color:${estaConciliado ? 'var(--muted)' : 'var(--orange)'}">${estaConciliado ? '✓' : totalLabel}</span>
-        <span id="toggle-icon-${safeKey}" style="color:var(--muted);font-size:.8rem">${colapsadoPorDefault ? '▶' : '▼'}</span>
+        <span style="font-size:var(--fs-md);font-weight:700;color:${estaConciliado ? 'var(--muted)' : 'var(--orange)'}">${estaConciliado ? '✓' : totalLabel}</span>
+        <span id="toggle-icon-${safeKey}" style="color:var(--muted);font-size:var(--fs-md)">${colapsadoPorDefault ? '▶' : '▼'}</span>
       </div>
     </div>
     <div id="detalle-${safeKey}" style="${colapsadoPorDefault ? 'display:none' : ''}">
@@ -4413,37 +4415,37 @@ function renderTarjetaCard(grupo, conciliaciones, colapsadoPorDefault) {
         const quienColores = { 'Cris':'var(--blue)', 'Lara':'var(--purple)', 'Emma':'var(--green)', 'Recurrente automático':'var(--muted)' };
         const quienNombre = g.gastoDe || g.cargadoPor;
         const quienColor = quienColores[quienNombre] || 'var(--yellow)';
-        const quienBadge = `<span style="font-size:.6rem;font-weight:700;color:${quienColor};background:${quienColor}1a;padding:1px 6px;border-radius:4px;white-space:nowrap">${quienNombre}</span>`;
+        const quienBadge = `<span style="font-size:var(--fs-xs);font-weight:700;color:${quienColor};background:${quienColor}1a;padding:1px 6px;border-radius:4px;white-space:nowrap">${quienNombre}</span>`;
 
         return `
         <div style="padding:8px 0;border-bottom:1px solid var(--border)">
         <div style="display:flex;align-items:center;gap:8px">
           <div style="flex:1;min-width:0">
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px">
-              <span style="font-weight:600;font-size:.76rem">${g.tipo}</span>
+              <span style="font-weight:600;font-size:var(--fs-sm)">${g.tipo}</span>
               ${quienBadge}
-              ${g.esCuotaEnCurso ? `<span style="font-size:.6rem;color:var(--muted);background:var(--s1);border:1px solid var(--border);padding:1px 5px;border-radius:4px">cuota en curso</span>` : ''}
+              ${g.esCuotaEnCurso ? `<span style="font-size:var(--fs-xs);color:var(--muted);background:var(--s1);border:1px solid var(--border);padding:1px 5px;border-radius:4px">cuota en curso</span>` : ''}
             </div>
-            <div style="font-size:.65rem;color:var(--muted)">${new Date(g.fecha+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'})}</div>
+            <div style="font-size:var(--fs-xs);color:var(--muted)">${new Date(g.fecha+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'})}</div>
           </div>
           <div style="text-align:right;flex-shrink:0;cursor:${estaConciliado?'default':'pointer'}" ${!estaConciliado ? `onclick="toggleEditarMontoGasto('${g.id}')"` : ''}>
-            <div style="font-weight:700;color:var(--red);font-size:.8rem">${montoDisplay}${!estaConciliado ? ' ✎' : ''}</div>
+            <div style="font-weight:700;color:var(--red);font-size:var(--fs-md)">${montoDisplay}${!estaConciliado ? ' ✎' : ''}</div>
           </div>
-          ${!estaConciliado ? `<button onclick="eliminarGastoTarjeta('${g.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.8rem;padding:2px 5px;flex-shrink:0">✕</button>` : ''}
+          ${!estaConciliado ? `<button onclick="eliminarGastoTarjeta('${g.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:var(--fs-md);padding:2px 5px;flex-shrink:0">✕</button>` : ''}
         </div>
         ${!estaConciliado ? `
         <div id="edit-monto-${g.id}" style="display:none;margin-top:8px;padding:8px;background:var(--s1);border-radius:6px">
           <div style="margin-bottom:6px">
             <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">TIPO / CATEGORÍA</div>
-            <input type="text" id="edit-tipo-${g.id}" value="${g.tipo}" class="fi" style="width:100%;font-size:.7rem;padding:6px 8px">
+            <input type="text" id="edit-tipo-${g.id}" value="${g.tipo}" class="fi" style="width:100%;font-size:var(--fs-sm);padding:6px 8px">
           </div>
           <div style="margin-bottom:6px">
             <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">FECHA DE COMPRA</div>
-            <input type="date" id="edit-fecha-${g.id}" value="${g.fechaCompra || g.fecha}" class="fi" style="width:100%;font-size:.7rem;padding:6px 8px">
+            <input type="date" id="edit-fecha-${g.id}" value="${g.fechaCompra || g.fecha}" class="fi" style="width:100%;font-size:var(--fs-sm);padding:6px 8px">
           </div>
           <div style="margin-bottom:6px">
             <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">MOVER A PERÍODO</div>
-            <select id="edit-periodo-${g.id}" class="fi" style="width:100%;font-size:.7rem;padding:6px 6px">
+            <select id="edit-periodo-${g.id}" class="fi" style="width:100%;font-size:var(--fs-sm);padding:6px 6px">
               ${tarjetasDisponiblesEdit.map(t => {
                 const ps = (t.periodos||[]).filter(p=>p.inicio&&p.cierre);
                 return ps.map(p=>`<option value="${t.id}|${p.cierre}" ${g.tarjetaId===t.id&&g.fecha===p.cierre?'selected':''}>${t.nombre} → cierre ${new Date(p.cierre+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'})}</option>`).join('');
@@ -4451,12 +4453,12 @@ function renderTarjetaCard(grupo, conciliaciones, colapsadoPorDefault) {
             </select>
           </div>
           <div style="display:flex;gap:6px">
-            <select id="edit-moneda-${g.id}" class="fi" style="width:80px;font-size:.7rem;padding:6px 4px">
+            <select id="edit-moneda-${g.id}" class="fi" style="width:80px;font-size:var(--fs-sm);padding:6px 4px">
               <option value="ARS" ${!esUSD?'selected':''}>ARS</option>
               <option value="USD" ${esUSD?'selected':''}>USD</option>
             </select>
-            <input type="number" id="edit-valor-${g.id}" value="${g.monto}" class="fi" style="flex:1;font-size:.7rem;padding:6px 8px;text-align:right">
-            <button onclick="guardarEdicionMontoGasto('${g.id}')" class="btn btn-g" style="font-size:.68rem;padding:6px 10px">✓</button>
+            <input type="number" id="edit-valor-${g.id}" value="${g.monto}" class="fi" style="flex:1;font-size:var(--fs-sm);padding:6px 8px;text-align:right">
+            <button onclick="guardarEdicionMontoGasto('${g.id}')" class="btn btn-g" style="font-size:var(--fs-xs);padding:6px 10px">✓</button>
           </div>
         </div>` : ''}
         </div>`;
@@ -4464,10 +4466,10 @@ function renderTarjetaCard(grupo, conciliaciones, colapsadoPorDefault) {
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px solid var(--border2)">
       <div>
-        <div style="font-size:.76rem;font-weight:700">Total período: ${totalLabel}</div>
-        ${totalUSD > 0 ? `<div style="font-size:.63rem;color:var(--muted)">U$S ${totalUSD} sin pesificar · ARS ${fmt(totalARS)}</div>` : ''}
+        <div style="font-size:var(--fs-sm);font-weight:700">Total período: ${totalLabel}</div>
+        ${totalUSD > 0 ? `<div style="font-size:var(--fs-xs);color:var(--muted)">U$S ${totalUSD} sin pesificar · ARS ${fmt(totalARS)}</div>` : ''}
       </div>
-      <button onclick="marcarPeriodoConciliado('${grupo.tarjeta.id}','${grupo.cierre}', ${!estaConciliado})" class="btn ${estaConciliado ? 'btn-o' : 'btn-g'}" style="padding:6px 14px;font-size:.7rem">
+      <button onclick="marcarPeriodoConciliado('${grupo.tarjeta.id}','${grupo.cierre}', ${!estaConciliado})" class="btn ${estaConciliado ? 'btn-o' : 'btn-g'}" style="padding:6px 14px;font-size:var(--fs-sm)">
         ${estaConciliado ? '↺ Reabrir' : '✓ Marcar conciliado'}
       </button>
     </div>
@@ -4508,16 +4510,16 @@ function renderFuturosAgrupados(gruposFuturos) {
       <div style="padding:6px 0;border-bottom:1px solid var(--border)">
         <div style="display:flex;align-items:center;gap:6px">
           <div style="flex:1;min-width:0">
-            <div style="font-size:.72rem;font-weight:600">${g.tipo}</div>
+            <div style="font-size:var(--fs-sm);font-weight:600">${g.tipo}</div>
             <div style="font-size:.58rem;color:var(--muted)">${grupo.tarjeta.nombre} · ${g.fecha}</div>
           </div>
-          <div style="font-size:.75rem;font-weight:700;color:var(--muted2);cursor:pointer" onclick="toggleEditarMontoGasto('${g.id}')">${montoDisplay} ✎</div>
-          <button onclick="eliminarGastoTarjeta('${g.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.75rem;padding:2px 4px">✕</button>
+          <div style="font-size:var(--fs-sm);font-weight:700;color:var(--muted2);cursor:pointer" onclick="toggleEditarMontoGasto('${g.id}')">${montoDisplay} ✎</div>
+          <button onclick="eliminarGastoTarjeta('${g.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:var(--fs-sm);padding:2px 4px">✕</button>
         </div>
         <div id="edit-monto-${g.id}" style="display:none;margin-top:6px;padding:6px;background:var(--s2);border-radius:6px">
           <div style="margin-bottom:4px">
             <div style="font-size:.55rem;color:var(--muted);margin-bottom:2px">MOVER A PERÍODO</div>
-            <select id="edit-periodo-${g.id}" class="fi" style="width:100%;font-size:.68rem;padding:5px">
+            <select id="edit-periodo-${g.id}" class="fi" style="width:100%;font-size:var(--fs-xs);padding:5px">
               ${tarjetasTodas.map(t => {
                 const ps = (t.periodos||[]).filter(p=>p.inicio&&p.cierre);
                 return ps.map(p=>`<option value="${t.id}|${p.cierre}" ${g.tarjetaId===t.id&&g.fecha===p.cierre?'selected':''}>${t.nombre} → ${new Date(p.cierre+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'})}</option>`).join('');
@@ -4525,8 +4527,8 @@ function renderFuturosAgrupados(gruposFuturos) {
             </select>
           </div>
           <div style="display:flex;gap:4px">
-            <input type="number" id="edit-valor-${g.id}" value="${g.monto}" class="fi" style="flex:1;font-size:.68rem;padding:5px;text-align:right">
-            <button onclick="guardarEdicionMontoGasto('${g.id}')" class="btn btn-g" style="font-size:.65rem;padding:5px 10px">✓</button>
+            <input type="number" id="edit-valor-${g.id}" value="${g.monto}" class="fi" style="flex:1;font-size:var(--fs-xs);padding:5px;text-align:right">
+            <button onclick="guardarEdicionMontoGasto('${g.id}')" class="btn btn-g" style="font-size:var(--fs-xs);padding:5px 10px">✓</button>
           </div>
         </div>
       </div>`;
@@ -4536,12 +4538,12 @@ function renderFuturosAgrupados(gruposFuturos) {
     <div style="border-bottom:1px solid var(--border)">
       <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;cursor:pointer" onclick="toggleFuturoMes('${safeId}')">
         <div>
-          <div style="font-size:.74rem;font-weight:600;text-transform:capitalize">${label}</div>
-          <div style="font-size:.62rem;color:var(--muted)">${[...d.tarjetas].join(', ')}</div>
+          <div style="font-size:var(--fs-sm);font-weight:600;text-transform:capitalize">${label}</div>
+          <div style="font-size:var(--fs-xs);color:var(--muted)">${[...d.tarjetas].join(', ')}</div>
         </div>
         <div style="display:flex;align-items:center;gap:6px">
-          <div style="font-size:.74rem;font-weight:700;color:var(--muted2)">${totalLabel}</div>
-          <span id="icon-${safeId}" style="color:var(--muted);font-size:.7rem">▶</span>
+          <div style="font-size:var(--fs-sm);font-weight:700;color:var(--muted2)">${totalLabel}</div>
+          <span id="icon-${safeId}" style="color:var(--muted);font-size:var(--fs-sm)">▶</span>
         </div>
       </div>
       <div id="${safeId}" style="display:none;padding-bottom:6px">${gastosHtml}</div>
@@ -4551,12 +4553,12 @@ function renderFuturosAgrupados(gruposFuturos) {
   return `
     <div style="margin-top:18px;margin-bottom:8px">
       <div style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 0" onclick="toggleSeccionFuturos()">
-        <span style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700">A futuro — ${gruposFuturos.length} período${gruposFuturos.length!==1?'s':''}</span>
-        <span id="toggle-icon-futuros" style="color:var(--muted);font-size:.75rem">▶</span>
+        <span style="font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700">A futuro — ${gruposFuturos.length} período${gruposFuturos.length!==1?'s':''}</span>
+        <span id="toggle-icon-futuros" style="color:var(--muted);font-size:var(--fs-sm)">▶</span>
       </div>
       <div id="seccion-futuros" style="display:none">
         <div class="card">${filas}</div>
-        <div style="font-size:.62rem;color:var(--muted);padding:8px 4px;line-height:1.5">Se muestran agrupados por mes. A medida que pase el tiempo, cada período aparece con su detalle completo en "Este mes".</div>
+        <div style="font-size:var(--fs-xs);color:var(--muted);padding:8px 4px;line-height:1.5">Se muestran agrupados por mes. A medida que pase el tiempo, cada período aparece con su detalle completo en "Este mes".</div>
       </div>
     </div>`;
 }
@@ -4665,7 +4667,7 @@ function renderCuentas() {
   if (!el) return;
 
   if (!cuentas.length) {
-    el.innerHTML = '<div style="color:var(--muted);font-size:.75rem;text-align:center;padding:20px 0">Agregá tu primera cuenta arriba</div>';
+    el.innerHTML = '<div style="color:var(--muted);font-size:var(--fs-sm);text-align:center;padding:20px 0">Agregá tu primera cuenta arriba</div>';
   } else {
     el.innerHTML = cuentas.map((ct, i) => {
       const colorMap = { banco:'var(--blue)', billetera:'var(--purple)', efectivo:'var(--green)', fci:'var(--yellow)', cripto:'var(--orange)' };
@@ -4681,22 +4683,22 @@ function renderCuentas() {
       <div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid var(--border)">
         <div style="width:5px;height:42px;border-radius:3px;background:${color};flex-shrink:0"></div>
         <div style="flex:1;min-width:0">
-          <div style="font-family:var(--fh);font-weight:700;font-size:.92rem;letter-spacing:.01em;text-transform:uppercase">${ct.nombre}</div>
+          <div style="font-family:var(--fh);font-weight:700;font-size:var(--fs-lg);letter-spacing:.01em;text-transform:uppercase">${ct.nombre}</div>
           <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
-            <select onchange="cambiarTipoCuenta(${i}, this.value)" style="background:var(--s2);border:1px solid var(--border);border-radius:4px;color:var(--muted);padding:2px 4px;font-size:.65rem;text-transform:uppercase;letter-spacing:.04em;font-family:var(--fm)">
+            <select onchange="cambiarTipoCuenta(${i}, this.value)" style="background:var(--s2);border:1px solid var(--border);border-radius:4px;color:var(--muted);padding:2px 4px;font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.04em;font-family:var(--fm)">
               ${tipoOpts.map(([v,l]) => `<option value="${v}" ${ct.tipo===v?'selected':''}>${l}</option>`).join('')}
             </select>
-            <span style="font-size:.68rem;color:var(--muted)">· ${ct.moneda}</span>
+            <span style="font-size:var(--fs-xs);color:var(--muted)">· ${ct.moneda}</span>
           </div>
         </div>
         <div style="text-align:right;flex-shrink:0">
           <div style="font-family:var(--fh);font-weight:700;font-size:1.05rem;color:${saldoColor}">${saldoFmt}</div>
           <div style="display:flex;align-items:center;gap:4px;margin-top:4px;justify-content:flex-end">
             <input type="number" placeholder="ajuste" step="0.01"
-              style="width:80px;background:var(--s2);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:3px 6px;font-size:.7rem;font-family:var(--fm)"
+              style="width:80px;background:var(--s2);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:3px 6px;font-size:var(--fs-sm);font-family:var(--fm)"
               id="ajuste-${i}">
-            <button onclick="ajustarSaldo(${i})" style="background:rgba(34,211,160,.12);border:1px solid rgba(34,211,160,.25);color:var(--green);cursor:pointer;font-size:.72rem;padding:3px 7px;border-radius:4px;font-weight:700" title="Aplicar ajuste">✓</button>
-            <button onclick="reconciliarSaldo(${i})" style="background:rgba(56,189,248,.1);border:1px solid rgba(56,189,248,.25);color:var(--blue);cursor:pointer;font-size:.7rem;padding:3px 7px;border-radius:4px;font-weight:700" title="Setear saldo real (reconciliar)">⟳</button>
+            <button onclick="ajustarSaldo(${i})" style="background:rgba(34,211,160,.12);border:1px solid rgba(34,211,160,.25);color:var(--green);cursor:pointer;font-size:var(--fs-sm);padding:3px 7px;border-radius:4px;font-weight:700" title="Aplicar ajuste">✓</button>
+            <button onclick="reconciliarSaldo(${i})" style="background:rgba(56,189,248,.1);border:1px solid rgba(56,189,248,.25);color:var(--blue);cursor:pointer;font-size:var(--fs-sm);padding:3px 7px;border-radius:4px;font-weight:700" title="Setear saldo real (reconciliar)">⟳</button>
           </div>
         </div>
         <button onclick="eliminarCuenta(${i})" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1rem;padding:4px;flex-shrink:0" title="Eliminar cuenta">✕</button>
@@ -4823,7 +4825,7 @@ function renderHistorialTransf() {
   if (tipoFil) filtered = filtered.filter(m => m.tipo === tipoFil);
 
   if (!filtered.length) {
-    el.innerHTML = '<div style="color:var(--muted);font-size:.75rem;text-align:center;padding:10px 0">Sin movimientos registrados</div>';
+    el.innerHTML = '<div style="color:var(--muted);font-size:var(--fs-sm);text-align:center;padding:10px 0">Sin movimientos registrados</div>';
     return;
   }
 
@@ -4837,14 +4839,14 @@ function renderHistorialTransf() {
     let badge;
     if (m.tipo === 'transferencia') {
       badge = esEntrada
-        ? `<span style="font-size:.6rem;font-weight:700;color:var(--green);background:rgba(34,211,160,.12);border:1px solid rgba(34,211,160,.2);padding:1px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.04em">↓ ENTRA</span>`
-        : `<span style="font-size:.6rem;font-weight:700;color:var(--red);background:rgba(244,63,94,.1);border:1px solid rgba(244,63,94,.2);padding:1px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.04em">↑ SALE</span>`;
+        ? `<span style="font-size:var(--fs-xs);font-weight:700;color:var(--green);background:rgba(34,211,160,.12);border:1px solid rgba(34,211,160,.2);padding:1px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.04em">↓ ENTRA</span>`
+        : `<span style="font-size:var(--fs-xs);font-weight:700;color:var(--red);background:rgba(244,63,94,.1);border:1px solid rgba(244,63,94,.2);padding:1px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.04em">↑ SALE</span>`;
     } else if (m.tipo === 'gasto') {
-      badge = `<span style="font-size:.6rem;font-weight:700;color:var(--red);background:rgba(244,63,94,.1);border:1px solid rgba(244,63,94,.2);padding:1px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.04em">↑ GASTO</span>`;
+      badge = `<span style="font-size:var(--fs-xs);font-weight:700;color:var(--red);background:rgba(244,63,94,.1);border:1px solid rgba(244,63,94,.2);padding:1px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.04em">↑ GASTO</span>`;
     } else if (m.tipo === 'ingreso') {
-      badge = `<span style="font-size:.6rem;font-weight:700;color:var(--green);background:rgba(34,211,160,.12);border:1px solid rgba(34,211,160,.2);padding:1px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.04em">↓ INGRESO</span>`;
+      badge = `<span style="font-size:var(--fs-xs);font-weight:700;color:var(--green);background:rgba(34,211,160,.12);border:1px solid rgba(34,211,160,.2);padding:1px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.04em">↓ INGRESO</span>`;
     } else {
-      badge = `<span style="font-size:.6rem;font-weight:700;color:var(--muted2);background:var(--s3);border:1px solid var(--border);padding:1px 6px;border-radius:3px;text-transform:uppercase">${m.tipo||'MOV'}</span>`;
+      badge = `<span style="font-size:var(--fs-xs);font-weight:700;color:var(--muted2);background:var(--s3);border:1px solid var(--border);padding:1px 6px;border-radius:3px;text-transform:uppercase">${m.tipo||'MOV'}</span>`;
     }
 
     const signo = esEntrada ? '+' : '−';
@@ -4857,12 +4859,12 @@ function renderHistorialTransf() {
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;flex-wrap:wrap">
           ${badge}
-          <span style="font-family:var(--fh);font-size:.82rem;font-weight:700;text-transform:uppercase;letter-spacing:.01em">${m.cuenta}</span>
+          <span style="font-family:var(--fh);font-size:var(--fs-md);font-weight:700;text-transform:uppercase;letter-spacing:.01em">${m.cuenta}</span>
         </div>
-        <div style="font-size:.68rem;color:var(--muted2)">${desc}</div>
-        <div style="font-size:.62rem;color:var(--muted);margin-top:1px">${dia} · ${hora}</div>
+        <div style="font-size:var(--fs-xs);color:var(--muted2)">${desc}</div>
+        <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:1px">${dia} · ${hora}</div>
       </div>
-      <div style="font-family:var(--fh);font-weight:700;color:${color};font-size:.95rem;flex-shrink:0;text-align:right">${mFmt}</div>
+      <div style="font-family:var(--fh);font-weight:700;color:${color};font-size:var(--fs-lg);flex-shrink:0;text-align:right">${mFmt}</div>
     </div>`;
   }).join('');
 }
@@ -5431,10 +5433,10 @@ function renderAlertsBanner(alerts) {
   <div class="alerts-banner">
     <div class="alerts-header ${headerClass}" onclick="toggleAlertsBanner()">
       <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
-        <span style="font-size:.9rem;color:${headerColor}">${headerIcon}</span>
-        <span style="font-family:var(--fh);font-size:.78rem;font-weight:700;color:${headerColor}">Alertas del mes</span>
+        <span style="font-size:var(--fs-lg);color:${headerColor}">${headerIcon}</span>
+        <span style="font-family:var(--fh);font-size:var(--fs-md);font-weight:700;color:${headerColor}">Alertas del mes</span>
         ${badges}
-        <span style="font-size:.72rem;color:var(--muted);margin-left:4px">${summary}</span>
+        <span style="font-size:var(--fs-sm);color:var(--muted);margin-left:4px">${summary}</span>
       </div>
       <span class="alerts-chevron${isOpen?' open':''}">▾</span>
     </div>
@@ -5661,23 +5663,23 @@ async function calcularPlataOciosa() {
 async function renderPlataOciosa() {
   const el = document.getElementById('ov-ociosa-detalle');
   if (!el) return;
-  el.innerHTML = '<div style="color:var(--muted);font-size:.72rem">⟳ Calculando...</div>';
+  el.innerHTML = '<div style="color:var(--muted);font-size:var(--fs-sm)">⟳ Calculando...</div>';
 
   const r = await calcularPlataOciosa();
-  if (!r.ok) { el.innerHTML = `<div style="color:var(--muted);font-size:.72rem">${r.motivo}</div>`; return; }
+  if (!r.ok) { el.innerHTML = `<div style="color:var(--muted);font-size:var(--fs-sm)">${r.motivo}</div>`; return; }
 
   const colorReal = r.rendimientoRealMensual == null ? 'var(--muted)' : (r.rendimientoRealMensual >= 0 ? P.green : P.red);
 
   el.innerHTML = `
-    <div style="font-size:.72rem;color:var(--muted2);line-height:1.6;margin-bottom:8px">
+    <div style="font-size:var(--fs-sm);color:var(--muted2);line-height:1.6;margin-bottom:8px">
       Tenés ${fmt(r.saldoOcioso)} parado en banco/billetera (sin contar efectivo). Un plazo fijo a 30 días hoy rinde ${(r.tnaAnual*100).toFixed(1)}% TNA (~${(r.tnaMensual*100).toFixed(1)}% mensual).
     </div>
-    <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:.74rem">
+    <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:var(--fs-sm)">
       <div><span style="color:var(--muted)">Ganarías en 30 días:</span> <b style="color:${P.green}">+${fmt(r.gananciaPF)}</b></div>
       ${r.perdidaInflacion != null ? `<div><span style="color:var(--muted)">Inflación del mes:</span> <b style="color:${P.red}">-${fmt(r.perdidaInflacion)}</b></div>` : ''}
     </div>
     ${r.rendimientoRealMensual != null ? `
-    <div class="alert ${r.rendimientoRealMensual >= 0 ? '' : 'warn'}" style="font-size:.73rem;margin-top:10px">
+    <div class="alert ${r.rendimientoRealMensual >= 0 ? '' : 'warn'}" style="font-size:var(--fs-sm);margin-top:10px">
       ${r.rendimientoRealMensual >= 0
         ? `✓ Poniendo ese saldo a plazo fijo, le ganás a la inflación por ${fmt(r.rendimientoRealMensual)} este mes. Dejarlo parado en cuenta es directamente plata perdida.`
         : `⚠ Incluso a plazo fijo, ese saldo pierde ${fmt(Math.abs(r.rendimientoRealMensual))} de poder de compra este mes — la tasa no le gana a la inflación actual. Igual es mejor que tenerlo sin nada.`}
@@ -5838,38 +5840,38 @@ async function autocompletarPlanInteligente(mesObjetivo) {
 async function renderFugas() {
   const el = document.getElementById('fugas-detalle');
   if (!el) return;
-  el.innerHTML = '<div style="color:var(--muted);font-size:.75rem;padding:10px 0">⟳ Analizando categorías...</div>';
+  el.innerHTML = '<div style="color:var(--muted);font-size:var(--fs-sm);padding:10px 0">⟳ Analizando categorías...</div>';
 
   const mes = getCurMes();
   const r = await detectarFugas(mes);
 
   if (!r.ok) {
-    el.innerHTML = `<div style="color:var(--muted);font-size:.75rem;padding:10px 0">${r.motivo}</div>`;
+    el.innerHTML = `<div style="color:var(--muted);font-size:var(--fs-sm);padding:10px 0">${r.motivo}</div>`;
     return;
   }
   if (r.fugas.length === 0) {
-    el.innerHTML = `<div class="alert" style="font-size:.73rem">✓ Ninguna categoría está gastando por encima de su propio promedio ajustado por inflación este mes. Todo en línea con tu comportamiento histórico.</div>`;
+    el.innerHTML = `<div class="alert" style="font-size:var(--fs-sm)">✓ Ninguna categoría está gastando por encima de su propio promedio ajustado por inflación este mes. Todo en línea con tu comportamiento histórico.</div>`;
     return;
   }
 
   const aviso = r.sinInflacionReal
-    ? `<div style="font-size:.62rem;color:var(--muted);margin-bottom:8px">⚠ No se pudo obtener la inflación INDEC en este momento — comparando contra el promedio histórico nominal, sin ajuste.</div>`
+    ? `<div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:8px">⚠ No se pudo obtener la inflación INDEC en este momento — comparando contra el promedio histórico nominal, sin ajuste.</div>`
     : '';
 
   el.innerHTML = aviso + `
-    <div class="alert warn" style="font-size:.73rem;margin-bottom:10px">
+    <div class="alert warn" style="font-size:var(--fs-sm);margin-bottom:10px">
       ⚠ ${r.fugas.length} categoría${r.fugas.length>1?'s':''} gastando por encima de su promedio histórico (ya ajustado por inflación) — ${fmt(r.totalFugaPesos)} de exceso este mes.
     </div>
     <div style="display:flex;flex-direction:column;gap:6px">
     ${r.fugas.map(f => `
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 10px;background:var(--s2);border-radius:8px;border-left:3px solid ${P.red}">
         <div style="min-width:0">
-          <div style="font-weight:600;font-size:.78rem">${f.cat}</div>
-          <div style="font-size:.66rem;color:var(--muted2);margin-top:2px">Promedio histórico (ajustado): ${fmt(f.promedioAjustado)} · basado en ${f.nMeses} mes${f.nMeses>1?'es':''}${f.huboCorte ? ' <span style="color:var(--yellow)" title="Se descartaron meses muy anteriores a un salto grande en esta categoría (ej. renovación de contrato), para que el promedio refleje tu situación actual">⚡ recalculado</span>' : ''}</div>
+          <div style="font-weight:600;font-size:var(--fs-md)">${f.cat}</div>
+          <div style="font-size:var(--fs-xs);color:var(--muted2);margin-top:2px">Promedio histórico (ajustado): ${fmt(f.promedioAjustado)} · basado en ${f.nMeses} mes${f.nMeses>1?'es':''}${f.huboCorte ? ' <span style="color:var(--yellow)" title="Se descartaron meses muy anteriores a un salto grande en esta categoría (ej. renovación de contrato), para que el promedio refleje tu situación actual">⚡ recalculado</span>' : ''}</div>
         </div>
         <div style="text-align:right;flex-shrink:0">
-          <div style="font-size:.78rem;font-weight:700;color:${P.red}">${fmt(f.actual)}</div>
-          <div style="font-size:.66rem;color:${P.red}">+${(f.desvioPct*100).toFixed(0)}%</div>
+          <div style="font-size:var(--fs-md);font-weight:700;color:${P.red}">${fmt(f.actual)}</div>
+          <div style="font-size:var(--fs-xs);color:${P.red}">+${(f.desvioPct*100).toFixed(0)}%</div>
         </div>
       </div>`).join('')}
     </div>`;
@@ -5949,7 +5951,7 @@ function buildMesAMesChart(year) {
     }
   }
 
-  if (!rows.length) { el.innerHTML = '<div style="color:var(--muted);font-size:.75rem;padding:16px 0;text-align:center">Sin datos para ' + year + '</div>'; return; }
+  if (!rows.length) { el.innerHTML = '<div style="color:var(--muted);font-size:var(--fs-sm);padding:16px 0;text-align:center">Sin datos para ' + year + '</div>'; return; }
 
   // ── Totales ──
   const totIng  = rows.reduce((s, r) => s + r.ing,  0);
@@ -5966,7 +5968,7 @@ function buildMesAMesChart(year) {
 
   // ── Render tabla ──
   el.innerHTML = `
-  <table class="tbl" style="font-size:.73rem">
+  <table class="tbl" style="font-size:var(--fs-sm)">
     <thead>
       <tr>
         <th style="width:38px"></th>
@@ -6006,7 +6008,7 @@ function buildMesAMesChart(year) {
     </tbody>
     <tfoot>
       <tr style="border-top:2px solid var(--border2);background:var(--s2)">
-        <td style="font-family:var(--fh);font-weight:700;font-size:.72rem;color:var(--text)">Total</td>
+        <td style="font-family:var(--fh);font-weight:700;font-size:var(--fs-sm);color:var(--text)">Total</td>
         <td style="text-align:right;font-weight:700;color:var(--green)">${fmtK(totIng)}</td>
         <td style="text-align:right;font-weight:700;color:var(--red)">${fmtK(totGas)}</td>
         <td style="text-align:right;font-weight:700;color:${totNeto>=0?P.green:P.red}">${fmtK(totNeto)}</td>
@@ -6227,7 +6229,7 @@ function getArsFromCotiz(inv, cotiz) {
   if (tipo === 'CEDEAR') {
     const key = 'CEDEAR_' + inv.activo.toUpperCase();
     const price = cotiz[key];
-    if (price) return `<span style="font-size:.65rem;color:var(--blue);background:rgba(56,189,248,.1);padding:1px 6px;border-radius:4px;margin-left:6px">$${Math.round(price).toLocaleString('es-AR')}</span>`;
+    if (price) return `<span style="font-size:var(--fs-xs);color:var(--blue);background:rgba(56,189,248,.1);padding:1px 6px;border-radius:4px;margin-left:6px">$${Math.round(price).toLocaleString('es-AR')}</span>`;
   }
   if (tipo === 'Stablecoin' || tipo === 'Dólar') {
     const cantUSD = parseFloat(inv.cantidadUSD || (inv.ars / tc));
@@ -6259,28 +6261,28 @@ function buildCotizBadge(inv, cotiz) {
     const price = cotiz[sym];
     if (price) {
       const esAmbiguo = cotiz['_ambiguo_' + sym] === true;
-      const badge = `<span style="font-size:.65rem;color:var(--blue);background:rgba(56,189,248,.1);padding:1px 6px;border-radius:4px;margin-left:6px">u$s ${price.toLocaleString('es-AR')}</span>`;
-      const warn  = esAmbiguo ? `<span style="font-size:.6rem;color:var(--yellow);margin-left:4px" title="Existen varios tokens con el ticker ${sym}; verificá que sea el mismo que tenés en tu exchange">⚠ verificar</span>` : '';
+      const badge = `<span style="font-size:var(--fs-xs);color:var(--blue);background:rgba(56,189,248,.1);padding:1px 6px;border-radius:4px;margin-left:6px">u$s ${price.toLocaleString('es-AR')}</span>`;
+      const warn  = esAmbiguo ? `<span style="font-size:var(--fs-xs);color:var(--yellow);margin-left:4px" title="Existen varios tokens con el ticker ${sym}; verificá que sea el mismo que tenés en tu exchange">⚠ verificar</span>` : '';
       return badge + warn;
     }
   }
   if (tipo === 'Stablecoin' || tipo === 'Dólar') {
     const tc = cotiz.MEP;
-    if (tc) return `<span style="font-size:.65rem;color:var(--green);background:rgba(34,211,160,.1);padding:1px 6px;border-radius:4px;margin-left:6px">MEP $${Math.round(tc).toLocaleString('es-AR')}</span>`;
+    if (tc) return `<span style="font-size:var(--fs-xs);color:var(--green);background:rgba(34,211,160,.1);padding:1px 6px;border-radius:4px;margin-left:6px">MEP $${Math.round(tc).toLocaleString('es-AR')}</span>`;
   }
   if (tipo === 'Letra') {
     const key = 'LETRA_' + (inv.ticker || inv.activo);
     const letra = cotiz[key];
-    if (letra) return `<span style="font-size:.65rem;color:var(--yellow);background:rgba(251,191,36,.1);padding:1px 6px;border-radius:4px;margin-left:6px">TNA ${((letra.tna||0)*100).toFixed(1)}%</span>`;
+    if (letra) return `<span style="font-size:var(--fs-xs);color:var(--yellow);background:rgba(251,191,36,.1);padding:1px 6px;border-radius:4px;margin-left:6px">TNA ${((letra.tna||0)*100).toFixed(1)}%</span>`;
   }
   if (tipo === 'Bono') {
     const key = 'BONO_' + (inv.ticker || inv.activo).toUpperCase();
     const precioPor100 = cotiz[key];
     if (precioPor100 != null) {
-      return `<span style="font-size:.65rem;color:var(--orange);background:rgba(251,146,60,.1);padding:1px 6px;border-radius:4px;margin-left:6px">✓ $${precioPor100.toLocaleString('es-AR')} x100</span>`;
+      return `<span style="font-size:var(--fs-xs);color:var(--orange);background:rgba(251,146,60,.1);padding:1px 6px;border-radius:4px;margin-left:6px">✓ $${precioPor100.toLocaleString('es-AR')} x100</span>`;
     }
     if (cotiz._bonosOk === false) {
-      return `<span style="font-size:.62rem;color:var(--muted);background:var(--s2);padding:1px 6px;border-radius:4px;margin-left:6px" title="No se pudo confirmar la cotización en este momento">— sin verificar</span>`;
+      return `<span style="font-size:var(--fs-xs);color:var(--muted);background:var(--s2);padding:1px 6px;border-radius:4px;margin-left:6px" title="No se pudo confirmar la cotización en este momento">— sin verificar</span>`;
     }
   }
   return '';
@@ -6335,7 +6337,7 @@ function renderAnalisisCartera() {
 
   const invs  = getInv().filter(i => (i.ars||0) > 0);
   const total = invs.reduce((s,i) => s + (i.ars||0), 0);
-  if (total === 0) { resEl.innerHTML = '<div style="color:var(--muted);font-size:.75rem">Sin posiciones cargadas.</div>'; detEl.innerHTML=''; return; }
+  if (total === 0) { resEl.innerHTML = '<div style="color:var(--muted);font-size:var(--fs-sm)">Sin posiciones cargadas.</div>'; detEl.innerHTML=''; return; }
 
   const conRiesgo = invs.map(i => ({ ...i, riesgo: clasificarRiesgo(i) }));
   const porRiesgo = { alto:0, medio:0, bajo:0 };
@@ -6358,12 +6360,12 @@ function renderAnalisisCartera() {
       <div style="width:${(pctMedio*100).toFixed(1)}%;background:${colorBar.medio}"></div>
       <div style="width:${(pctBajo*100).toFixed(1)}%;background:${colorBar.bajo}"></div>
     </div>
-    <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:.72rem;margin-bottom:10px">
+    <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:var(--fs-sm);margin-bottom:10px">
       <span style="color:${colorBar.alto}">● Alto: ${(pctAlto*100).toFixed(0)}% (${fmt(porRiesgo.alto)})</span>
       <span style="color:${colorBar.medio}">● Medio: ${(pctMedio*100).toFixed(0)}% (${fmt(porRiesgo.medio)})</span>
       <span style="color:${colorBar.bajo}">● Bajo: ${(pctBajo*100).toFixed(0)}% (${fmt(porRiesgo.bajo)})</span>
     </div>
-    <div class="alert ${sobreTolerancia ? 'warn' : ''}" style="font-size:.73rem;line-height:1.5">
+    <div class="alert ${sobreTolerancia ? 'warn' : ''}" style="font-size:var(--fs-sm);line-height:1.5">
       ${sobreTolerancia
         ? `⚠ Tu tolerancia es hasta 1/3 (33%) en riesgo alto y estás en ${(pctAlto*100).toFixed(0)}%. Excediste por ${fmt(porRiesgo.alto - total*TOLERANCIA_ALTO_RIESGO)}. Mirá abajo qué posiciones de riesgo alto rinden peor para priorizar rotación.`
         : `✓ Estás dentro de tu tolerancia de riesgo alto (máx. 33%). Margen disponible: ${fmt(total*TOLERANCIA_ALTO_RIESGO - porRiesgo.alto)} antes de exceder.`}
@@ -6409,18 +6411,18 @@ function renderAnalisisCartera() {
   const badgeRiesgo = { alto:'🔴 Alto', medio:'🟡 Medio', bajo:'🟢 Bajo' };
 
   detEl.innerHTML = `
-    <div style="font-size:.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Detalle por posición</div>
+    <div style="font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Detalle por posición</div>
     <div style="display:flex;flex-direction:column;gap:6px">
     ${conAccion.map(i => `
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 10px;background:var(--s2);border-radius:8px;border-left:3px solid ${i.color}">
         <div style="min-width:0">
-          <div style="font-weight:600;font-size:.78rem">${i.activo} <span style="font-size:.62rem;color:var(--muted);font-weight:400">${badgeRiesgo[i.riesgo]} · ${(i.pct*100).toFixed(1)}% cartera${i.esGrande ? ' · posición grande' : ''}</span></div>
-          <div style="font-size:.66rem;color:var(--muted2);margin-top:2px">${i.motivo}</div>
-          ${i.precioProm != null ? `<div style="font-size:.64rem;color:var(--muted);margin-top:3px">Promedio entrada: ${fmt(i.precioProm)} · Precio actual: ${fmt(i.precioAct)}</div>` : ''}
+          <div style="font-weight:600;font-size:var(--fs-md)">${i.activo} <span style="font-size:var(--fs-xs);color:var(--muted);font-weight:400">${badgeRiesgo[i.riesgo]} · ${(i.pct*100).toFixed(1)}% cartera${i.esGrande ? ' · posición grande' : ''}</span></div>
+          <div style="font-size:var(--fs-xs);color:var(--muted2);margin-top:2px">${i.motivo}</div>
+          ${i.precioProm != null ? `<div style="font-size:var(--fs-xs);color:var(--muted);margin-top:3px">Promedio entrada: ${fmt(i.precioProm)} · Precio actual: ${fmt(i.precioAct)}</div>` : ''}
         </div>
         <div style="text-align:right;flex-shrink:0">
-          <div style="font-size:.7rem;font-weight:700;color:${i.color}">${i.accion}</div>
-          <div style="font-size:.66rem;color:${(i.rend||0)>=0?P.green:P.red}">${(i.rend||0)>=0?'+':''}${((i.rend||0)*100).toFixed(1)}%</div>
+          <div style="font-size:var(--fs-sm);font-weight:700;color:${i.color}">${i.accion}</div>
+          <div style="font-size:var(--fs-xs);color:${(i.rend||0)>=0?P.green:P.red}">${(i.rend||0)>=0?'+':''}${((i.rend||0)*100).toFixed(1)}%</div>
         </div>
       </div>`).join('')}
     </div>`;
@@ -6431,7 +6433,7 @@ async function renderInvList() {
 
   // Show loading state
   const listEl = document.getElementById('inv-list');
-  if (listEl) listEl.innerHTML = '<div style="color:var(--muted);font-size:.75rem;padding:16px;text-align:center">⟳ Actualizando cotizaciones...</div>';
+  if (listEl) listEl.innerHTML = '<div style="color:var(--muted);font-size:var(--fs-sm);padding:16px;text-align:center">⟳ Actualizando cotizaciones...</div>';
 
   // Fetch live prices
   const cotiz = await fetchCotizaciones().catch(() => ({}));
@@ -6498,17 +6500,17 @@ async function renderInvList() {
   const pnlBanner = totalCosto > 0 ? `
     <div style="background:${totalPnL>=0?'rgba(34,211,160,.08)':'rgba(244,63,94,.08)'};border:1px solid ${totalPnL>=0?'rgba(34,211,160,.2)':'rgba(244,63,94,.2)'};border-radius:8px;padding:12px 16px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
       <div>
-        <div style="font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">Resultado total de la cartera</div>
+        <div style="font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">Resultado total de la cartera</div>
         <div style="font-family:var(--fh);font-size:1.3rem;font-weight:700;color:${pnlColor}">${pnlSign === '+' ? fmtK(totalPnL) : '-' + fmtK(Math.abs(totalPnL))}</div>
       </div>
       <div style="text-align:right">
-        <div style="font-size:.65rem;color:var(--muted);margin-bottom:3px">Invertido: $${Math.round(totalCosto).toLocaleString('es-AR')}</div>
+        <div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">Invertido: $${Math.round(totalCosto).toLocaleString('es-AR')}</div>
         <div style="font-family:var(--fh);font-size:1.1rem;font-weight:700;color:${pnlColor}">${pnlSign}${totalPnLPct.toFixed(1)}%</div>
       </div>
     </div>` : '';
 
   document.getElementById('inv-list').innerHTML = pnlBanner +
-    `<div style="font-size:.62rem;color:var(--muted);margin-bottom:10px;text-align:right">Cotizaciones: ${tsLabel}</div>` +
+    `<div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:10px;text-align:right">Cotizaciones: ${tsLabel}</div>` +
     invs.filter(inv => (inv.ars || 0) > 0 || (inv.costo || 0) > 0).map((inv, i) => {
       const color   = colors[inv.tipo] || P.blue;
       const hasVal  = inv.ars > 0;
@@ -6517,13 +6519,13 @@ async function renderInvList() {
       const rendPct = (hasVal && hasCosto) ? ((inv.ars - inv.costo) / inv.costo) : null;
       const rc      = rendPct === null ? P.yellow : rendPct > 0 ? P.green : rendPct < 0 ? P.red : P.yellow;
       const rendLabel = rendPct === null 
-        ? '<span style="font-size:.65rem;color:var(--muted)">— falta costo de entrada</span>'
-        : `<span style="color:${rc};font-size:.7rem;font-weight:600">${rendPct>=0?'+':''}${(rendPct*100).toFixed(1)}%${ganLoss!==0?' ('+fmt(Math.abs(ganLoss))+')':''}</span>`;
+        ? '<span style="font-size:var(--fs-xs);color:var(--muted)">— falta costo de entrada</span>'
+        : `<span style="color:${rc};font-size:var(--fs-sm);font-weight:600">${rendPct>=0?'+':''}${(rendPct*100).toFixed(1)}%${ganLoss!==0?' ('+fmt(Math.abs(ganLoss))+')':''}</span>`;
       const badge   = buildCotizBadge(inv, cotiz);
       return `<div class="inv-row">
         <div class="inv-icon" style="background:${color}15">${icons[inv.tipo]||'📈'}</div>
         <div class="inv-body">
-          <div class="inv-name">${inv.activo} <span style="font-size:.62rem;color:${color};background:${color}15;padding:1px 6px;border-radius:4px">${inv.tipo}</span>${badge}</div>
+          <div class="inv-name">${inv.activo} <span style="font-size:var(--fs-xs);color:${color};background:${color}15;padding:1px 6px;border-radius:4px">${inv.tipo}</span>${badge}</div>
           <div class="inv-meta">${inv.nota||''}${inv.fechaEntrada?' · Entrada: '+inv.fechaEntrada:''}</div>
         </div>
         <div style="text-align:right">
@@ -6556,18 +6558,18 @@ async function renderInvList() {
         const color    = esVenta ? P.red : P.green;
         const icon     = esVenta ? '📤' : '📥';
         const pnlStr   = (esVenta && m.pnl != null)
-          ? ` <span style="color:${m.pnl>=0?P.green:P.red};font-size:.65rem">${m.pnl>=0?'+':''}${fmt(m.pnl)}</span>`
+          ? ` <span style="color:${m.pnl>=0?P.green:P.red};font-size:var(--fs-xs)">${m.pnl>=0?'+':''}${fmt(m.pnl)}</span>`
           : '';
-        return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:.75rem">
+        return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:var(--fs-sm)">
           <span>${icon}</span>
           <div style="flex:1">
-            <div style="color:var(--text);font-weight:600">${m.ticker} <span style="font-weight:400;color:var(--muted);font-size:.65rem">${m.cant} nom. × ${fmt(m.precio)}</span>${pnlStr}</div>
-            <div style="font-size:.63rem;color:var(--muted)">${m.fecha}</div>
+            <div style="color:var(--text);font-weight:600">${m.ticker} <span style="font-weight:400;color:var(--muted);font-size:var(--fs-xs)">${m.cant} nom. × ${fmt(m.precio)}</span>${pnlStr}</div>
+            <div style="font-size:var(--fs-xs);color:var(--muted)">${m.fecha}</div>
           </div>
           <div style="color:${color};font-weight:700;white-space:nowrap">${esVenta?'+':'-'}${fmt(m.monto)}</div>
         </div>`;
       }).join('')
-    : '<div style="color:var(--muted);font-size:.75rem;padding:16px 0;text-align:center">Sin movimientos registrados</div>';
+    : '<div style="color:var(--muted);font-size:var(--fs-sm);padding:16px 0;text-align:center">Sin movimientos registrados</div>';
 
   // Análisis de riesgo de cartera (se recalcula con los datos ya actualizados)
   if (typeof renderAnalisisCartera === 'function') renderAnalisisCartera();
@@ -6594,34 +6596,34 @@ function renderInvEditor() {
   document.getElementById('inv-editor-rows').innerHTML = invs.map((inv, i) => `
     <div style="background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <div style="font-size:.78rem;font-weight:600;color:var(--text)">${inv.activo}</div>
-        <button onclick="delInvRow(${i})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:.85rem;padding:2px 6px">✕ Eliminar</button>
+        <div style="font-size:var(--fs-md);font-weight:600;color:var(--text)">${inv.activo}</div>
+        <button onclick="delInvRow(${i})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:var(--fs-md);padding:2px 6px">✕ Eliminar</button>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-        <div><div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">Nombre</div>
-          <input type="text" value="${inv.activo}" id="ie-n-${i}" class="fi" style="font-size:.75rem;padding:7px 10px"></div>
-        <div><div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">Tipo</div>
-          <select id="ie-t-${i}" class="fi" style="font-size:.72rem;padding:7px 6px">
+        <div><div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">Nombre</div>
+          <input type="text" value="${inv.activo}" id="ie-n-${i}" class="fi" style="font-size:var(--fs-sm);padding:7px 10px"></div>
+        <div><div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">Tipo</div>
+          <select id="ie-t-${i}" class="fi" style="font-size:var(--fs-sm);padding:7px 6px">
             ${['FCI','Cripto','Stablecoin','Dólar','Bono','CEDEAR','Acciones'].map(t=>`<option ${t===inv.tipo?'selected':''}>${t}</option>`).join('')}
           </select></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-        <div><div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">Valor actual ARS $</div>
-          <input type="number" value="${inv.ars}" id="ie-a-${i}" class="fi" style="font-size:.82rem;padding:8px 10px;color:var(--green);text-align:right;font-weight:600"></div>
-        <div><div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">Costo de entrada ARS $</div>
-          <input type="number" value="${inv.costo||inv.ars}" id="ie-c-${i}" class="fi" style="font-size:.82rem;padding:8px 10px;color:var(--blue);text-align:right"></div>
+        <div><div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">Valor actual ARS $</div>
+          <input type="number" value="${inv.ars}" id="ie-a-${i}" class="fi" style="font-size:var(--fs-md);padding:8px 10px;color:var(--green);text-align:right;font-weight:600"></div>
+        <div><div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">Costo de entrada ARS $</div>
+          <input type="number" value="${inv.costo||inv.ars}" id="ie-c-${i}" class="fi" style="font-size:var(--fs-md);padding:8px 10px;color:var(--blue);text-align:right"></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-        <div><div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">Cantidad <span style="color:var(--muted)">(cripto/USD)</span></div>
-          <input type="number" value="${inv.cantidad||''}" id="ie-qty-${i}" class="fi" placeholder="ej: 0.001" step="any" style="font-size:.75rem;padding:7px 10px;text-align:right"></div>
-        <div><div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">Ticker <span style="color:var(--muted)">(letras)</span></div>
-          <input type="text" value="${inv.ticker||''}" id="ie-tk-${i}" class="fi" placeholder="ej: S31M5" style="font-size:.72rem;padding:7px 10px;text-transform:uppercase"></div>
+        <div><div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">Cantidad <span style="color:var(--muted)">(cripto/USD)</span></div>
+          <input type="number" value="${inv.cantidad||''}" id="ie-qty-${i}" class="fi" placeholder="ej: 0.001" step="any" style="font-size:var(--fs-sm);padding:7px 10px;text-align:right"></div>
+        <div><div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">Ticker <span style="color:var(--muted)">(letras)</span></div>
+          <input type="text" value="${inv.ticker||''}" id="ie-tk-${i}" class="fi" placeholder="ej: S31M5" style="font-size:var(--fs-sm);padding:7px 10px;text-transform:uppercase"></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <div><div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">Fecha entrada</div>
-          <input type="date" value="${inv.fechaEntrada||''}" id="ie-fe-${i}" class="fi" style="font-size:.72rem;padding:7px 8px"></div>
-        <div><div style="font-size:.6rem;color:var(--muted);margin-bottom:3px">Notas</div>
-          <input type="text" value="${inv.nota||''}" id="ie-no-${i}" class="fi" style="font-size:.72rem;padding:7px 10px"></div>
+        <div><div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">Fecha entrada</div>
+          <input type="date" value="${inv.fechaEntrada||''}" id="ie-fe-${i}" class="fi" style="font-size:var(--fs-sm);padding:7px 8px"></div>
+        <div><div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">Notas</div>
+          <input type="text" value="${inv.nota||''}" id="ie-no-${i}" class="fi" style="font-size:var(--fs-sm);padding:7px 10px"></div>
       </div>
     </div>`).join('');
 }
@@ -6871,14 +6873,14 @@ function opRenderLista() {
     const color = op.tipo === 'venta' ? P.red : P.green;
     const signo = op.tipo === 'venta' ? '📤' : '📥';
     const fechaLabel = op.fecha ? new Date(op.fecha + 'T12:00:00').toLocaleDateString('es-AR', {day:'2-digit',month:'2-digit'}) : '';
-    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:.75rem">
-      <span style="font-size:.85rem">${signo}</span>
+    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:var(--fs-sm)">
+      <span style="font-size:var(--fs-md)">${signo}</span>
       <div style="flex:1">
         <span style="font-weight:700;color:${color}">${op.ticker}</span>
-        <span style="color:var(--muted);font-size:.65rem"> · ${op.cant} nom. × ${fmt(op.precio)} · ${fechaLabel}${op.esNuevo ? ' · ' + (op.tipoInstrumento || 'CEDEAR') : ''}</span>
+        <span style="color:var(--muted);font-size:var(--fs-xs)"> · ${op.cant} nom. × ${fmt(op.precio)} · ${fechaLabel}${op.esNuevo ? ' · ' + (op.tipoInstrumento || 'CEDEAR') : ''}</span>
       </div>
       <span style="font-weight:700;color:${color};white-space:nowrap">${op.tipo === 'venta' ? '+' : '-'}${fmt(op.monto)}</span>
-      <button onclick="opRemover(${i})" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.8rem;padding:2px 5px">✕</button>
+      <button onclick="opRemover(${i})" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:var(--fs-md);padding:2px 5px">✕</button>
     </div>`;
   }).join('');
 
@@ -7007,7 +7009,7 @@ function updatePatrimonio() {
   barEl.innerHTML = items.map(i => `<div style="width:${(i.val/total*100).toFixed(1)}%;height:100%;background:${i.color};border-radius:3px"></div>`).join('');
 
   const legEl = document.getElementById('pat-legend');
-  legEl.innerHTML = items.map(i => `<div style="display:flex;align-items:center;gap:6px;font-size:.7rem;color:var(--muted2)">
+  legEl.innerHTML = items.map(i => `<div style="display:flex;align-items:center;gap:6px;font-size:var(--fs-sm);color:var(--muted2)">
     <div style="width:8px;height:8px;border-radius:2px;background:${i.color};flex-shrink:0"></div>
     ${i.label}: ${fmt(i.val)} (${(i.val/total*100).toFixed(0)}%)
   </div>`).join('');
@@ -7319,7 +7321,7 @@ function renderEditorMes() {
   const container = document.getElementById('import-editor-rows');
   if (!container) return;
   if (!txs.length) {
-    container.innerHTML = '<div style="color:var(--muted);font-size:.75rem;text-align:center;padding:20px 0">Sin filas</div>';
+    container.innerHTML = '<div style="color:var(--muted);font-size:var(--fs-sm);text-align:center;padding:20px 0">Sin filas</div>';
     return;
   }
   container.innerHTML = txs.map((tx, i) => {
@@ -7337,22 +7339,22 @@ function renderEditorMes() {
         <div style="display:flex;gap:5px;align-items:center;margin-bottom:4px">
           <span style="font-size:.58rem;font-weight:700;color:${color};background:${color}15;padding:1px 5px;border-radius:3px;text-transform:uppercase;flex-shrink:0">${tx.tipo}</span>
           <input type="text" value="${tx.desc.replace(/"/g,'&quot;')}"
-            style="flex:1;background:var(--s2);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--fm);font-size:.72rem;padding:3px 7px;min-width:0"
+            style="flex:1;background:var(--s2);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--fm);font-size:var(--fs-sm);padding:3px 7px;min-width:0"
             onchange="_importDraft['${mes}'][${i}].desc=this.value">
         </div>
-        <select style="width:100%;background:var(--s2);border:1px solid var(--border);border-radius:5px;color:var(--muted2);font-family:var(--fm);font-size:.65rem;padding:2px 5px"
+        <select style="width:100%;background:var(--s2);border:1px solid var(--border);border-radius:5px;color:var(--muted2);font-family:var(--fm);font-size:var(--fs-xs);padding:2px 5px"
           onchange="_importDraft['${mes}'][${i}].cat=this.value;renderEditorMes()">
           ${catOpts}
         </select>
       </div>
       <div style="display:flex;align-items:center;gap:2px">
-        <span style="font-size:.62rem;color:var(--muted)">$</span>
+        <span style="font-size:var(--fs-xs);color:var(--muted)">$</span>
         <input type="number" value="${tx.monto}"
-          style="width:100%;background:var(--s2);border:1px solid var(--border);border-radius:5px;color:${color};font-family:var(--fh);font-size:.8rem;font-weight:700;padding:4px 5px;text-align:right"
+          style="width:100%;background:var(--s2);border:1px solid var(--border);border-radius:5px;color:${color};font-family:var(--fh);font-size:var(--fs-md);font-weight:700;padding:4px 5px;text-align:right"
           onchange="_importDraft['${mes}'][${i}].monto=parseFloat(this.value)||0;renderEditorMes()">
       </div>
       <button onclick="_importDraft['${mes}'].splice(${i},1);renderEditorMes()"
-        style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.85rem;padding:2px" title="Eliminar">✕</button>
+        style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:var(--fs-md);padding:2px" title="Eliminar">✕</button>
     </div>`;
   }).join('');
 }
