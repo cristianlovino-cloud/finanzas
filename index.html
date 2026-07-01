@@ -2486,38 +2486,58 @@ function fabAccion() {
 // ══════════════════════════════════════════════════════
 // SALUD FINANCIERA — color dinámico del acento
 // ══════════════════════════════════════════════════════
-function calcularSaludFinanciera({ totalIng, totalGas, totalInv, totalTarjetasEsteMes }) {
-  const neto  = totalIng - totalGas - totalInv;
-  const tasa  = totalIng > 0 ? (totalIng - totalGas) / totalIng : 0;
-  const cargaTarjetas = totalIng > 0 ? totalTarjetasEsteMes / totalIng : 0;
+function calcularSaludFinanciera({ totalIng, totalGas, totalTarjetasEsteMes }) {
+  // Usamos solo operativa: ing vs gastos, sin inversiones (que son siempre positivas)
+  const ingMensual = totalIng / Math.max(1, new Date().getMonth() + 1); // promedio mensual del año
+  const tasaAhorro = totalIng > 0 ? (totalIng - totalGas) / totalIng : 0;
+  const cargaTarjetas = ingMensual > 0 ? totalTarjetasEsteMes / ingMensual : 0;
 
-  // Modo FRUGAL: neto muy ajustado o ingresos no cargados
-  if (totalIng === 0 || (neto >= 0 && neto < totalIng * 0.05)) {
+  // Sin ingresos cargados — gris neutro, no es alerta
+  if (totalIng === 0) {
     return {
-      modo: 'frugal',
-      accent: '#6b7a8d',        // gris metalizado azulado
+      modo: 'neutro',
+      accent: '#6b7a8d',
       accentRGB: '107,122,141',
-      glow: 'rgba(107,122,141,.12)',
-      label: '⚫ Modo frugal',
+      glow: 'rgba(107,122,141,.10)',
+      label: '',
     };
   }
-  // Modo ALERTA: tarjetas van a comerse la liquidez o neto negativo
-  if (neto < 0 || cargaTarjetas > 0.5 || tasa < 0.08) {
+
+  // 🔴 ROJO — gastos > ingresos O tarjetas > 50% del ingreso mensual
+  if (tasaAhorro < 0 || cargaTarjetas > 0.5) {
+    const motivo = tasaAhorro < 0
+      ? '⚠ Gastos superan ingresos'
+      : `⚠ Tarjetas al ${Math.round(cargaTarjetas * 100)}% del ingreso`;
     return {
       modo: 'alerta',
-      accent: '#fbbf24',        // ámbar
-      accentRGB: '251,191,36',
-      glow: 'rgba(251,191,36,.12)',
-      label: '🟡 Presión de caja',
+      accent: '#f43f5e',
+      accentRGB: '244,63,94',
+      glow: 'rgba(244,63,94,.12)',
+      label: motivo,
     };
   }
-  // Modo SALUDABLE
+
+  // 🟡 ÁMBAR — tasa ahorro < 20% O tarjetas entre 30-50%
+  if (tasaAhorro < 0.20 || cargaTarjetas > 0.30) {
+    const motivo = cargaTarjetas > 0.30
+      ? `⚠ Tarjetas al ${Math.round(cargaTarjetas * 100)}% del ingreso`
+      : `⚠ Ahorro en ${Math.round(tasaAhorro * 100)}%`;
+    return {
+      modo: 'tension',
+      accent: '#fbbf24',
+      accentRGB: '251,191,36',
+      glow: 'rgba(251,191,36,.12)',
+      label: motivo,
+    };
+  }
+
+  // 🟢 VERDE — saludable
   return {
     modo: 'saludable',
-    accent: '#22d3a0',          // verde esmeralda
+    accent: '#22d3a0',
     accentRGB: '34,211,160',
     glow: 'rgba(34,211,160,.15)',
-    label: '🟢 En target',
+    label: '',
   };
 }
 
@@ -2533,7 +2553,11 @@ function aplicarSaludFinanciera(salud) {
   document.body.style.setProperty('--body-glow', gradiente);
   // Badge de salud en el header (si existe)
   const badge = document.getElementById('health-badge');
-  if (badge) { badge.textContent = salud.label; badge.dataset.modo = salud.modo; }
+  if (badge) {
+    badge.textContent = salud.label;
+    badge.dataset.modo = salud.modo;
+    badge.style.color = salud.label ? salud.accent : 'transparent';
+  }
 }
 
 // ══════════════════════════════════════════════════════
@@ -5084,7 +5108,7 @@ function updateOverview() {
     const totalTarjetas = gruposEsteMes.reduce((s, g) =>
       s + g.gastos.filter(x => x.moneda !== 'USD').reduce((a, x) => a + (x.monto||0), 0), 0);
     const salud = calcularSaludFinanciera({
-      totalIng, totalGas, totalInv,
+      totalIng, totalGas,
       totalTarjetasEsteMes: totalTarjetas,
     });
     aplicarSaludFinanciera(salud);
