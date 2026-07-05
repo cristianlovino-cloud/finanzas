@@ -6344,12 +6344,14 @@ function renderEvolCategorias() {
   meses.forEach((m, i) => {
     const mes = yr + '-' + m;
 
-    // Detectar si hay gastos TC individuales para este mes
-    const gastosTarjMes = getGastosTarjetas().filter(g => {
+    // Corte fijo: desde junio 2026 usamos desglose individual por categoría
+    // Antes de junio, usamos el pago de resumen TC como proxy histórico
+    const CORTE = yr >= '2027' ? yr + '-01' : '2026-06';
+    const tieneDesgloseTarj = mes >= CORTE;
+    const gastosTarjMes = tieneDesgloseTarj ? getGastosTarjetas().filter(g => {
       const fechaRef = g.fechaCompra || g.fecha || '';
       return fechaRef.slice(0,7) === mes && g.moneda !== 'USD';
-    });
-    const tieneDesgloseTarj = gastosTarjMes.length > 0;
+    }) : [];
 
     // Categorías que son pagos de resumen TC (proxy histórico)
     // Si ya tenemos desglose individual, las excluimos para no mezclar
