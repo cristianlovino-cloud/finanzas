@@ -6144,9 +6144,11 @@ function renderConfigGrupos() {
           style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:var(--fs-sm)">✕</button>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:4px">
-        ${g.miembros.map((m, mi) => `
-          <div style="background:var(--s3);border-radius:8px;padding:4px 8px;font-size:var(--fs-xs);color:var(--muted2);display:flex;align-items:center;gap:4px">
-            <span>${m}</span>
+        ${g.miembros.map((m, mi) => {
+          const esIA = (g.aiAsignados||[]).includes(m);
+          return `
+          <div style="background:${esIA?'rgba(139,92,246,.12)':'var(--s3)'};border:${esIA?'1px solid rgba(139,92,246,.25)':'none'};border-radius:8px;padding:4px 8px;font-size:var(--fs-xs);color:var(--muted2);display:flex;align-items:center;gap:4px">
+            <span>${m}${esIA?` <span style="color:#a78bfa;font-size:.55rem" title="Asignado por IA">✦</span>`:''}</span>
             <select onchange="draftMoverMiembro(${gi},${mi},this.value)" title="Mover a otro grupo"
               style="background:none;border:none;color:var(--muted);font-size:var(--fs-xs);cursor:pointer;padding:0;outline:none;max-width:60px">
               <option value="">↗</option>
@@ -6154,14 +6156,17 @@ function renderConfigGrupos() {
             </select>
             <button onclick="draftQuitarMiembro(${gi},${mi})" title="Quitar"
               style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:var(--fs-xs);padding:0">✕</button>
-          </div>`).join('')}
+          </div>`;
+        }).join('')}
       </div>
     </div>`).join('') + `
     <div style="display:flex;gap:6px;margin-top:4px">
       <button onclick="draftAgregarGrupo()" class="btn btn-o" style="flex:1;font-size:var(--fs-xs)">＋ Grupo</button>
+      <button onclick="sugerirConIA()" class="btn" style="flex:1;font-size:var(--fs-xs);background:rgba(139,92,246,.12);border:1px solid rgba(139,92,246,.3);border-radius:8px;color:#a78bfa;cursor:pointer;padding:8px">✦ IA</button>
       <button onclick="draftDescartar()" style="flex:1;font-size:var(--fs-xs);background:var(--s2);border:1px solid var(--border);border-radius:8px;color:var(--muted);cursor:pointer;padding:8px">✕ Descartar</button>
       <button onclick="guardarGruposCategorias()" class="btn btn-g" style="flex:1;font-size:var(--fs-xs)">✓ Guardar</button>
-    </div>`;
+    </div>
+    <div id="ia-sugerencias" style="margin-top:10px"></div>`;
 }
 
 function draftEliminarGrupo(gi) { _gruposDraft.splice(gi,1); renderConfigGrupos(); }
@@ -6175,6 +6180,128 @@ function draftMoverMiembro(gi, mi, destGrupo) {
 }
 function draftAgregarGrupo() { _gruposDraft.push({ grupo: 'Nuevo grupo', miembros: [] }); renderConfigGrupos(); }
 function draftDescartar() { _gruposDraft = null; const p = document.getElementById('config-grupos-panel'); if(p) p.style.display='none'; }
+
+async function sugerirConIA() {
+  const el = document.getElementById('ia-sugerencias');
+  if (!el) return;
+  if (!_gruposDraft) return;
+
+  // Detectar categorías sin grupo o en "Otros/Sin agrupar"
+  const catsEnGrupos = new Set(
+    _gruposDraft.filter(g => g.grupo !== 'Otros' && g.grupo !== 'Sin agrupar')
+      .flatMap(g => g.miembros.map(m => m.toLowerCase()))
+  );
+  const sinAsignar = _gruposDraft
+    .filter(g => g.grupo === 'Otros' || g.grupo === 'Sin agrupar')
+    .flatMap(g => g.miembros);
+
+  // También detectar cats reales en gastos que no están en ningún grupo
+  const txsAll = DB.get('txs', {});
+  const catsReales = new Set();
+  Object.values(txsAll).forEach(mes => (mes||[]).forEach(tx => { if (tx.cat) catsReales.add(tx.cat.trim()); }));
+  getGastosTarjetas().forEach(g => { if (g.tipo) catsReales.add(g.tipo.replace(/\s*\(cuota.*\)/i,'').trim()); });
+  const todasLasCats = [...new Set([...sinAsignar, ...[...catsReales].filter(c => !catsEnGrupos.has(c.toLowerCase()))])];
+
+  if (todasLasCats.length === 0) {
+    el.innerHTML = '<div style="font-size:var(--fs-xs);color:var(--green);padding:8px">✓ Todas las categorías ya están asignadas a un grupo.</div>';
+    return;
+  }
+
+  el.innerHTML = `<div style="font-size:var(--fs-xs);color:#a78bfa;padding:8px;display:flex;align-items:center;gap:6px">
+    <span style="animation:spin 1s linear infinite;display:inline-block">✦</span> Consultando al CFO digital...
+  </div>`;
+
+  const gruposActuales = _gruposDraft.filter(g => g.grupo !== 'Otros' && g.grupo !== 'Sin agrupar').map(g => g.grupo);
+  const prompt = `Sos un CFO experto en finanzas personales y administración de presupuestos hogareños. Tu filosofía: gestión eficiente cuidando la guita sin perder de vista vivir bien.
+
+Tengo estas categorías de gastos SIN asignar a ningún grupo:
+${todasLasCats.map(c => `- "${c}"`).join('\n')}
+
+Mis grupos actuales son:
+${gruposActuales.map(g => `- "${g}"`).join('\n')}
+
+Para cada categoría sin asignar, decidí:
+1. A cuál grupo existente va (si encaja naturalmente)
+2. O si merece un grupo nuevo (si hay 2+ categorías que comparten naturaleza y no encajan en ningún grupo actual)
+
+Respondé SOLO en JSON, sin explicaciones, sin markdown, exactamente así:
+{"sugerencias":[{"cat":"nombre de la categoria","grupo":"nombre del grupo existente o nuevo","nuevo":false,"razon":"1 frase corta"}]}
+
+Usá criterio financiero real: agrupa por naturaleza del gasto, no solo por nombre. Sé directo y eficiente.`;
+
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    const data = await resp.json();
+    const texto = data.content?.[0]?.text || '';
+    const json = JSON.parse(texto.replace(/```json|```/g,'').trim());
+    const sugerencias = json.sugerencias || [];
+
+    if (sugerencias.length === 0) {
+      el.innerHTML = '<div style="font-size:var(--fs-xs);color:var(--muted);padding:8px">No hay sugerencias disponibles.</div>';
+      return;
+    }
+
+    el.innerHTML = `
+      <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px">
+        <div style="font-size:var(--fs-xs);color:#a78bfa;font-weight:700;margin-bottom:8px">✦ Sugerencias del CFO digital</div>
+        ${sugerencias.map((s, si) => `
+          <div id="sug-${si}" style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:var(--fs-sm);font-weight:600">${s.cat}</div>
+              <div style="font-size:var(--fs-xs);color:var(--muted)">${s.razon}</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+              <span style="font-size:var(--fs-xs);color:#a78bfa;background:rgba(139,92,246,.1);border-radius:10px;padding:2px 8px">→ ${s.grupo}${s.nuevo?' ✦ nuevo':''}</span>
+              <button onclick="aplicarSugerenciaIA(${si},'${s.cat.replace(/'/g,"\\'")}','${s.grupo.replace(/'/g,"\\'")}',${s.nuevo})"
+                class="btn btn-g" style="font-size:var(--fs-xs);padding:4px 10px">✓</button>
+              <button onclick="document.getElementById('sug-${si}').remove()"
+                style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:var(--fs-xs)">✕</button>
+            </div>
+          </div>`).join('')}
+        <button onclick="aplicarTodasSugerenciasIA(${JSON.stringify(sugerencias).replace(/"/g,'&quot;')})"
+          class="btn btn-g" style="width:100%;margin-top:8px;font-size:var(--fs-xs)">✓ Aplicar todas</button>
+      </div>`;
+  } catch(e) {
+    el.innerHTML = `<div style="font-size:var(--fs-xs);color:var(--red);padding:8px">Error al consultar la IA: ${e.message}</div>`;
+  }
+}
+
+function aplicarSugerenciaIA(si, cat, grupo, esNuevo) {
+  if (!_gruposDraft) return;
+  // Si es grupo nuevo, crearlo
+  let dest = _gruposDraft.find(g => g.grupo === grupo);
+  if (!dest) {
+    dest = { grupo, miembros: [], aiSugerido: true };
+    _gruposDraft.push(dest);
+  }
+  // Quitar de Otros/Sin agrupar si está
+  _gruposDraft.forEach(g => {
+    if (g.grupo === 'Otros' || g.grupo === 'Sin agrupar') {
+      g.miembros = g.miembros.filter(m => m !== cat);
+    }
+  });
+  // Agregar con marca IA si no está ya
+  if (!dest.miembros.includes(cat)) {
+    dest.miembros.push(cat);
+    dest.aiAsignados = dest.aiAsignados || [];
+    dest.aiAsignados.push(cat);
+  }
+  // Eliminar la fila de sugerencia
+  document.getElementById('sug-' + si)?.remove();
+  renderConfigGrupos();
+}
+
+function aplicarTodasSugerenciasIA(sugerencias) {
+  sugerencias.forEach((s, i) => aplicarSugerenciaIA(i, s.cat, s.grupo, s.nuevo));
+}
 
 function toggleConfigGrupos() {
   const panel = document.getElementById('config-grupos-panel');
@@ -6209,15 +6336,32 @@ function renderEvolCategorias() {
   const meses = ['01','02','03','04','05','06','07','08','09','10','11','12'];
   const mesLabels = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 
-  // Construir mapa: cat → [monto por mes] para todos los gastos del año
+  // Construir mapa: cat → [monto por mes]
+  // Fuente 1: Flujo (gastos directos débito/efectivo)
+  // Fuente 2: Gastos TC (tarjetas — propios, Lara, Emma) usando g.tipo como categoría
   const catMap = {};
   let totalAnio = 0;
+
   meses.forEach((m, i) => {
+    // Flujo
     const { totals, total } = txTotals(yr + '-' + m);
     totalAnio += total;
     Object.entries(totals).forEach(([cat, monto]) => {
       if (!catMap[cat]) catMap[cat] = new Array(12).fill(0);
       catMap[cat][i] += monto;
+    });
+    // Gastos TC del mismo mes — usando fecha real del gasto (fechaCompra o fecha)
+    const gastosTarj = getGastosTarjetas().filter(g => {
+      const fechaRef = g.fechaCompra || g.fecha || '';
+      return fechaRef.slice(0,7) === (yr + '-' + m) && g.moneda !== 'USD';
+    });
+    gastosTarj.forEach(g => {
+      const cat = normalizeCat((g.tipo || 'Otros').replace(/\s*\(cuota\s*\d+\/\d+\)\s*$/i,'').trim());
+      if (!cat) return;
+      const monto = parseFloat(g.monto) || 0;
+      if (!catMap[cat]) catMap[cat] = new Array(12).fill(0);
+      catMap[cat][i] += monto;
+      totalAnio += monto;
     });
   });
 
