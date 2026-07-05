@@ -6342,27 +6342,42 @@ function renderEvolCategorias() {
   const catMap = {};
   let totalAnio = 0;
 
+  // Corte: antes de junio 2026 usamos el pago de TC de Flujo (único dato disponible).
+  // Desde junio 2026 usamos gastos individuales por categoría y excluimos los pagos TC de Flujo
+  // para no doble contar (el desglose ya está en Gastos Tarjetas).
+  const CORTE_GASTOS_TC = yr + '-06'; // primer mes con datos individuales de TC
+  const CAT_PAGOS_TC = ['tc bsf','tc bbva','tc bbva visa','tc bbva master','tc municipal','tc muni','tc mp','tc '];
+
+  const esPagoTC = cat => CAT_PAGOS_TC.some(k => (cat||'').toLowerCase().startsWith(k));
+
   meses.forEach((m, i) => {
-    // Flujo
-    const { totals, total } = txTotals(yr + '-' + m);
-    totalAnio += total;
+    const mes = yr + '-' + m;
+    const tieneGastosTarj = mes >= CORTE_GASTOS_TC;
+
+    // Flujo — siempre incluir, pero filtrar pagos TC si ya tenemos desglose individual
+    const { totals, total } = txTotals(mes);
     Object.entries(totals).forEach(([cat, monto]) => {
-      if (!catMap[cat]) catMap[cat] = new Array(12).fill(0);
-      catMap[cat][i] += monto;
-    });
-    // Gastos TC del mismo mes — usando fecha real del gasto (fechaCompra o fecha)
-    const gastosTarj = getGastosTarjetas().filter(g => {
-      const fechaRef = g.fechaCompra || g.fecha || '';
-      return fechaRef.slice(0,7) === (yr + '-' + m) && g.moneda !== 'USD';
-    });
-    gastosTarj.forEach(g => {
-      const cat = normalizeCat((g.tipo || 'Otros').replace(/\s*\(cuota\s*\d+\/\d+\)\s*$/i,'').trim());
-      if (!cat) return;
-      const monto = parseFloat(g.monto) || 0;
+      if (tieneGastosTarj && esPagoTC(cat)) return; // no doble contar
       if (!catMap[cat]) catMap[cat] = new Array(12).fill(0);
       catMap[cat][i] += monto;
       totalAnio += monto;
     });
+
+    // Gastos TC individuales — solo desde el corte
+    if (tieneGastosTarj) {
+      const gastosTarj = getGastosTarjetas().filter(g => {
+        const fechaRef = g.fechaCompra || g.fecha || '';
+        return fechaRef.slice(0,7) === mes && g.moneda !== 'USD';
+      });
+      gastosTarj.forEach(g => {
+        const cat = normalizeCat((g.tipo || 'Otros').replace(/\s*\(cuota\s*\d+\/\d+\)\s*$/i,'').trim());
+        if (!cat) return;
+        const monto = parseFloat(g.monto) || 0;
+        if (!catMap[cat]) catMap[cat] = new Array(12).fill(0);
+        catMap[cat][i] += monto;
+        totalAnio += monto;
+      });
+    }
   });
 
   if (Object.keys(catMap).length === 0) {
