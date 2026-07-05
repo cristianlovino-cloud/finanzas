@@ -6125,84 +6125,78 @@ function saveGruposCategorias(grupos) {
   if (window.FBsave) window.FBsave('grupos_categorias', grupos);
 }
 
+// Draft local — solo se persiste al tocar Guardar
+let _gruposDraft = null;
+
 function renderConfigGrupos() {
   const el = document.getElementById('config-grupos-body');
   if (!el) return;
-  const grupos = getGruposCategorias() || sugerirGrupos();
+  if (!_gruposDraft) _gruposDraft = JSON.parse(JSON.stringify(getGruposCategorias() || sugerirGrupos()));
+  const grupos = _gruposDraft;
+  const nombresGrupos = grupos.map(g => g.grupo);
 
   el.innerHTML = grupos.map((g, gi) => `
     <div style="background:var(--s2);border-radius:8px;padding:10px;margin-bottom:8px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-        <input type="text" value="${g.grupo}" onchange="renombrarGrupo(${gi}, this.value)"
-          class="fi" style="flex:1;font-size:var(--fs-sm);font-weight:600;padding:5px 8px">
-        <button onclick="eliminarGrupo(${gi})" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:var(--fs-sm)">✕</button>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <input type="text" value="${g.grupo}" oninput="_gruposDraft[${gi}].grupo=this.value"
+          class="fi" style="flex:1;font-size:var(--fs-sm);font-weight:700;padding:5px 8px">
+        <button onclick="draftEliminarGrupo(${gi})" title="Eliminar grupo"
+          style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:var(--fs-sm)">✕</button>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:4px">
         ${g.miembros.map((m, mi) => `
-          <span style="background:var(--s3);border-radius:12px;padding:3px 10px;font-size:var(--fs-xs);color:var(--muted2);display:flex;align-items:center;gap:4px">
-            ${m}
-            <button onclick="quitarDeMiembro(${gi},${mi})" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:var(--fs-xs);padding:0;line-height:1">✕</button>
-          </span>`).join('')}
+          <div style="background:var(--s3);border-radius:8px;padding:4px 8px;font-size:var(--fs-xs);color:var(--muted2);display:flex;align-items:center;gap:4px">
+            <span>${m}</span>
+            <select onchange="draftMoverMiembro(${gi},${mi},this.value)" title="Mover a otro grupo"
+              style="background:none;border:none;color:var(--muted);font-size:var(--fs-xs);cursor:pointer;padding:0;outline:none;max-width:60px">
+              <option value="">↗</option>
+              ${nombresGrupos.filter((_,i)=>i!==gi).map(n=>`<option value="${n}">${n}</option>`).join('')}
+            </select>
+            <button onclick="draftQuitarMiembro(${gi},${mi})" title="Quitar"
+              style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:var(--fs-xs);padding:0">✕</button>
+          </div>`).join('')}
       </div>
     </div>`).join('') + `
-    <button onclick="agregarGrupoNuevo()" class="btn btn-o" style="width:100%;font-size:var(--fs-sm)">＋ Agregar grupo</button>
-    <button onclick="guardarGruposCategorias()" class="btn btn-g" style="width:100%;margin-top:8px;font-size:var(--fs-sm)">✓ Guardar agrupación</button>`;
+    <div style="display:flex;gap:6px;margin-top:4px">
+      <button onclick="draftAgregarGrupo()" class="btn btn-o" style="flex:1;font-size:var(--fs-xs)">＋ Grupo</button>
+      <button onclick="draftDescartar()" style="flex:1;font-size:var(--fs-xs);background:var(--s2);border:1px solid var(--border);border-radius:8px;color:var(--muted);cursor:pointer;padding:8px">✕ Descartar</button>
+      <button onclick="guardarGruposCategorias()" class="btn btn-g" style="flex:1;font-size:var(--fs-xs)">✓ Guardar</button>
+    </div>`;
 }
 
-function renombrarGrupo(gi, nombre) {
-  const grupos = getGruposCategorias() || sugerirGrupos();
-  grupos[gi].grupo = nombre;
-  saveGruposCategorias(grupos);
-}
-
-function eliminarGrupo(gi) {
-  const grupos = getGruposCategorias() || sugerirGrupos();
-  grupos.splice(gi, 1);
-  saveGruposCategorias(grupos);
+function draftEliminarGrupo(gi) { _gruposDraft.splice(gi,1); renderConfigGrupos(); }
+function draftQuitarMiembro(gi, mi) { _gruposDraft[gi].miembros.splice(mi,1); renderConfigGrupos(); }
+function draftMoverMiembro(gi, mi, destGrupo) {
+  if (!destGrupo) return;
+  const m = _gruposDraft[gi].miembros.splice(mi,1)[0];
+  const dest = _gruposDraft.find(g => g.grupo === destGrupo);
+  if (dest) dest.miembros.push(m);
   renderConfigGrupos();
 }
-
-function quitarDeMiembro(gi, mi) {
-  const grupos = getGruposCategorias() || sugerirGrupos();
-  grupos[gi].miembros.splice(mi, 1);
-  if (grupos[gi].miembros.length === 0) grupos.splice(gi, 1);
-  saveGruposCategorias(grupos);
-  renderConfigGrupos();
-}
-
-function agregarGrupoNuevo() {
-  const grupos = getGruposCategorias() || sugerirGrupos();
-  grupos.push({ grupo: 'Nuevo grupo', miembros: [] });
-  saveGruposCategorias(grupos);
-  renderConfigGrupos();
-}
+function draftAgregarGrupo() { _gruposDraft.push({ grupo: 'Nuevo grupo', miembros: [] }); renderConfigGrupos(); }
+function draftDescartar() { _gruposDraft = null; const p = document.getElementById('config-grupos-panel'); if(p) p.style.display='none'; }
 
 function toggleConfigGrupos() {
   const panel = document.getElementById('config-grupos-panel');
   if (!panel) return;
   const abierto = panel.style.display !== 'none';
   if (!abierto) {
+    _gruposDraft = null; // resetear draft al abrir
     panel.style.display = 'block';
-    // Cargar grupos actuales o sugeridos
-    if (!getGruposCategorias()) {
-      const sugeridos = sugerirGrupos();
-      saveGruposCategorias(sugeridos);
-    }
     renderConfigGrupos();
   } else {
-    panel.style.display = 'none';
+    draftDescartar();
   }
 }
 
 function guardarGruposCategorias() {
-  // Ya se va guardando en cada cambio, solo actualizar la tabla
+  if (!_gruposDraft) return;
+  saveGruposCategorias(_gruposDraft);
+  _gruposDraft = null;
   renderEvolCategorias();
   showToast('✓ Agrupación guardada');
-  // Colapsar el panel de config
-  const body = document.getElementById('config-grupos-body');
-  const chev = document.getElementById('config-grupos-chev');
-  if (body) body.style.display = 'none';
-  if (chev) chev.textContent = '▶';
+  const panel = document.getElementById('config-grupos-panel');
+  if (panel) panel.style.display = 'none';
 }
 
 // ══════════════════════════════════════════════════════
