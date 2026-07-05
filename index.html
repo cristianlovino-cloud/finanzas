@@ -6354,10 +6354,15 @@ function renderEvolCategorias() {
     const mes = yr + '-' + m;
     const tieneGastosTarj = mes >= CORTE_GASTOS_TC;
 
-    // Flujo — siempre incluir, pero filtrar pagos TC si ya tenemos desglose individual
-    const { totals, total } = txTotals(mes);
-    Object.entries(totals).forEach(([cat, monto]) => {
-      if (tieneGastosTarj && esPagoTC(cat)) return; // no doble contar
+    // Flujo — incluir gastos directos, pero desde el corte excluir pagos TC (tipo='tc')
+    // para no doble contar con el desglose individual de Gastos Tarjetas
+    const txsMes = getTxs(mes);
+    txsMes.forEach(tx => {
+      if (tx.tipo === 'ingreso') return;
+      if (tieneGastosTarj && tx.tipo === 'tc') return; // desde junio, excluir pagos TC
+      const cat = normalizeCat(tx.cat || 'Otros');
+      const monto = parseFloat(tx.monto) || 0;
+      if (!monto) return;
       if (!catMap[cat]) catMap[cat] = new Array(12).fill(0);
       catMap[cat][i] += monto;
       totalAnio += monto;
