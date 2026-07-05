@@ -128,7 +128,6 @@ window.refreshUI = function() {
   // renderInvList NO se llama en refreshUI — los precios se actualizan solos al navegar a Inversiones
   setTimeout(() => {
     try { buildMesAMesChart(_mesAMesYear); } catch(e) {}
-    try { buildDonut(); } catch(e) {}
   }, 200);
 };
 
@@ -1059,10 +1058,7 @@ nav::-webkit-scrollbar{display:none}
       </div>
       <div id="mesames-tabla" style="overflow-x:auto"></div>
     </div>
-    <div class="card">
-      <div class="ct">Composición del mes</div>
-      <canvas id="c-donut" height="180"></canvas>
-    </div>
+
     <div class="card" id="card-evol-categorias">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
         <div class="ct" style="margin-bottom:0">📊 Evolución de gastos por categoría</div>
@@ -5123,7 +5119,6 @@ function updateOverview() {
   // ── Render banner colapsable ──
   renderAlertsBanner(alerts);
 
-  buildDonut();
   if (typeof buildAnualChart     === 'function') buildAnualChart();
   if (typeof updateOverviewSaldos=== 'function') updateOverviewSaldos();
   if (typeof renderPlataOciosa   === 'function') renderPlataOciosa();
@@ -8231,8 +8226,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Charts al final
   requestAnimationFrame(() => setTimeout(() => {
     buildMesAMesChart('2026');
-    buildDonut();
-  }, 100));
+    }, 100));
 
   // Single deferred check in case Firebase was still loading at init
   setTimeout(() => {
