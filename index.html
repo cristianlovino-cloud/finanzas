@@ -6338,16 +6338,21 @@ function renderEvolCategorias() {
   let totalAnio = 0;
 
   // Lógica correcta:
-  // - Flujo tipo 'gasto' (efectivo/débito): siempre incluir — es gasto real directo
-  // - Flujo tipo 'tc' (pago del resumen): NUNCA incluir — es movimiento de caja, no gasto
-  // - Gastos TC individuales (Supermercado, Nafta, etc.): incluir siempre — son el gasto real por categoría
+  // - Flujo tipo 'gasto' (efectivo/débito): siempre incluir — gasto real directo
+  // - Flujo tipo 'tc' (pago del resumen): incluir SOLO antes de junio 2026 como proxy histórico
+  // - Gastos TC individuales: incluir SOLO desde junio 2026, usando fecha de cierre del período
+  const CORTE_TC = yr + '-06'; // primer mes con desglose individual
+
   meses.forEach((m, i) => {
     const mes = yr + '-' + m;
+    const esHistorico = mes < CORTE_TC;
 
-    // Solo gastos directos de Flujo (tipo 'gasto'), nunca pagos de resumen TC
     const txsMes = getTxs(mes);
     txsMes.forEach(tx => {
-      if (tx.tipo !== 'gasto') return; // solo efectivo/débito, nunca TC ni ingresos
+      if (tx.tipo === 'ingreso') return;
+      // Antes del corte: incluir pagos TC como proxy. Después: excluirlos
+      if (!esHistorico && tx.tipo === 'tc') return;
+      if (tx.tipo === 'tc' && !esHistorico) return;
       const cat = normalizeCat(tx.cat || 'Otros');
       const monto = parseFloat(tx.monto) || 0;
       if (!monto) return;
@@ -6356,19 +6361,21 @@ function renderEvolCategorias() {
       totalAnio += monto;
     });
 
-    // Gastos TC individuales — siempre, desde que existen (junio 2026 en adelante)
-    const gastosTarj = getGastosTarjetas().filter(g => {
-      const fechaRef = g.fechaCompra || g.fecha || '';
-      return fechaRef.slice(0,7) === mes && g.moneda !== 'USD';
-    });
-    gastosTarj.forEach(g => {
-      const cat = normalizeCat((g.tipo || 'Otros').replace(/\s*\(cuota\s*\d+\/\d+\)\s*$/i,'').trim());
-      if (!cat) return;
-      const monto = parseFloat(g.monto) || 0;
-      if (!catMap[cat]) catMap[cat] = new Array(12).fill(0);
-      catMap[cat][i] += monto;
-      totalAnio += monto;
-    });
+    // Gastos TC individuales — solo desde junio, usando g.fecha (cierre del período)
+    // para que cada cuota aparezca en el mes que le corresponde pagar
+    if (!esHistorico) {
+      const gastosTarj = getGastosTarjetas().filter(g => {
+        return g.fecha && g.fecha.slice(0,7) === mes && g.moneda !== 'USD';
+      });
+      gastosTarj.forEach(g => {
+        const cat = normalizeCat((g.tipo || 'Otros').replace(/\s*\(cuota\s*\d+\/\d+\)\s*/i,'').trim());
+        if (!cat) return;
+        const monto = parseFloat(g.monto) || 0;
+        if (!catMap[cat]) catMap[cat] = new Array(12).fill(0);
+        catMap[cat][i] += monto;
+        totalAnio += monto;
+      });
+    }
   });
 
   if (Object.keys(catMap).length === 0) {
