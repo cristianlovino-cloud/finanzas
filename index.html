@@ -2396,11 +2396,20 @@ function go(id, btn) {
   }
 }
 
-// ── Cerrar sesión modo familiar (limpia flag y recarga) ──
+// ── Cerrar sesión modo familiar (limpia flag y recarga, pero SIN salir del modo familiar) ──
 window.cfCerrarSesion = function() {
+  // Ojo: antes esto recargaba a origin+pathname sin query params, y como el flag
+  // 'cf_modo_familiar' también se borraba, la próxima carga no tenía forma de saber
+  // que debía mostrar el overlay familiar → caía en la app completa (vacía en su dispositivo).
+  // Ahora: limpiamos el PIN validado, pero preservamos ?modo=carga-familiar (y &quien=)
+  // para que la recarga vuelva a la pantalla de PIN, nunca a la app completa.
   localStorage.removeItem('cf_modo_familiar');
+  const quien = new URLSearchParams(location.search).get('quien') || localStorage.getItem('cf_quien') || '';
   localStorage.removeItem('cf_quien');
-  location.href = location.origin + location.pathname; // recarga sin query params
+  const params = new URLSearchParams();
+  params.set('modo', 'carga-familiar');
+  if (quien) params.set('quien', quien);
+  location.href = location.origin + location.pathname + '?' + params.toString();
 };
 
 // ── Toggle intro tarjetas y recurrentes ──
