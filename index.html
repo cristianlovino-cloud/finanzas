@@ -352,9 +352,10 @@ window.cfValidarPin = async function() {
 
     _cfPinValidado = true;
     _cfTarjetasDisponibles = data.tarjetas || [];
-    // Persistir modo familiar para que PWA instalada arranque directo al form
+    // Persistir modo familiar + PIN validado para que la PWA instalada arranque directo al form
     const quienActual = document.getElementById('cf-quien')?.value || '';
     localStorage.setItem('cf_modo_familiar', '1');
+    localStorage.setItem('cf_pin_ok', '1'); // solo esto habilita saltear la pantalla de PIN la próxima vez
     if (quienActual) localStorage.setItem('cf_quien', quienActual);
     const sel = document.getElementById('cf-tarjeta');
     sel.innerHTML = _cfTarjetasDisponibles.length > 0
@@ -2404,6 +2405,7 @@ window.cfCerrarSesion = function() {
   // Ahora: limpiamos el PIN validado, pero preservamos ?modo=carga-familiar (y &quien=)
   // para que la recarga vuelva a la pantalla de PIN, nunca a la app completa.
   localStorage.removeItem('cf_modo_familiar');
+  localStorage.removeItem('cf_pin_ok');
   const quien = new URLSearchParams(location.search).get('quien') || localStorage.getItem('cf_quien') || '';
   localStorage.removeItem('cf_quien');
   const params = new URLSearchParams();
@@ -8064,12 +8066,19 @@ document.addEventListener('DOMContentLoaded', () => {
   const _cfModoParam = new URLSearchParams(location.search).get('modo') === 'carga-familiar';
   const _cfModoFlag  = localStorage.getItem('cf_modo_familiar') === '1';
   if (_cfModoParam || _cfModoFlag) {
+    // Grabamos el flag apenas entran por el link con ?modo=carga-familiar, NO recién
+    // después de validar el PIN. Motivo: si instalan el ícono a la home ANTES de tocar
+    // "Entrar", el ícono instalado abre el start_url pelado del manifest (sin query
+    // params) — y sin este flag ya grabado, esa primera apertura no tenía forma de saber
+    // que debía mostrar el form familiar, y caía de lleno en la app completa (vacía).
+    if (_cfModoParam) localStorage.setItem('cf_modo_familiar', '1');
     document.getElementById('carga-familiar-overlay').style.display = 'block';
     document.getElementById('cf-fecha').value = new Date().toISOString().slice(0,10);
 
     // Quien: primero query param, después localStorage (PWA)
     const quienUrl = new URLSearchParams(location.search).get('quien') || localStorage.getItem('cf_quien') || '';
     if (quienUrl) {
+      localStorage.setItem('cf_quien', quienUrl); // persistir también antes de validar PIN
       const quienSel = document.getElementById('cf-quien');
       if (quienSel) {
         if (![...quienSel.options].some(o => o.value === quienUrl)) {
@@ -8082,8 +8091,9 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    // Si ya validó el PIN antes (flag persistido), saltar directo al form
-    if (_cfModoFlag && !_cfModoParam) {
+    // Si ya validó el PIN antes en este dispositivo (flag específico, no el genérico de modo familiar), saltar directo al form
+    const _cfPinOk = localStorage.getItem('cf_pin_ok') === '1';
+    if (_cfPinOk && !_cfModoParam) {
       // Intentar cargar config desde Firestore para tener tarjetas/categorías actualizadas
       getDoc(CF_DOC_PIN).then(snap => {
         if (!snap.exists()) return;
