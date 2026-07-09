@@ -14,6 +14,27 @@
 <meta name="apple-mobile-web-app-title" content="CL Finanzas">
 <meta name="application-name" content="CL Finanzas">
 <link rel="manifest" href="manifest.json">
+<script>
+// Si entramos por el link de carga familiar (?modo=carga-familiar), cambiamos el
+// manifest ANTES de que Chrome evalúe la instalación, para que el ícono instalado
+// tenga el modo familiar GRABADO en su propio start_url — ya no dependemos del
+// orden de clicks ni de localStorage, que resultaron frágiles (WebAPK a veces no
+// respeta la URL exacta desde la que se instaló).
+(function() {
+  try {
+    const params = new URLSearchParams(location.search);
+    if (params.get('modo') === 'carga-familiar') {
+      const quien = (params.get('quien') || '').toLowerCase();
+      const manifestLink = document.querySelector('link[rel="manifest"]');
+      if (manifestLink) {
+        if (quien === 'lara')      manifestLink.setAttribute('href', 'manifest-familiar-lara.json');
+        else if (quien === 'emma') manifestLink.setAttribute('href', 'manifest-familiar-emma.json');
+        else                       manifestLink.setAttribute('href', 'manifest-familiar.json');
+      }
+    }
+  } catch(e) { console.error('manifest familiar swap error:', e); }
+})();
+</script>
 <link rel="apple-touch-icon" href="icon-192.png">
 <title>CL · Finanzas v1.3.0</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
