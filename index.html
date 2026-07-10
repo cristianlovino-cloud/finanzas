@@ -1583,7 +1583,7 @@ nav::-webkit-scrollbar{display:none}
     </div>
 
     <div class="card">
-      <div class="ct">Movimientos recientes</div>
+      <div class="ct">Movimientos — por ticker</div>
       <div id="inv-movs"></div>
     </div>
   </div>
@@ -1622,6 +1622,19 @@ nav::-webkit-scrollbar{display:none}
               <option value="">— seleccioná —</option>
             </select>
           </div>
+        </div>
+
+        <!-- Broker / comitente -->
+        <div style="margin-bottom:8px">
+          <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">BROKER / COMITENTE</div>
+          <select id="op-broker" class="fi" style="font-size:var(--fs-sm);padding:8px 6px" onchange="opBrokerChange(this)">
+            <option value="Cocos">Cocos</option>
+            <option value="Inviu">Inviu</option>
+            <option value="Balanz">Balanz</option>
+            <option value="BBVA">BBVA</option>
+            <option value="BSF">BSF</option>
+            <option value="__otro__">Otro...</option>
+          </select>
         </div>
 
         <!-- Ticker nuevo (solo si elige "nuevo") -->
@@ -4524,7 +4537,7 @@ function renderTarjetaCard(grupo, conciliaciones, colapsadoPorDefault) {
               ${quienBadge}
               ${g.esCuotaEnCurso ? `<span style="font-size:var(--fs-xs);color:var(--muted);background:var(--s1);border:1px solid var(--border);padding:1px 5px;border-radius:4px">cuota en curso</span>` : ''}
             </div>
-            <div style="font-size:var(--fs-xs);color:var(--muted)">${new Date(g.fecha+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'})}</div>
+            <div style="font-size:var(--fs-xs);color:var(--muted)">${new Date((g.fechaCompra || g.fecha)+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'})}</div>
           </div>
           <div style="text-align:right;flex-shrink:0;cursor:${estaConciliado?'default':'pointer'}" ${!estaConciliado ? `onclick="toggleEditarMontoGasto('${g.id}')"` : ''}>
             <div style="font-weight:700;color:var(--red);font-size:var(--fs-md)">${montoDisplay}${!estaConciliado ? ' ✎' : ''}</div>
@@ -4609,7 +4622,7 @@ function renderFuturosAgrupados(gruposFuturos) {
         <div style="display:flex;align-items:center;gap:6px">
           <div style="flex:1;min-width:0">
             <div style="font-size:var(--fs-sm);font-weight:600">${g.tipo}</div>
-            <div style="font-size:.58rem;color:var(--muted)">${grupo.tarjeta.nombre} · ${g.fecha}</div>
+            <div style="font-size:.58rem;color:var(--muted)">${grupo.tarjeta.nombre} · ${new Date((g.fechaCompra || g.fecha)+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'})}</div>
           </div>
           <div style="font-size:var(--fs-sm);font-weight:700;color:var(--muted2);cursor:pointer" onclick="toggleEditarMontoGasto('${g.id}')">${montoDisplay} ✎</div>
           <button onclick="eliminarGastoTarjeta('${g.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:var(--fs-sm);padding:2px 4px">✕</button>
@@ -7108,27 +7121,61 @@ async function renderInvList() {
     });
   }
 
-  // Movimientos de inversión (desde inv_movimientos, no txs)
-  const invMovs = DB.get('inv_movimientos', []).slice(0, 10);
+  // Movimientos de inversión (desde inv_movimientos, no txs) — agrupados por ticker
+  const invMovs = DB.get('inv_movimientos', []);
 
-  document.getElementById('inv-movs').innerHTML = invMovs.length
-    ? invMovs.map(m => {
+  if (invMovs.length === 0) {
+    document.getElementById('inv-movs').innerHTML = '<div style="color:var(--muted);font-size:var(--fs-sm);padding:16px 0;text-align:center">Sin movimientos registrados</div>';
+  } else {
+    // Agrupar por ticker, preservando cada transacción
+    const porTicker = {};
+    invMovs.forEach(m => {
+      if (!porTicker[m.ticker]) porTicker[m.ticker] = [];
+      porTicker[m.ticker].push(m);
+    });
+    // Ordenar grupos por actividad más reciente primero
+    const tickersOrdenados = Object.keys(porTicker).sort((a, b) => {
+      const tsA = Math.max(...porTicker[a].map(m => m.ts || 0));
+      const tsB = Math.max(...porTicker[b].map(m => m.ts || 0));
+      return tsB - tsA;
+    });
+
+    document.getElementById('inv-movs').innerHTML = tickersOrdenados.map((ticker, gi) => {
+      const movs = porTicker[ticker];
+      const netoTicker = movs.reduce((s, m) => s + (m.tipo === 'venta' ? m.monto : -m.monto), 0);
+      const brokers = [...new Set(movs.map(m => m.broker).filter(Boolean))];
+      const gid = 'invmov_' + gi;
+      const filasHtml = movs.map(m => {
         const esVenta  = m.tipo === 'venta';
         const color    = esVenta ? P.red : P.green;
         const icon     = esVenta ? '📤' : '📥';
         const pnlStr   = (esVenta && m.pnl != null)
           ? ` <span style="color:${m.pnl>=0?P.green:P.red};font-size:var(--fs-xs)">${m.pnl>=0?'+':''}${fmt(m.pnl)}</span>`
           : '';
+        const brokerTag = m.broker ? ` <span class="tag">${m.broker}</span>` : '';
         return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:var(--fs-sm)">
           <span>${icon}</span>
           <div style="flex:1">
-            <div style="color:var(--text);font-weight:600">${m.ticker} <span style="font-weight:400;color:var(--muted);font-size:var(--fs-xs)">${m.cant} nom. × ${fmt(m.precio)}</span>${pnlStr}</div>
+            <div style="color:var(--text);font-weight:600">${m.cant} nom. × ${fmt(m.precio)}${pnlStr}${brokerTag}</div>
             <div style="font-size:var(--fs-xs);color:var(--muted)">${m.fecha}</div>
           </div>
           <div style="color:${color};font-weight:700;white-space:nowrap">${esVenta?'+':'-'}${fmt(m.monto)}</div>
         </div>`;
-      }).join('')
-    : '<div style="color:var(--muted);font-size:var(--fs-sm);padding:16px 0;text-align:center">Sin movimientos registrados</div>';
+      }).join('');
+      return `
+      <div style="border-bottom:1px solid var(--border2)">
+        <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;padding:10px 0" onclick="toggleInvMovGroup('${gid}')">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span id="${gid}-chevron" style="color:var(--muted);font-size:var(--fs-sm);transition:transform .2s">▶</span>
+            <span style="font-weight:700;font-family:var(--fh)">${ticker}</span>
+            <span style="font-size:var(--fs-xs);color:var(--muted)">${movs.length} mov.${brokers.length ? ' · ' + brokers.join(', ') : ''}</span>
+          </div>
+          <span style="font-weight:700;color:${netoTicker>=0?P.green:P.red}">${netoTicker>=0?'+':''}${fmt(netoTicker)}</span>
+        </div>
+        <div id="${gid}" style="display:none;padding-left:22px">${filasHtml}</div>
+      </div>`;
+    }).join('');
+  }
 
   // Análisis de riesgo de cartera (se recalcula con los datos ya actualizados)
   if (typeof renderAnalisisCartera === 'function') renderAnalisisCartera();
@@ -7373,6 +7420,31 @@ function opCalcMonto() {
   }
 }
 
+// ── Toggle acordeón de movimientos de inversión agrupados por ticker ──
+function toggleInvMovGroup(gid) {
+  const body = document.getElementById(gid);
+  const chev = document.getElementById(gid + '-chevron');
+  const open = body.style.display === 'none';
+  body.style.display = open ? 'block' : 'none';
+  chev.textContent = open ? '▼' : '▶';
+}
+
+function opBrokerChange(selectEl) {
+  if (selectEl.value === '__otro__') {
+    const nuevo = prompt('Nombre del broker/comitente:');
+    if (!nuevo || !nuevo.trim()) { selectEl.value = 'Cocos'; return; }
+    const opt = document.createElement('option');
+    opt.value = '__otro__';
+    opt.textContent = nuevo.trim();
+    opt.selected = true;
+    selectEl.dataset.custom = nuevo.trim();
+    // Reemplazar la opción "Otro..." visualmente por el nombre elegido
+    const otroOpt = [...selectEl.options].find(o => o.value === '__otro__' && o !== opt);
+    if (otroOpt) otroOpt.remove();
+    selectEl.appendChild(opt);
+  }
+}
+
 function opAgregar() {
   if (_opModoMonto === 'total') opCalcDesdeTotal(); // asegurar que op-precio esté sincronizado
 
@@ -7381,6 +7453,8 @@ function opAgregar() {
   const cant    = parseFloat(document.getElementById('op-cant').value)   || 0;
   const precio  = parseFloat(document.getElementById('op-precio').value) || 0;
   const fecha   = document.getElementById('op-fecha').value;
+  const brokerSel = document.getElementById('op-broker').value;
+  const broker  = brokerSel === '__otro__' ? (document.getElementById('op-broker').dataset.custom || 'Otro') : brokerSel;
 
   if (!tickerVal)    { showToast('Seleccioná el ticker', P.red); return; }
   if (cant <= 0)     { showToast('Ingresá los nominales', P.red); return; }
@@ -7402,7 +7476,7 @@ function opAgregar() {
   }
 
   const monto = Math.round(cant * precio);
-  _opLote.push({ tipo, ticker, desc, cant, precio, monto, fecha, invIdx, esNuevo: tickerVal === 'nuevo', tipoInstrumento: tipoNuevo });
+  _opLote.push({ tipo, ticker, desc, cant, precio, monto, fecha, invIdx, esNuevo: tickerVal === 'nuevo', tipoInstrumento: tipoNuevo, broker });
 
   opRenderLista();
   opResetForm();
@@ -7436,7 +7510,7 @@ function opRenderLista() {
       <span style="font-size:var(--fs-md)">${signo}</span>
       <div style="flex:1">
         <span style="font-weight:700;color:${color}">${op.ticker}</span>
-        <span style="color:var(--muted);font-size:var(--fs-xs)"> · ${op.cant} nom. × ${fmt(op.precio)} · ${fechaLabel}${op.esNuevo ? ' · ' + (op.tipoInstrumento || 'CEDEAR') : ''}</span>
+        <span style="color:var(--muted);font-size:var(--fs-xs)"> · ${op.cant} nom. × ${fmt(op.precio)} · ${fechaLabel}${op.esNuevo ? ' · ' + (op.tipoInstrumento || 'CEDEAR') : ''}${op.broker ? ' · ' + op.broker : ''}</span>
       </div>
       <span style="font-weight:700;color:${color};white-space:nowrap">${op.tipo === 'venta' ? '+' : '-'}${fmt(op.monto)}</span>
       <button onclick="opRemover(${i})" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:var(--fs-md);padding:2px 5px">✕</button>
@@ -7492,6 +7566,7 @@ function opEjecutar() {
       invMovs.unshift({
         ts: Date.now() + Math.random(), fecha: fechaLabel, tipo: 'compra',
         ticker: op.ticker, cant: op.cant, precio: op.precio, monto: op.monto, pnl: null,
+        broker: op.broker || '',
       });
 
     } else {
@@ -7513,7 +7588,7 @@ function opEjecutar() {
         invMovs.unshift({
           ts: Date.now() + Math.random(), fecha: fechaLabel, tipo: 'venta',
           ticker: op.ticker, cant: op.cant, precio: op.precio, monto: op.monto,
-          pnl: ganancia, costoVendido,
+          pnl: ganancia, costoVendido, broker: op.broker || '',
         });
       }
     }
