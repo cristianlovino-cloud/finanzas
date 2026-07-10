@@ -7286,10 +7286,29 @@ function renderInvEditor() {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <div><div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">Fecha entrada</div>
           <input type="date" value="${inv.fechaEntrada||''}" id="ie-fe-${i}" class="fi" style="font-size:var(--fs-sm);padding:7px 8px"></div>
-        <div><div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">Notas</div>
-          <input type="text" value="${inv.nota||''}" id="ie-no-${i}" class="fi" style="font-size:var(--fs-sm);padding:7px 10px"></div>
+        <div><div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">Broker / comitente</div>
+          <select id="ie-br-${i}" class="fi" style="font-size:var(--fs-sm);padding:7px 6px" onchange="ieBrokerChange(this,${i})">
+            ${['Cocos','Inviu','Balanz','BBVA','BSF'].map(b=>`<option ${b===inv.broker?'selected':''}>${b}</option>`).join('')}
+            ${(inv.broker && !['Cocos','Inviu','Balanz','BBVA','BSF'].includes(inv.broker)) ? `<option selected>${inv.broker}</option>` : ''}
+            <option value="__otro__">Otro...</option>
+          </select></div>
       </div>
+      <div style="margin-top:8px">
+        <div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">Notas</div>
+        <input type="text" value="${inv.nota||''}" id="ie-no-${i}" class="fi" style="font-size:var(--fs-sm);padding:7px 10px"></div>
     </div>`).join('');
+}
+
+function ieBrokerChange(selectEl, i) {
+  if (selectEl.value === '__otro__') {
+    const nuevo = prompt('Nombre del broker/comitente:');
+    if (!nuevo || !nuevo.trim()) { selectEl.value = 'Cocos'; return; }
+    const opt = document.createElement('option');
+    opt.textContent = nuevo.trim();
+    opt.selected = true;
+    const otroOpt = [...selectEl.options].find(o => o.value === '__otro__');
+    selectEl.insertBefore(opt, otroOpt);
+  }
 }
 
 function addInvRow() {
@@ -7322,6 +7341,7 @@ function saveInv() {
     inv.ticker      = (document.getElementById(`ie-tk-${i}`)?.value || '').toUpperCase() || inv.ticker || '';
     inv.moneda      = inv.moneda || 'ARS';
     inv.pos         = inv.pos    || '';
+    inv.broker      = document.getElementById(`ie-br-${i}`)?.value || inv.broker || '';
   });
   DB.set('inversiones', invs);
   toggleInvEditor();
