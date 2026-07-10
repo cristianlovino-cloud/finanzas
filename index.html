@@ -7170,24 +7170,43 @@ async function renderInvList() {
 
     const filaTx = m => {
       const esVenta  = m.tipo === 'venta';
-      const color    = esVenta ? P.red : P.green;
       const icon     = esVenta ? '📤' : '📥';
       const pnlStr   = (esVenta && m.pnl != null)
         ? ` <span style="color:${m.pnl>=0?P.green:P.red};font-size:var(--fs-xs)">${m.pnl>=0?'+':''}${fmt(m.pnl)}</span>`
         : '';
+      // Compra: neutro, no es pérdida. Venta: coloreada por el P&L real si lo tenemos.
+      const montoColor = esVenta
+        ? (m.pnl != null ? (m.pnl>=0?P.green:P.red) : 'var(--muted2)')
+        : 'var(--muted2)';
       return `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);font-size:var(--fs-sm)">
         <span>${icon}</span>
         <div style="flex:1">
           <div style="color:var(--text);font-weight:600">${m.cant} nom. × ${fmt(m.precio)}${pnlStr}</div>
           <div style="font-size:var(--fs-xs);color:var(--muted)">${m.fecha}</div>
         </div>
-        <div style="color:${color};font-weight:700;white-space:nowrap">${esVenta?'+':'-'}${fmt(m.monto)}</div>
+        <div style="color:${montoColor};font-weight:700;white-space:nowrap">${esVenta?'+':'-'}${fmt(m.monto)}</div>
       </div>`;
+    };
+
+    // Resume el "resultado" de un grupo de movimientos: si hubo ventas con P&L calculado,
+    // muestra la ganancia/pérdida REAL (verde/rojo tiene sentido ahí). Si son solo compras
+    // (el caso más común), no hay ganancia/pérdida todavía — mostramos cuánto se invirtió,
+    // en color neutro, para no confundir "compré" con "perdí plata".
+    const resumenFlujoMovs = movs => {
+      const ventasConPnl = movs.filter(m => m.tipo === 'venta' && m.pnl != null);
+      if (ventasConPnl.length > 0) {
+        const pnlSum = ventasConPnl.reduce((s, m) => s + (m.pnl || 0), 0);
+        return { label: `${pnlSum>=0?'+':''}${fmt(pnlSum)} P&L`, color: pnlSum>=0?P.green:P.red };
+      }
+      const netoCash = movs.reduce((s, m) => s + (m.tipo === 'venta' ? m.monto : -m.monto), 0);
+      return netoCash < 0
+        ? { label: `Invertido: ${fmt(-netoCash)}`, color: 'var(--muted2)' }
+        : { label: `+${fmt(netoCash)} recibido`, color: 'var(--muted2)' };
     };
 
     document.getElementById('inv-movs').innerHTML = tickersOrdenados.map((ticker, gi) => {
       const movs = porTicker[ticker];
-      const netoTicker = movs.reduce((s, m) => s + (m.tipo === 'venta' ? m.monto : -m.monto), 0);
+      const resumenTicker = resumenFlujoMovs(movs);
       const gid = 'invmov_' + gi;
 
       // Nivel 2: agrupar por broker dentro del ticker
@@ -7204,7 +7223,7 @@ async function renderInvList() {
         ? movs.map(filaTx).join('')
         : brokersDelTicker.map((broker, bi) => {
             const movsBroker = porBroker[broker];
-            const netoBroker = movsBroker.reduce((s, m) => s + (m.tipo === 'venta' ? m.monto : -m.monto), 0);
+            const resumenBroker = resumenFlujoMovs(movsBroker);
             const bid = gid + '_b' + bi;
             return `
             <div style="border-bottom:1px solid var(--border)">
@@ -7214,7 +7233,7 @@ async function renderInvList() {
                   <span class="tag">${broker}</span>
                   <span style="font-size:var(--fs-xs);color:var(--muted)">${movsBroker.length} mov.</span>
                 </div>
-                <span style="font-size:var(--fs-sm);font-weight:600;color:${netoBroker>=0?P.green:P.red}">${netoBroker>=0?'+':''}${fmt(netoBroker)}</span>
+                <span style="font-size:var(--fs-sm);font-weight:600;color:${resumenBroker.color}">${resumenBroker.label}</span>
               </div>
               <div id="${bid}" style="display:none;padding-left:18px">${movsBroker.map(filaTx).join('')}</div>
             </div>`;
@@ -7228,7 +7247,7 @@ async function renderInvList() {
             <span style="font-weight:700;font-family:var(--fh)">${ticker}</span>
             <span style="font-size:var(--fs-xs);color:var(--muted)">${movs.length} mov.${brokersDelTicker.length > 1 ? ' · ' + brokersDelTicker.length + ' brokers' : (brokersDelTicker[0] !== 'Sin especificar' ? ' · ' + brokersDelTicker[0] : '')}</span>
           </div>
-          <span style="font-weight:700;color:${netoTicker>=0?P.green:P.red}">${netoTicker>=0?'+':''}${fmt(netoTicker)}</span>
+          <span style="font-weight:700;color:${resumenTicker.color}">${resumenTicker.label}</span>
         </div>
         <div id="${gid}" style="display:none;padding-left:22px">${nivelBrokerHtml}</div>
       </div>`;
