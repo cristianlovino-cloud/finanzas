@@ -1588,8 +1588,14 @@ nav::-webkit-scrollbar{display:none}
     </div>
 
     <div class="card">
-      <div class="ct">Movimientos — por ticker</div>
-      <div id="inv-movs"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="toggleInvMovsCard()">
+        <div class="ct" style="margin-bottom:0">Movimientos — por broker</div>
+        <span id="inv-movs-chevron" style="color:var(--muted);font-size:var(--fs-md);transition:transform .2s">▶</span>
+      </div>
+      <div id="inv-movs-resumen" style="font-size:var(--fs-xs);color:var(--muted);margin-top:6px"></div>
+      <div id="inv-movs-body" style="display:none;margin-top:10px">
+        <div id="inv-movs"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -7004,15 +7010,9 @@ function renderAnalisisCartera() {
       </div>`).join('')}
     </div>`;
 
-  // ── Auto-expandir solo si hay algo urgente (fuera de tolerancia o posiciones a evaluar/rotar) ──
-  // Respeta si el usuario ya lo colapsó a mano una vez (no lo vuelve a forzar abierto en cada re-render).
+  // Se queda siempre colapsada por default — el usuario decide cuándo mirarla.
+  // El conteo de posiciones a revisar sí se muestra en el resumen (siempre visible), para que sepa que hay algo sin tener que abrir.
   const urgentes = conAccion.filter(i => i.accion === 'EVALUAR EN SERIO' || i.accion === 'ROTAR').length;
-  const bodyEl = document.getElementById('analisis-cartera-body');
-  const chevEl = document.getElementById('analisis-cartera-chevron');
-  if (bodyEl && chevEl && (sobreTolerancia || urgentes > 0) && !bodyEl.dataset.userToggled) {
-    bodyEl.style.display = 'block';
-    chevEl.textContent = '▼';
-  }
   if (urgentes > 0) {
     resEl.innerHTML += `<div style="font-size:var(--fs-xs);color:${P.red};margin-top:6px">⚠ ${urgentes} posición${urgentes>1?'es':''} para revisar — tocá para ver el detalle</div>`;
   }
@@ -7026,6 +7026,15 @@ function toggleAnalisisCartera() {
   body.style.display = open ? 'block' : 'none';
   chev.textContent = open ? '▼' : '▶';
   body.dataset.userToggled = '1'; // a partir de acá, respetar la elección manual del usuario
+}
+
+// ── Toggle acordeón de la card completa de Movimientos ──
+function toggleInvMovsCard() {
+  const body = document.getElementById('inv-movs-body');
+  const chev = document.getElementById('inv-movs-chevron');
+  const open = body.style.display === 'none';
+  body.style.display = open ? 'block' : 'none';
+  chev.textContent = open ? '▼' : '▶';
 }
 
 async function renderInvList() {
@@ -7149,25 +7158,14 @@ async function renderInvList() {
     });
   }
 
-  // Movimientos de inversión (desde inv_movimientos, no txs) — agrupados por ticker → broker → transacción
+  // Movimientos de inversión (desde inv_movimientos, no txs) — agrupados por broker → ticker → transacción
   const invMovs = DB.get('inv_movimientos', []);
+  const resumenTopEl = document.getElementById('inv-movs-resumen');
 
   if (invMovs.length === 0) {
-    document.getElementById('inv-movs').innerHTML = '<div style="color:var(--muted);font-size:var(--fs-sm);padding:16px 0;text-align:center">Sin movimientos registrados</div>';
+    if (resumenTopEl) resumenTopEl.textContent = 'Sin movimientos registrados';
+    document.getElementById('inv-movs').innerHTML = '';
   } else {
-    // Nivel 1: agrupar por ticker, preservando cada transacción
-    const porTicker = {};
-    invMovs.forEach(m => {
-      if (!porTicker[m.ticker]) porTicker[m.ticker] = [];
-      porTicker[m.ticker].push(m);
-    });
-    // Ordenar tickers por actividad más reciente primero
-    const tickersOrdenados = Object.keys(porTicker).sort((a, b) => {
-      const tsA = Math.max(...porTicker[a].map(m => m.ts || 0));
-      const tsB = Math.max(...porTicker[b].map(m => m.ts || 0));
-      return tsB - tsA;
-    });
-
     const filaTx = m => {
       const esVenta  = m.tipo === 'venta';
       const icon     = esVenta ? '📤' : '📥';
@@ -7188,10 +7186,10 @@ async function renderInvList() {
       </div>`;
     };
 
-    // Resume el "resultado" de un grupo de movimientos: si hubo ventas con P&L calculado,
-    // muestra la ganancia/pérdida REAL (verde/rojo tiene sentido ahí). Si son solo compras
-    // (el caso más común), no hay ganancia/pérdida todavía — mostramos cuánto se invirtió,
-    // en color neutro, para no confundir "compré" con "perdí plata".
+    // Resume el "resultado" de un grupo: si hubo ventas con P&L calculado, muestra la
+    // ganancia/pérdida REAL (verde/rojo tiene sentido ahí). Si son solo compras (el caso
+    // más común), no hay ganancia/pérdida todavía — mostramos cuánto se invirtió, en color
+    // neutro, para no confundir "compré" con "perdí plata".
     const resumenFlujoMovs = movs => {
       const ventasConPnl = movs.filter(m => m.tipo === 'venta' && m.pnl != null);
       if (ventasConPnl.length > 0) {
@@ -7204,52 +7202,68 @@ async function renderInvList() {
         : { label: `+${fmt(netoCash)} recibido`, color: 'var(--muted2)' };
     };
 
-    document.getElementById('inv-movs').innerHTML = tickersOrdenados.map((ticker, gi) => {
-      const movs = porTicker[ticker];
-      const resumenTicker = resumenFlujoMovs(movs);
-      const gid = 'invmov_' + gi;
+    // Nivel 1: agrupar por broker, preservando cada transacción
+    const porBroker = {};
+    invMovs.forEach(m => {
+      const b = m.broker || 'Sin especificar';
+      if (!porBroker[b]) porBroker[b] = [];
+      porBroker[b].push(m);
+    });
+    const brokersOrdenados = Object.keys(porBroker).sort((a, b) => {
+      const tsA = Math.max(...porBroker[a].map(m => m.ts || 0));
+      const tsB = Math.max(...porBroker[b].map(m => m.ts || 0));
+      return tsB - tsA;
+    });
 
-      // Nivel 2: agrupar por broker dentro del ticker
-      const porBroker = {};
-      movs.forEach(m => {
-        const b = m.broker || 'Sin especificar';
-        if (!porBroker[b]) porBroker[b] = [];
-        porBroker[b].push(m);
+    const nTickersTotal = new Set(invMovs.map(m => m.ticker)).size;
+    if (resumenTopEl) resumenTopEl.textContent = `${invMovs.length} movimientos · ${nTickersTotal} tickers · ${brokersOrdenados.length} broker${brokersOrdenados.length>1?'s':''}`;
+
+    document.getElementById('inv-movs').innerHTML = brokersOrdenados.map((broker, bi) => {
+      const movsBroker = porBroker[broker];
+      const resumenBroker = resumenFlujoMovs(movsBroker);
+      const bid = 'invmov_b' + bi;
+
+      // Nivel 2: agrupar por ticker dentro del broker
+      const porTicker = {};
+      movsBroker.forEach(m => {
+        if (!porTicker[m.ticker]) porTicker[m.ticker] = [];
+        porTicker[m.ticker].push(m);
       });
-      const brokersDelTicker = Object.keys(porBroker);
+      const tickersDelBroker = Object.keys(porTicker).sort((a, b) => {
+        const tsA = Math.max(...porTicker[a].map(m => m.ts || 0));
+        const tsB = Math.max(...porTicker[b].map(m => m.ts || 0));
+        return tsB - tsA;
+      });
 
-      // Si hay un solo broker (o ninguno especificado), no tiene sentido el nivel intermedio: transacciones directo
-      const nivelBrokerHtml = brokersDelTicker.length <= 1
-        ? movs.map(filaTx).join('')
-        : brokersDelTicker.map((broker, bi) => {
-            const movsBroker = porBroker[broker];
-            const resumenBroker = resumenFlujoMovs(movsBroker);
-            const bid = gid + '_b' + bi;
-            return `
-            <div style="border-bottom:1px solid var(--border)">
-              <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;padding:8px 0 8px 4px" onclick="toggleInvMovGroup('${bid}')">
-                <div style="display:flex;align-items:center;gap:6px">
-                  <span id="${bid}-chevron" style="color:var(--muted);font-size:var(--fs-xs);transition:transform .2s">▶</span>
-                  <span class="tag">${broker}</span>
-                  <span style="font-size:var(--fs-xs);color:var(--muted)">${movsBroker.length} mov.</span>
-                </div>
-                <span style="font-size:var(--fs-sm);font-weight:600;color:${resumenBroker.color}">${resumenBroker.label}</span>
-              </div>
-              <div id="${bid}" style="display:none;padding-left:18px">${movsBroker.map(filaTx).join('')}</div>
-            </div>`;
-          }).join('');
+      const nivelTickerHtml = tickersDelBroker.map((ticker, ti) => {
+        const movsTicker = porTicker[ticker];
+        const resumenTicker = resumenFlujoMovs(movsTicker);
+        const tid = bid + '_t' + ti;
+        return `
+        <div style="border-bottom:1px solid var(--border)">
+          <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;padding:8px 0 8px 4px" onclick="toggleInvMovGroup('${tid}')">
+            <div style="display:flex;align-items:center;gap:6px">
+              <span id="${tid}-chevron" style="color:var(--muted);font-size:var(--fs-xs);transition:transform .2s">▶</span>
+              <span style="font-weight:700;font-family:var(--fh);font-size:var(--fs-sm)">${ticker}</span>
+              <span style="font-size:var(--fs-xs);color:var(--muted)">${movsTicker.length} mov.</span>
+            </div>
+            <span style="font-size:var(--fs-sm);font-weight:600;color:${resumenTicker.color}">${resumenTicker.label}</span>
+          </div>
+          <div id="${tid}" style="display:none;padding-left:18px">${movsTicker.map(filaTx).join('')}</div>
+        </div>`;
+      }).join('');
 
       return `
       <div style="border-bottom:1px solid var(--border2)">
-        <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;padding:10px 0" onclick="toggleInvMovGroup('${gid}')">
+        <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;padding:10px 0" onclick="toggleInvMovGroup('${bid}')">
           <div style="display:flex;align-items:center;gap:8px">
-            <span id="${gid}-chevron" style="color:var(--muted);font-size:var(--fs-sm);transition:transform .2s">▶</span>
-            <span style="font-weight:700;font-family:var(--fh)">${ticker}</span>
-            <span style="font-size:var(--fs-xs);color:var(--muted)">${movs.length} mov.${brokersDelTicker.length > 1 ? ' · ' + brokersDelTicker.length + ' brokers' : (brokersDelTicker[0] !== 'Sin especificar' ? ' · ' + brokersDelTicker[0] : '')}</span>
+            <span id="${bid}-chevron" style="color:var(--muted);font-size:var(--fs-sm);transition:transform .2s">▶</span>
+            <span class="tag">${broker}</span>
+            <span style="font-size:var(--fs-xs);color:var(--muted)">${movsBroker.length} mov. · ${tickersDelBroker.length} ticker${tickersDelBroker.length>1?'s':''}</span>
           </div>
-          <span style="font-weight:700;color:${resumenTicker.color}">${resumenTicker.label}</span>
+          <span style="font-weight:700;color:${resumenBroker.color}">${resumenBroker.label}</span>
         </div>
-        <div id="${gid}" style="display:none;padding-left:22px">${nivelBrokerHtml}</div>
+        <div id="${bid}" style="display:none;padding-left:22px">${nivelTickerHtml}</div>
       </div>`;
     }).join('');
   }
