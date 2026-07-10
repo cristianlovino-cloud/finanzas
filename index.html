@@ -33,6 +33,31 @@
       }
     }
   } catch(e) { console.error('manifest familiar swap error:', e); }
+
+  // ── Preset de tipografía elegido por el usuario (Config → Tipografía) ──
+  try {
+    const FONT_PRESETS = {
+      original:  { fh:"'Syne',sans-serif", fm:"'JetBrains Mono','SFMono-Regular',Menlo,Consolas,'Liberation Mono',monospace", fp:"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" },
+      minimal:   { fh:"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif", fm:"ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace", fp:"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" },
+      editorial: { fh:"Georgia,'Times New Roman',serif", fm:"'JetBrains Mono','SFMono-Regular',Menlo,Consolas,monospace", fp:"Georgia,'Times New Roman',serif" }
+    };
+    window.FONT_PRESETS = FONT_PRESETS;
+    window.applyFontPreset = function(key) {
+      const p = FONT_PRESETS[key] || FONT_PRESETS.original;
+      document.documentElement.style.setProperty('--fh', p.fh);
+      document.documentElement.style.setProperty('--fm', p.fm);
+      document.documentElement.style.setProperty('--fp', p.fp);
+      localStorage.setItem('cl_font_preset', key);
+      document.querySelectorAll('.font-preset-btn').forEach(b => {
+        const active = b.dataset.preset === key;
+        b.style.borderColor = active ? 'var(--green)' : 'var(--border)';
+        b.style.color = active ? 'var(--green)' : 'var(--muted)';
+        b.style.background = active ? 'rgba(34,211,160,.1)' : 'var(--s2)';
+      });
+    };
+    const savedPreset = localStorage.getItem('cl_font_preset');
+    if (savedPreset) applyFontPreset(savedPreset);
+  } catch(e) { console.error('font preset error:', e); }
 })();
 </script>
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -1810,6 +1835,27 @@ nav::-webkit-scrollbar{display:none}
   <div style="max-width:600px">
 
     <div class="card" style="margin-bottom:14px">
+      <div class="ct">🔤 Tipografía</div>
+      <p style="font-size:var(--fs-sm);color:var(--muted2);margin-bottom:12px;line-height:1.5">
+        Elegí el estilo de letra de toda la app. Se guarda en este dispositivo.
+      </p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="font-preset-btn" data-preset="original" onclick="applyFontPreset('original')" style="padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--s2);color:var(--muted);cursor:pointer;text-align:left;flex:1;min-width:140px">
+          <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:var(--fs-md)">Original</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:var(--fs-xs);margin-top:2px">Syne + Mono $1.276</div>
+        </button>
+        <button class="font-preset-btn" data-preset="minimal" onclick="applyFontPreset('minimal')" style="padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--s2);color:var(--muted);cursor:pointer;text-align:left;flex:1;min-width:140px">
+          <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-weight:700;font-size:var(--fs-md)">Minimalista</div>
+          <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:var(--fs-xs);margin-top:2px">Todo sans $1.276</div>
+        </button>
+        <button class="font-preset-btn" data-preset="editorial" onclick="applyFontPreset('editorial')" style="padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--s2);color:var(--muted);cursor:pointer;text-align:left;flex:1;min-width:140px">
+          <div style="font-family:Georgia,'Times New Roman',serif;font-weight:700;font-size:var(--fs-md)">Editorial</div>
+          <div style="font-family:Georgia,'Times New Roman',serif;font-size:var(--fs-xs);margin-top:2px">Serif $1.276</div>
+        </button>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:14px">
       <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="toggleRecurrentesCfg()">
         <div class="ct" style="margin-bottom:0">🔁 Débitos automáticos recurrentes</div>
         <span id="rec-cfg-chevron" style="color:var(--muted);font-size:var(--fs-md);transition:transform .2s">▶</span>
@@ -2409,7 +2455,7 @@ function go(id, btn) {
   if (id === 'flujo')       renderFlujo();
   if (id === 'patrimonio')  updatePatrimonio();
   if (id === 'cuentas')   { renderCuentas(); updateMediosDePago(); updateOverviewSaldos(); renderHistorialTransf(); }
-  if (id === 'config')     { rotarPeriodosTarjetas(); renderTarjetasCfg(); renderRecurrentesCfg(); renderNormalizadorCategorias(); }
+  if (id === 'config')     { rotarPeriodosTarjetas(); renderTarjetasCfg(); renderRecurrentesCfg(); renderNormalizadorCategorias(); applyFontPreset(localStorage.getItem('cl_font_preset') || 'original'); }
   if (id === 'tarjetas')    {
     renderGastosTarjetas();
     renderOwnTarjetaSelector();
