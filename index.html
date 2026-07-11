@@ -1644,6 +1644,8 @@ nav::-webkit-scrollbar{display:none}
             <option value="Balanz">Balanz</option>
             <option value="BBVA">BBVA</option>
             <option value="BSF">BSF</option>
+            <option value="Binance">Binance</option>
+            <option value="BingX">BingX</option>
             <option value="__otro__">Otro...</option>
           </select>
         </div>
@@ -7037,6 +7039,15 @@ function toggleInvMovsCard() {
   chev.textContent = open ? '▼' : '▶';
 }
 
+// ── Toggle acordeón de grupos de broker en Portafolio ──
+function toggleInvPosGroup(pbid) {
+  const body = document.getElementById(pbid);
+  const chev = document.getElementById(pbid + '-chevron');
+  const open = body.style.display === 'none';
+  body.style.display = open ? 'block' : 'none';
+  chev.textContent = open ? '▼' : '▶';
+}
+
 async function renderInvList() {
   const invs = getInv();
 
@@ -7142,7 +7153,7 @@ async function renderInvList() {
     </div>`;
   };
 
-  // Agrupar el portafolio por broker (ticker + broker), no una lista plana
+  // Agrupar el portafolio por broker (colapsable) → ticker (consolida posiciones repetidas, ej. MELI x2)
   const posicionesValidas = invs.filter(inv => (inv.ars || 0) > 0 || (inv.costo || 0) > 0);
   const porBrokerPortafolio = {};
   posicionesValidas.forEach(inv => {
@@ -7156,16 +7167,47 @@ async function renderInvList() {
     return totalB - totalA;
   });
 
-  const portafolioHtml = brokersPortafolio.map(broker => {
+  const portafolioHtml = brokersPortafolio.map((broker, bi) => {
     const posBroker = porBrokerPortafolio[broker];
     const totalBroker = posBroker.reduce((s,i) => s + (i.ars||0), 0);
-    return `
-    <div style="margin-bottom:10px">
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0 6px;border-bottom:1px solid var(--border2);margin-bottom:4px">
-        <span class="tag" style="font-size:var(--fs-sm);padding:3px 9px">${broker}</span>
-        <span style="font-size:var(--fs-xs);color:var(--muted)">${posBroker.length} posic. · ${fmt(totalBroker)}</span>
+    const pbid = 'invpos_b' + bi;
+
+    // Agrupar por ticker dentro del broker
+    const porTickerBroker = {};
+    posBroker.forEach(inv => {
+      const t = inv.ticker || inv.activo;
+      if (!porTickerBroker[t]) porTickerBroker[t] = [];
+      porTickerBroker[t].push(inv);
+    });
+    const tickersDelBroker = Object.keys(porTickerBroker).sort((a, b) => {
+      const totalA = porTickerBroker[a].reduce((s,i) => s + (i.ars||0), 0);
+      const totalB = porTickerBroker[b].reduce((s,i) => s + (i.ars||0), 0);
+      return totalB - totalA;
+    });
+
+    const posicionesHtml = tickersDelBroker.map(ticker => {
+      const posTicker = porTickerBroker[ticker];
+      if (posTicker.length === 1) return filaPosicion(posTicker[0]); // un solo lote: sin sub-header, directo
+      const totalTicker = posTicker.reduce((s,i) => s + (i.ars||0), 0);
+      return `
+      <div style="margin:6px 0 2px;padding:4px 8px;background:var(--s2);border-radius:6px;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-weight:700;font-family:var(--fh);font-size:var(--fs-sm)">${ticker}</span>
+        <span style="font-size:var(--fs-xs);color:var(--muted)">${posTicker.length} lotes · ${fmt(totalTicker)}</span>
       </div>
-      ${posBroker.map(filaPosicion).join('')}
+      ${posTicker.map(filaPosicion).join('')}`;
+    }).join('');
+
+    return `
+    <div style="margin-bottom:10px;border:1px solid var(--border2);border-radius:10px;overflow:hidden">
+      <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;padding:10px 12px;background:var(--s2)" onclick="toggleInvPosGroup('${pbid}')">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span id="${pbid}-chevron" style="color:var(--muted);font-size:var(--fs-sm);transition:transform .2s">▶</span>
+          <span class="tag" style="font-size:var(--fs-sm);padding:3px 9px">${broker}</span>
+          <span style="font-size:var(--fs-xs);color:var(--muted)">${posBroker.length} posic.</span>
+        </div>
+        <span style="font-family:var(--fh);font-size:1.05rem;font-weight:700;color:var(--green)">${fmt(totalBroker)}</span>
+      </div>
+      <div id="${pbid}" style="display:none;padding:6px 12px 4px">${posicionesHtml}</div>
     </div>`;
   }).join('');
 
@@ -7275,8 +7317,8 @@ function renderInvEditor() {
           <input type="date" value="${inv.fechaEntrada||''}" id="ie-fe-${i}" class="fi" style="font-size:var(--fs-sm);padding:7px 8px"></div>
         <div><div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">Broker / comitente</div>
           <select id="ie-br-${i}" class="fi" style="font-size:var(--fs-sm);padding:7px 6px" onchange="ieBrokerChange(this,${i})">
-            ${['Cocos','Inviu','Balanz','BBVA','BSF'].map(b=>`<option ${b===inv.broker?'selected':''}>${b}</option>`).join('')}
-            ${(inv.broker && !['Cocos','Inviu','Balanz','BBVA','BSF'].includes(inv.broker)) ? `<option selected>${inv.broker}</option>` : ''}
+            ${['Cocos','Inviu','Balanz','BBVA','BSF','Binance','BingX'].map(b=>`<option ${b===inv.broker?'selected':''}>${b}</option>`).join('')}
+            ${(inv.broker && !['Cocos','Inviu','Balanz','BBVA','BSF','Binance','BingX'].includes(inv.broker)) ? `<option selected>${inv.broker}</option>` : ''}
             <option value="__otro__">Otro...</option>
           </select></div>
       </div>
@@ -7615,7 +7657,7 @@ function opEjecutar() {
           activo: op.ticker, tipo: op.tipoInstrumento || 'CEDEAR', moneda: 'ARS',
           ars: op.monto, costo: op.monto, rend: 0,
           cantidad: op.cant, ticker: op.ticker,
-          nota: op.desc || op.ticker,
+          nota: op.desc || op.ticker, broker: op.broker || '',
           fechaEntrada: hoy, pos: `${op.cant} acciones`,
         });
       } else {
