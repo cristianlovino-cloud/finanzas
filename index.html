@@ -39,8 +39,7 @@
     const FONT_PRESETS = {
       original:  { fh:"'Syne',sans-serif", fm:"'JetBrains Mono','SFMono-Regular',Menlo,Consolas,'Liberation Mono',monospace", fp:"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" },
       minimal:   { fh:"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif", fm:"ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace", fp:"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" },
-      editorial: { fh:"Georgia,'Times New Roman',serif", fm:"'JetBrains Mono','SFMono-Regular',Menlo,Consolas,monospace", fp:"Georgia,'Times New Roman',serif" },
-      redondeada: { fh:"'Quicksand',sans-serif", fm:"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif", fp:"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" }
+      editorial: { fh:"Georgia,'Times New Roman',serif", fm:"'JetBrains Mono','SFMono-Regular',Menlo,Consolas,monospace", fp:"Georgia,'Times New Roman',serif" }
     };
     window.FONT_PRESETS = FONT_PRESETS;
     window.applyFontPreset = function(key) {
@@ -65,7 +64,7 @@
 <title>CL · Finanzas v1.3.0</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&family=Quicksand:wght@500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <!-- Firebase SDK -->
 <!-- ════════════ MODAL EDITOR IMPORTACIÓN ════════════ -->
 <div id="import-editor-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);backdrop-filter:blur(6px);z-index:600;overflow-y:auto;padding:16px 0" onclick="if(event.target===this)cerrarEditorImport()">
@@ -107,7 +106,7 @@
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut }
+import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, addDoc, query, where, getDocs, deleteDoc }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
@@ -301,29 +300,16 @@ window.cfSincronizarAhora = async function() {
   }
 };
 
-// ── Login con Google (redirect, no popup — más confiable en Chrome mobile) ──
+// ── Login con Google ──
 window.fbLogin = async function() {
   try {
     const provider = new GoogleAuthProvider();
-    await signInWithRedirect(auth, provider);
-    // La página se recarga acá mismo; el resultado se procesa más abajo con getRedirectResult al volver.
+    await signInWithPopup(auth, provider);
   } catch(e) {
     console.error('Login error:', e);
     showToast('Error al iniciar sesión', '#f43f5e');
   }
 };
-
-// ── Procesar el resultado del login al volver del redirect de Google ──
-getRedirectResult(auth).then(result => {
-  if (result && result.user) {
-    showToast('✓ Sesión iniciada — sincronizando...', '#22d3a0');
-  }
-}).catch(e => {
-  console.error('getRedirectResult error:', e);
-  if (e && e.code && e.code !== 'auth/no-auth-event') {
-    showToast('No se pudo completar el login — probá de nuevo', '#f43f5e');
-  }
-});
 
 // ── Exponer delete de gastos familiares desde Firestore (por nuestro campo id, no el doc ID de Firestore) ──
 window.cfEliminarGastoFirestore = async function(gastoId) {
@@ -1002,7 +988,7 @@ nav::-webkit-scrollbar{display:none}
 <header>
   <div class="logo"><em>CL</em> · Finanzas</div>
   <div style="display:flex;align-items:center;gap:8px">
-    <span id="sync-indicator" title="Estado de sincronización" style="font-size:var(--fs-md);cursor:pointer;color:#64748b;letter-spacing:0" onclick="go('config',Array.from(document.querySelectorAll('.nb')).find(b=>b.textContent.includes('Config')))">⊙</span>
+    <span id="sync-indicator" title="Estado de sincronización" style="font-size:var(--fs-md);cursor:pointer;color:#64748b;letter-spacing:0" onclick="go('config',document.querySelector('.nb:last-child'))">⊙</span>
     <span id="health-badge" data-modo="saludable" style="font-size:var(--fs-xs);color:var(--muted);transition:color .8s ease" title="Salud financiera"></span>
     <button id="theme-btn" onclick="toggleTheme()" style="background:none;border:1px solid var(--border2);border-radius:20px;padding:4px 12px;color:var(--muted2);font-family:var(--fm);font-size:var(--fs-sm);cursor:pointer;transition:all .2s" title="Cambiar tema">🌙</button>
     <div class="mes-badge" id="header-mes">Mar 2026</div>
@@ -1010,15 +996,15 @@ nav::-webkit-scrollbar{display:none}
 </header>
 
 <nav>
-  <button class="nb" onclick="go('cargar',this)">＋ Cargar</button>
   <button class="nb active" onclick="go('overview',this)">⬡ Overview</button>
-  <button class="nb" onclick="go('cuentas',this)">◈ Cuentas</button>
-  <button class="nb" onclick="go('flujo',this)">⇄ Flujo</button>
   <button class="nb" onclick="go('presupuesto',this)">◎ Presupuesto</button>
+  <button class="nb" onclick="go('flujo',this)">⇄ Flujo</button>
+  <button class="nb" onclick="go('cargar',this)">＋ Cargar</button>
+  <button class="nb" onclick="go('cuentas',this)">◈ Cuentas</button>
   <button class="nb" onclick="go('inversiones',this)">◈ Inversiones</button>
   <button class="nb" onclick="go('tarjetas',this)" id="nb-tarjetas" style="position:relative">💳 Gastos Tarjetas<span id="badge-tarjetas" style="display:none;position:absolute;top:4px;right:4px;background:#f43f5e;color:#fff;font-size:var(--fs-xs);font-weight:700;min-width:16px;height:16px;border-radius:8px;padding:0 4px;line-height:16px;text-align:center;"></span></button>
-  <button class="nb" onclick="go('config',this)">⚙ Config</button>
   <button class="nb" onclick="go('patrimonio',this)" style="display:none">⬟ Patrimonio</button>
+  <button class="nb" onclick="go('config',this)">⚙ Config</button>
 </nav>
 
 <!-- TOAST -->
@@ -1559,7 +1545,7 @@ nav::-webkit-scrollbar{display:none}
     <div class="kpi" style="--kc:var(--green)"><div class="kl">Total portafolio</div><div class="kv pos" id="inv-total-kpi">$0</div><div class="ks">ARS estimado</div></div>
     <div class="kpi" style="--kc:var(--blue)"><div class="kl">En USD</div><div class="kv" style="color:var(--blue)" id="inv-usd-kpi">u$s 0</div><div class="ks">Binance + BingX</div></div>
     <div class="kpi" style="--kc:var(--purple)"><div class="kl">FCI / Bonos</div><div class="kv" style="color:var(--purple)" id="inv-fci-kpi">$0</div><div class="ks">en ARS</div></div>
-    <div class="kpi" style="--kc:var(--yellow)"><div class="kl">TC USD/ARS</div><div class="kv warn" id="inv-tc-kpi">$1.250</div><div class="ks"><a href="#" onclick="go('config',Array.from(document.querySelectorAll('.nb')).find(b=>b.textContent.includes('Config')))" style="color:var(--muted)">actualizar →</a></div></div>
+    <div class="kpi" style="--kc:var(--yellow)"><div class="kl">TC USD/ARS</div><div class="kv warn" id="inv-tc-kpi">$1.250</div><div class="ks"><a href="#" onclick="go('config',document.querySelectorAll('.nb')[6])" style="color:var(--muted)">actualizar →</a></div></div>
   </div>
 
   <div class="g2">
@@ -1658,8 +1644,6 @@ nav::-webkit-scrollbar{display:none}
             <option value="Balanz">Balanz</option>
             <option value="BBVA">BBVA</option>
             <option value="BSF">BSF</option>
-            <option value="Binance">Binance</option>
-            <option value="BingX">BingX</option>
             <option value="__otro__">Otro...</option>
           </select>
         </div>
@@ -1891,10 +1875,6 @@ nav::-webkit-scrollbar{display:none}
         <button class="font-preset-btn" data-preset="editorial" onclick="applyFontPreset('editorial')" style="padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--s2);color:var(--muted);cursor:pointer;text-align:left;flex:1;min-width:140px">
           <div style="font-family:Georgia,'Times New Roman',serif;font-weight:700;font-size:var(--fs-md)">Editorial</div>
           <div style="font-family:Georgia,'Times New Roman',serif;font-size:var(--fs-xs);margin-top:2px">Serif $1.276</div>
-        </button>
-        <button class="font-preset-btn" data-preset="redondeada" onclick="applyFontPreset('redondeada')" style="padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--s2);color:var(--muted);cursor:pointer;text-align:left;flex:1;min-width:140px">
-          <div style="font-family:'Quicksand',sans-serif;font-weight:700;font-size:var(--fs-md)">Redondeada</div>
-          <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:var(--fs-xs);margin-top:2px">Amigable $1.276</div>
         </button>
       </div>
     </div>
@@ -6689,13 +6669,12 @@ async function fetchCotizaciones() {
     // Siempre pedimos BTC/ETH como referencia, aunque el usuario no los tenga cargados
     const idsAPedir = [...new Set(['bitcoin', 'ethereum', ...tickersCripto.map(t => COINGECKO_IDS[t])])];
 
-    const cgRes = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${idsAPedir.join(',')}&vs_currencies=usd&include_24hr_change=true`, {cache:'no-cache'});
+    const cgRes = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${idsAPedir.join(',')}&vs_currencies=usd`, {cache:'no-cache'});
     if (cgRes.ok) {
       const cgData = await cgRes.json();
       Object.entries(COINGECKO_IDS).forEach(([ticker, id]) => {
         if (cgData[id]?.usd != null) {
           results[ticker] = cgData[id].usd;
-          if (cgData[id].usd_24h_change != null) results['CHG_' + ticker] = cgData[id].usd_24h_change;
           if (PEPE_AMBIGUOS.has(ticker)) results['_ambiguo_' + ticker] = true; // marca de incertidumbre para la UI
         }
       });
@@ -6779,10 +6758,8 @@ async function fetchCotizaciones() {
           const data = await res.json();
           // allorigins wraps in {contents}, others return directly
           const raw = data.contents ? JSON.parse(data.contents) : data;
-          const meta = raw?.chart?.result?.[0]?.meta;
-          const price = meta?.regularMarketPrice;
-          const prevClose = meta?.previousClose || meta?.chartPreviousClose;
-          if (price && price > 0) return { price, prevClose: (prevClose > 0 ? prevClose : null) };
+          const price = raw?.chart?.result?.[0]?.meta?.regularMarketPrice;
+          if (price && price > 0) return price;
         } catch(e) { continue; }
       }
       return null;
@@ -6797,18 +6774,14 @@ async function fetchCotizaciones() {
       // Fetch all in parallel for speed
       const prices = await Promise.all(
         cedearTickers.map(async ticker => {
-          const r = await fetchYahoo(ticker);
-          return { ticker: ticker.replace('.BA',''), ...r };
+          const price = await fetchYahoo(ticker);
+          return { ticker: ticker.replace('.BA',''), price };
         })
       );
-
+      
       let fetched = 0;
-      prices.forEach(({ticker, price, prevClose}) => {
-        if (price) {
-          results['CEDEAR_' + ticker] = price;
-          if (prevClose) results['CHG_' + ticker] = ((price - prevClose) / prevClose) * 100;
-          fetched++;
-        }
+      prices.forEach(({ticker, price}) => {
+        if (price) { results['CEDEAR_' + ticker] = price; fetched++; }
       });
       console.log(`CEDEARs: ${fetched}/${cedearTickers.length} precios actualizados`);
     }
@@ -7064,15 +7037,6 @@ function toggleInvMovsCard() {
   chev.textContent = open ? '▼' : '▶';
 }
 
-// ── Toggle acordeón de grupos de broker en Portafolio ──
-function toggleInvPosGroup(pbid) {
-  const body = document.getElementById(pbid);
-  const chev = document.getElementById(pbid + '-chevron');
-  const open = body.style.display === 'none';
-  body.style.display = open ? 'block' : 'none';
-  chev.textContent = open ? '▼' : '▶';
-}
-
 async function renderInvList() {
   const invs = getInv();
 
@@ -7178,7 +7142,7 @@ async function renderInvList() {
     </div>`;
   };
 
-  // Agrupar el portafolio por broker (colapsable) → ticker (consolida posiciones repetidas, ej. MELI x2)
+  // Agrupar el portafolio por broker (ticker + broker), no una lista plana
   const posicionesValidas = invs.filter(inv => (inv.ars || 0) > 0 || (inv.costo || 0) > 0);
   const porBrokerPortafolio = {};
   posicionesValidas.forEach(inv => {
@@ -7192,63 +7156,16 @@ async function renderInvList() {
     return totalB - totalA;
   });
 
-  const portafolioHtml = brokersPortafolio.map((broker, bi) => {
+  const portafolioHtml = brokersPortafolio.map(broker => {
     const posBroker = porBrokerPortafolio[broker];
     const totalBroker = posBroker.reduce((s,i) => s + (i.ars||0), 0);
-    const pbid = 'invpos_b' + bi;
-
-    // Variación diaria ponderada por valor: solo cuenta lo que tiene dato de variación
-    // (CEDEARs y cripto por ahora; bonos/FCI no tienen fuente de variación diaria).
-    let sumPond = 0, sumPeso = 0;
-    posBroker.forEach(inv => {
-      const key = 'CHG_' + (inv.ticker || inv.activo || '').toUpperCase();
-      const chg = cotiz[key];
-      if (chg != null && inv.ars > 0) { sumPond += chg * inv.ars; sumPeso += inv.ars; }
-    });
-    const chgBroker = sumPeso > 0 ? sumPond / sumPeso : null;
-    const chgHtml = chgBroker != null
-      ? `<span style="font-size:var(--fs-xs);font-weight:600;color:${chgBroker>=0?P.green:P.red};margin-left:8px">${chgBroker>=0?'▲':'▼'} ${chgBroker>=0?'+':''}${chgBroker.toFixed(1)}% hoy</span>`
-      : '';
-
-    // Agrupar por ticker dentro del broker
-    const porTickerBroker = {};
-    posBroker.forEach(inv => {
-      const t = inv.ticker || inv.activo;
-      if (!porTickerBroker[t]) porTickerBroker[t] = [];
-      porTickerBroker[t].push(inv);
-    });
-    const tickersDelBroker = Object.keys(porTickerBroker).sort((a, b) => {
-      const totalA = porTickerBroker[a].reduce((s,i) => s + (i.ars||0), 0);
-      const totalB = porTickerBroker[b].reduce((s,i) => s + (i.ars||0), 0);
-      return totalB - totalA;
-    });
-
-    const posicionesHtml = tickersDelBroker.map(ticker => {
-      const posTicker = porTickerBroker[ticker];
-      if (posTicker.length === 1) return filaPosicion(posTicker[0]); // un solo lote: sin sub-header, directo
-      const totalTicker = posTicker.reduce((s,i) => s + (i.ars||0), 0);
-      return `
-      <div style="margin:6px 0 2px;padding:4px 8px;background:var(--s2);border-radius:6px;display:flex;justify-content:space-between;align-items:center">
-        <span style="font-weight:700;font-family:var(--fh);font-size:var(--fs-sm)">${ticker}</span>
-        <span style="font-size:var(--fs-xs);color:var(--muted)">${posTicker.length} lotes · ${fmt(totalTicker)}</span>
-      </div>
-      ${posTicker.map(filaPosicion).join('')}`;
-    }).join('');
-
     return `
-    <div style="margin-bottom:10px;border:1px solid var(--border2);border-radius:10px;overflow:hidden">
-      <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;padding:10px 12px;background:var(--s2)" onclick="toggleInvPosGroup('${pbid}')">
-        <div style="display:flex;align-items:center;gap:8px">
-          <span id="${pbid}-chevron" style="color:var(--muted);font-size:var(--fs-sm);transition:transform .2s">▶</span>
-          <span class="tag" style="font-size:var(--fs-sm);padding:3px 9px">${broker}</span>
-          <span style="font-size:var(--fs-xs);color:var(--muted)">${posBroker.length} posic.</span>
-        </div>
-        <div style="text-align:right">
-          <div style="font-family:var(--fh);font-size:1.05rem;font-weight:700;color:var(--green)">${fmt(totalBroker)}</div>
-          ${chgHtml ? `<div>${chgHtml}</div>` : ''}
-        </div>
+    <div style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0 6px;border-bottom:1px solid var(--border2);margin-bottom:4px">
+        <span class="tag" style="font-size:var(--fs-sm);padding:3px 9px">${broker}</span>
+        <span style="font-size:var(--fs-xs);color:var(--muted)">${posBroker.length} posic. · ${fmt(totalBroker)}</span>
       </div>
-      <div id="${pbid}" style="display:none;padding:6px 12px 4px">${posicionesHtml}</div>
+      ${posBroker.map(filaPosicion).join('')}
     </div>`;
   }).join('');
 
@@ -7358,8 +7275,8 @@ function renderInvEditor() {
           <input type="date" value="${inv.fechaEntrada||''}" id="ie-fe-${i}" class="fi" style="font-size:var(--fs-sm);padding:7px 8px"></div>
         <div><div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">Broker / comitente</div>
           <select id="ie-br-${i}" class="fi" style="font-size:var(--fs-sm);padding:7px 6px" onchange="ieBrokerChange(this,${i})">
-            ${['Cocos','Inviu','Balanz','BBVA','BSF','Binance','BingX'].map(b=>`<option ${b===inv.broker?'selected':''}>${b}</option>`).join('')}
-            ${(inv.broker && !['Cocos','Inviu','Balanz','BBVA','BSF','Binance','BingX'].includes(inv.broker)) ? `<option selected>${inv.broker}</option>` : ''}
+            ${['Cocos','Inviu','Balanz','BBVA','BSF'].map(b=>`<option ${b===inv.broker?'selected':''}>${b}</option>`).join('')}
+            ${(inv.broker && !['Cocos','Inviu','Balanz','BBVA','BSF'].includes(inv.broker)) ? `<option selected>${inv.broker}</option>` : ''}
             <option value="__otro__">Otro...</option>
           </select></div>
       </div>
@@ -7698,7 +7615,7 @@ function opEjecutar() {
           activo: op.ticker, tipo: op.tipoInstrumento || 'CEDEAR', moneda: 'ARS',
           ars: op.monto, costo: op.monto, rend: 0,
           cantidad: op.cant, ticker: op.ticker,
-          nota: op.desc || op.ticker, broker: op.broker || '',
+          nota: op.desc || op.ticker,
           fechaEntrada: hoy, pos: `${op.cant} acciones`,
         });
       } else {
