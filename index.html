@@ -6671,12 +6671,13 @@ async function fetchCotizaciones() {
     // Siempre pedimos BTC/ETH como referencia, aunque el usuario no los tenga cargados
     const idsAPedir = [...new Set(['bitcoin', 'ethereum', ...tickersCripto.map(t => COINGECKO_IDS[t])])];
 
-    const cgRes = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${idsAPedir.join(',')}&vs_currencies=usd`, {cache:'no-cache'});
+    const cgRes = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${idsAPedir.join(',')}&vs_currencies=usd&include_24hr_change=true`, {cache:'no-cache'});
     if (cgRes.ok) {
       const cgData = await cgRes.json();
       Object.entries(COINGECKO_IDS).forEach(([ticker, id]) => {
         if (cgData[id]?.usd != null) {
           results[ticker] = cgData[id].usd;
+          if (cgData[id].usd_24h_change != null) results['CHG_' + ticker] = cgData[id].usd_24h_change;
           if (PEPE_AMBIGUOS.has(ticker)) results['_ambiguo_' + ticker] = true; // marca de incertidumbre para la UI
         }
       });
@@ -6760,8 +6761,10 @@ async function fetchCotizaciones() {
           const data = await res.json();
           // allorigins wraps in {contents}, others return directly
           const raw = data.contents ? JSON.parse(data.contents) : data;
-          const price = raw?.chart?.result?.[0]?.meta?.regularMarketPrice;
-          if (price && price > 0) return price;
+          const meta = raw?.chart?.result?.[0]?.meta;
+          const price = meta?.regularMarketPrice;
+          const prevClose = meta?.previousClose || meta?.chartPreviousClose;
+          if (price && price > 0) return { price, prevClose: (prevClose > 0 ? prevClose : null) };
         } catch(e) { continue; }
       }
       return null;
@@ -6776,14 +6779,18 @@ async function fetchCotizaciones() {
       // Fetch all in parallel for speed
       const prices = await Promise.all(
         cedearTickers.map(async ticker => {
-          const price = await fetchYahoo(ticker);
-          return { ticker: ticker.replace('.BA',''), price };
+          const r = await fetchYahoo(ticker);
+          return { ticker: ticker.replace('.BA',''), ...r };
         })
       );
-      
+
       let fetched = 0;
-      prices.forEach(({ticker, price}) => {
-        if (price) { results['CEDEAR_' + ticker] = price; fetched++; }
+      prices.forEach(({ticker, price, prevClose}) => {
+        if (price) {
+          results['CEDEAR_' + ticker] = price;
+          if (prevClose) results['CHG_' + ticker] = ((price - prevClose) / prevClose) * 100;
+          fetched++;
+        }
       });
       console.log(`CEDEARs: ${fetched}/${cedearTickers.length} precios actualizados`);
     }
@@ -7172,6 +7179,19 @@ async function renderInvList() {
     const totalBroker = posBroker.reduce((s,i) => s + (i.ars||0), 0);
     const pbid = 'invpos_b' + bi;
 
+    // Variación diaria ponderada por valor: solo cuenta lo que tiene dato de variación
+    // (CEDEARs y cripto por ahora; bonos/FCI no tienen fuente de variación diaria).
+    let sumPond = 0, sumPeso = 0;
+    posBroker.forEach(inv => {
+      const key = 'CHG_' + (inv.ticker || inv.activo || '').toUpperCase();
+      const chg = cotiz[key];
+      if (chg != null && inv.ars > 0) { sumPond += chg * inv.ars; sumPeso += inv.ars; }
+    });
+    const chgBroker = sumPeso > 0 ? sumPond / sumPeso : null;
+    const chgHtml = chgBroker != null
+      ? `<span style="font-size:var(--fs-xs);font-weight:600;color:${chgBroker>=0?P.green:P.red};margin-left:8px">${chgBroker>=0?'▲':'▼'} ${chgBroker>=0?'+':''}${chgBroker.toFixed(1)}% hoy</span>`
+      : '';
+
     // Agrupar por ticker dentro del broker
     const porTickerBroker = {};
     posBroker.forEach(inv => {
@@ -7205,7 +7225,10 @@ async function renderInvList() {
           <span class="tag" style="font-size:var(--fs-sm);padding:3px 9px">${broker}</span>
           <span style="font-size:var(--fs-xs);color:var(--muted)">${posBroker.length} posic.</span>
         </div>
-        <span style="font-family:var(--fh);font-size:1.05rem;font-weight:700;color:var(--green)">${fmt(totalBroker)}</span>
+        <div style="text-align:right">
+          <div style="font-family:var(--fh);font-size:1.05rem;font-weight:700;color:var(--green)">${fmt(totalBroker)}</div>
+          ${chgHtml ? `<div>${chgHtml}</div>` : ''}
+        </div>
       </div>
       <div id="${pbid}" style="display:none;padding:6px 12px 4px">${posicionesHtml}</div>
     </div>`;
