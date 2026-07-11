@@ -39,7 +39,8 @@
     const FONT_PRESETS = {
       original:  { fh:"'Syne',sans-serif", fm:"'JetBrains Mono','SFMono-Regular',Menlo,Consolas,'Liberation Mono',monospace", fp:"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" },
       minimal:   { fh:"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif", fm:"ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace", fp:"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" },
-      editorial: { fh:"Georgia,'Times New Roman',serif", fm:"'JetBrains Mono','SFMono-Regular',Menlo,Consolas,monospace", fp:"Georgia,'Times New Roman',serif" }
+      editorial: { fh:"Georgia,'Times New Roman',serif", fm:"'JetBrains Mono','SFMono-Regular',Menlo,Consolas,monospace", fp:"Georgia,'Times New Roman',serif" },
+      redondeada: { fh:"'Quicksand',sans-serif", fm:"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif", fp:"-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" }
     };
     window.FONT_PRESETS = FONT_PRESETS;
     window.applyFontPreset = function(key) {
@@ -64,7 +65,7 @@
 <title>CL · Finanzas v1.3.0</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&family=Quicksand:wght@500;600;700&display=swap" rel="stylesheet">
 <!-- Firebase SDK -->
 <!-- ════════════ MODAL EDITOR IMPORTACIÓN ════════════ -->
 <div id="import-editor-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);backdrop-filter:blur(6px);z-index:600;overflow-y:auto;padding:16px 0" onclick="if(event.target===this)cerrarEditorImport()">
@@ -988,7 +989,7 @@ nav::-webkit-scrollbar{display:none}
 <header>
   <div class="logo"><em>CL</em> · Finanzas</div>
   <div style="display:flex;align-items:center;gap:8px">
-    <span id="sync-indicator" title="Estado de sincronización" style="font-size:var(--fs-md);cursor:pointer;color:#64748b;letter-spacing:0" onclick="go('config',document.querySelector('.nb:last-child'))">⊙</span>
+    <span id="sync-indicator" title="Estado de sincronización" style="font-size:var(--fs-md);cursor:pointer;color:#64748b;letter-spacing:0" onclick="go('config',Array.from(document.querySelectorAll('.nb')).find(b=>b.textContent.includes('Config')))">⊙</span>
     <span id="health-badge" data-modo="saludable" style="font-size:var(--fs-xs);color:var(--muted);transition:color .8s ease" title="Salud financiera"></span>
     <button id="theme-btn" onclick="toggleTheme()" style="background:none;border:1px solid var(--border2);border-radius:20px;padding:4px 12px;color:var(--muted2);font-family:var(--fm);font-size:var(--fs-sm);cursor:pointer;transition:all .2s" title="Cambiar tema">🌙</button>
     <div class="mes-badge" id="header-mes">Mar 2026</div>
@@ -996,15 +997,15 @@ nav::-webkit-scrollbar{display:none}
 </header>
 
 <nav>
-  <button class="nb active" onclick="go('overview',this)">⬡ Overview</button>
-  <button class="nb" onclick="go('presupuesto',this)">◎ Presupuesto</button>
-  <button class="nb" onclick="go('flujo',this)">⇄ Flujo</button>
   <button class="nb" onclick="go('cargar',this)">＋ Cargar</button>
+  <button class="nb active" onclick="go('overview',this)">⬡ Overview</button>
   <button class="nb" onclick="go('cuentas',this)">◈ Cuentas</button>
+  <button class="nb" onclick="go('flujo',this)">⇄ Flujo</button>
+  <button class="nb" onclick="go('presupuesto',this)">◎ Presupuesto</button>
   <button class="nb" onclick="go('inversiones',this)">◈ Inversiones</button>
   <button class="nb" onclick="go('tarjetas',this)" id="nb-tarjetas" style="position:relative">💳 Gastos Tarjetas<span id="badge-tarjetas" style="display:none;position:absolute;top:4px;right:4px;background:#f43f5e;color:#fff;font-size:var(--fs-xs);font-weight:700;min-width:16px;height:16px;border-radius:8px;padding:0 4px;line-height:16px;text-align:center;"></span></button>
-  <button class="nb" onclick="go('patrimonio',this)" style="display:none">⬟ Patrimonio</button>
   <button class="nb" onclick="go('config',this)">⚙ Config</button>
+  <button class="nb" onclick="go('patrimonio',this)" style="display:none">⬟ Patrimonio</button>
 </nav>
 
 <!-- TOAST -->
@@ -1545,7 +1546,7 @@ nav::-webkit-scrollbar{display:none}
     <div class="kpi" style="--kc:var(--green)"><div class="kl">Total portafolio</div><div class="kv pos" id="inv-total-kpi">$0</div><div class="ks">ARS estimado</div></div>
     <div class="kpi" style="--kc:var(--blue)"><div class="kl">En USD</div><div class="kv" style="color:var(--blue)" id="inv-usd-kpi">u$s 0</div><div class="ks">Binance + BingX</div></div>
     <div class="kpi" style="--kc:var(--purple)"><div class="kl">FCI / Bonos</div><div class="kv" style="color:var(--purple)" id="inv-fci-kpi">$0</div><div class="ks">en ARS</div></div>
-    <div class="kpi" style="--kc:var(--yellow)"><div class="kl">TC USD/ARS</div><div class="kv warn" id="inv-tc-kpi">$1.250</div><div class="ks"><a href="#" onclick="go('config',document.querySelectorAll('.nb')[6])" style="color:var(--muted)">actualizar →</a></div></div>
+    <div class="kpi" style="--kc:var(--yellow)"><div class="kl">TC USD/ARS</div><div class="kv warn" id="inv-tc-kpi">$1.250</div><div class="ks"><a href="#" onclick="go('config',Array.from(document.querySelectorAll('.nb')).find(b=>b.textContent.includes('Config')))" style="color:var(--muted)">actualizar →</a></div></div>
   </div>
 
   <div class="g2">
@@ -1877,6 +1878,10 @@ nav::-webkit-scrollbar{display:none}
         <button class="font-preset-btn" data-preset="editorial" onclick="applyFontPreset('editorial')" style="padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--s2);color:var(--muted);cursor:pointer;text-align:left;flex:1;min-width:140px">
           <div style="font-family:Georgia,'Times New Roman',serif;font-weight:700;font-size:var(--fs-md)">Editorial</div>
           <div style="font-family:Georgia,'Times New Roman',serif;font-size:var(--fs-xs);margin-top:2px">Serif $1.276</div>
+        </button>
+        <button class="font-preset-btn" data-preset="redondeada" onclick="applyFontPreset('redondeada')" style="padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--s2);color:var(--muted);cursor:pointer;text-align:left;flex:1;min-width:140px">
+          <div style="font-family:'Quicksand',sans-serif;font-weight:700;font-size:var(--fs-md)">Redondeada</div>
+          <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:var(--fs-xs);margin-top:2px">Amigable $1.276</div>
         </button>
       </div>
     </div>
