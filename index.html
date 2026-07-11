@@ -107,7 +107,7 @@
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut }
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, addDoc, query, where, getDocs, deleteDoc }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
@@ -301,16 +301,29 @@ window.cfSincronizarAhora = async function() {
   }
 };
 
-// ── Login con Google ──
+// ── Login con Google (redirect, no popup — más confiable en Chrome mobile) ──
 window.fbLogin = async function() {
   try {
     const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
+    await signInWithRedirect(auth, provider);
+    // La página se recarga acá mismo; el resultado se procesa más abajo con getRedirectResult al volver.
   } catch(e) {
     console.error('Login error:', e);
     showToast('Error al iniciar sesión', '#f43f5e');
   }
 };
+
+// ── Procesar el resultado del login al volver del redirect de Google ──
+getRedirectResult(auth).then(result => {
+  if (result && result.user) {
+    showToast('✓ Sesión iniciada — sincronizando...', '#22d3a0');
+  }
+}).catch(e => {
+  console.error('getRedirectResult error:', e);
+  if (e && e.code && e.code !== 'auth/no-auth-event') {
+    showToast('No se pudo completar el login — probá de nuevo', '#f43f5e');
+  }
+});
 
 // ── Exponer delete de gastos familiares desde Firestore (por nuestro campo id, no el doc ID de Firestore) ──
 window.cfEliminarGastoFirestore = async function(gastoId) {
