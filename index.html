@@ -6879,6 +6879,25 @@ function renderEvolCategorias() {
   const catMap = {};
   let totalAnio = 0;
 
+  // El pago de una tarjeta sale de la cuenta un mes DESPUÉS del cierre del resumen (ej. BSF
+  // cierra el 23 y se paga ~05 del mes siguiente). Para que el desglose por categoría neteé
+  // bien contra el pago real de Flujo, agrupamos cada gasto de tarjeta por su "mes de pago"
+  // (cierre + 1 mes), no por el mes en que se hizo la compra.
+  const mesSiguiente = (mesStr) => {
+    const [y, m] = mesStr.split('-').map(Number);
+    const d = new Date(y, m, 1); // m ya viene 1-indexado, Date con mes=m avanza un mes
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+  };
+
+  // Pre-agrupar todos los gastos de tarjeta por su mes de PAGO (no por mes de cierre)
+  const gastosTarjPorMesDePago = {};
+  getGastosTarjetas().forEach(g => {
+    if (!g.fecha || g.moneda === 'USD') return;
+    const mesDePago = mesSiguiente(g.fecha.slice(0,7));
+    if (!gastosTarjPorMesDePago[mesDePago]) gastosTarjPorMesDePago[mesDePago] = [];
+    gastosTarjPorMesDePago[mesDePago].push(g);
+  });
+
   meses.forEach((m, i) => {
     const mes = yr + '-' + m;
 
@@ -6895,10 +6914,8 @@ function renderEvolCategorias() {
       totalAnio += monto;
     });
 
-    // Gastos de tarjeta ya desglosados para este mes (cualquier tarjeta que ya tengamos cargada en detalle)
-    const gastosTarj = getGastosTarjetas().filter(g => {
-      return g.fecha && g.fecha.slice(0,7) === mes && g.moneda !== 'USD';
-    });
+    // Gastos de tarjeta cuyo mes de PAGO cae en este mes (cierre del mes anterior)
+    const gastosTarj = gastosTarjPorMesDePago[mes] || [];
     let desglosadoDelMes = 0;
     gastosTarj.forEach(g => {
       const cat = normalizeCat((g.tipo || 'Otros').replace(/\s*\(cuota\s*\d+\/\d+\)\s*/i,'').trim());
@@ -6999,6 +7016,7 @@ function renderEvolCategorias() {
             <span style="flex:1;font-size:var(--fs-xs);color:var(--muted2)">${cat}</span>
             <span style="font-size:var(--fs-sm);font-weight:600;color:var(--text)">${fmt(totalCat)}</span>
             <span style="font-size:var(--fs-xs);color:var(--muted)">·${(totalCat/data.totalAnio*100).toFixed(0)}%</span>
+            <a href="#" onclick="event.preventDefault();event.stopPropagation();${cat.startsWith('TC ') ? "go('tarjetas', document.querySelector('.nb[onclick*=tarjetas]'))" : "go('flujo', document.querySelector('.nb[onclick*=flujo]'))"}" style="font-size:var(--fs-xs);color:var(--blue);white-space:nowrap">Ver →</a>
           </div>
           <div id="${idCat}" style="display:none;margin-top:6px;display:none">
             <div style="display:flex;flex-wrap:wrap;gap:3px">${mesChips}</div>
