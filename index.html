@@ -1864,6 +1864,10 @@ nav::-webkit-scrollbar{display:none}
           <input type="number" id="own-tj-cec-total" min="1" max="24" placeholder="6" class="fi" style="width:100%;font-size:var(--fs-sm);padding:6px 8px;text-align:center">
         </div>
       </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:10px">
+        <input type="checkbox" id="own-tj-cec-atras" style="width:16px;height:16px">
+        <label for="own-tj-cec-atras" style="font-size:var(--fs-xs);cursor:pointer">También cargar hacia atrás las cuotas ya pagadas (usa los períodos reales de la tarjeta si los tenés, o estima ~30 días por mes si no)</label>
+      </div>
     </div>
     <button onclick="ownCargarGastoTarjeta()" class="btn btn-g" style="width:100%">＋ Registrar mi gasto</button>
   </div>
@@ -4047,6 +4051,51 @@ function mesDeClasificacion(cierreISO) {
 
 // ── Genera la secuencia de N cierres consecutivos a partir de una fecha de compra ──
 // (el primer cierre es el período que contiene la compra; cada uno después es el siguiente cierre real de esa tarjeta)
+// ── Genera hacia ATRÁS los N cierres anteriores al período de la fecha dada ──
+// Usa los períodos reales de la tarjeta mientras existan; para los meses más viejos que
+// no tengan período configurado, ESTIMA restando ~30 días por mes desde el más viejo conocido.
+// No hace falta que sea exacto: son meses ya cerrados, solo importa que caigan en el mes correcto
+// para que las categorías y totales históricos queden bien.
+function generarSecuenciaCierresHaciaAtras(tarjeta, fechaCompra, cantidad) {
+  const periodos = (tarjeta.periodos || []).filter(p => p.inicio && p.cierre).sort((a,b) => a.cierre.localeCompare(b.cierre));
+  const cierres = []; // se arma de más nueva a más vieja, y al final se invierte
+  const marcarEstimado = []; // paralelo a cierres, true si fue estimado (no período real)
+
+  if (periodos.length === 0) {
+    // Sin ningún período configurado: estimar todo desde la fecha de compra
+    let base = new Date(fechaCompra + 'T00:00:00');
+    for (let i = 1; i <= cantidad; i++) {
+      base.setDate(base.getDate() - 30);
+      cierres.push(base.toISOString().slice(0,10));
+      marcarEstimado.push(true);
+    }
+    return { cierres: cierres.reverse(), estimados: marcarEstimado.reverse() };
+  }
+
+  let idxActual = periodos.findIndex(p => fechaCompra >= p.inicio && fechaCompra <= p.cierre);
+  if (idxActual === -1) idxActual = periodos.findIndex(p => p.cierre >= fechaCompra);
+  if (idxActual === -1) idxActual = periodos.length - 1;
+
+  let ultimaFechaConocida = null; // para seguir estimando en cadena una vez que se acaban los reales
+  for (let i = 1; i <= cantidad; i++) {
+    const idx = idxActual - i;
+    if (idx >= 0) {
+      cierres.push(periodos[idx].cierre);
+      marcarEstimado.push(false);
+      ultimaFechaConocida = periodos[idx].cierre;
+    } else {
+      const refStr = ultimaFechaConocida || periodos[0].cierre;
+      const fechaRef = new Date(refStr + 'T00:00:00');
+      fechaRef.setDate(fechaRef.getDate() - 30);
+      const nuevaFecha = fechaRef.toISOString().slice(0,10);
+      cierres.push(nuevaFecha);
+      marcarEstimado.push(true);
+      ultimaFechaConocida = nuevaFecha;
+    }
+  }
+  return { cierres: cierres.reverse(), estimados: marcarEstimado.reverse() }; // orden cronológico ascendente
+}
+
 function generarSecuenciaCierres(tarjeta, fechaCompra, cantidad) {
   // Usar períodos manuales si están configurados
   const periodos = (tarjeta.periodos || []).filter(p => p.inicio && p.cierre).sort((a,b) => a.cierre.localeCompare(b.cierre));
@@ -4244,7 +4293,29 @@ function ownCargarGastoTarjeta() {
         esCuotaEnCurso: true,
       });
     });
-    showToast(`✓ ${tipo}: cuota ${cecActual}/${cecTotal} + ${cuotasFaltantes-1} restante${cuotasFaltantes-1!==1?'s':''} de ${fmt(monto)} c/u`);
+
+    // Hacia atrás: las cuotas 1 a (cecActual-1), ya pagadas en resúmenes viejos
+    const cargarAtras = document.getElementById('own-tj-cec-atras')?.checked || false;
+    let cuotasAtrasCargadas = 0, cuotasAtrasEstimadas = 0;
+    if (cargarAtras && cecActual > 1) {
+      const cantidadAtras = cecActual - 1;
+      const { cierres: cierresAtras, estimados } = generarSecuenciaCierresHaciaAtras(tarjeta, fecha, cantidadAtras);
+      for (let n = 1; n <= cantidadAtras; n++) {
+        lista.push({
+          id: 'gt_' + Date.now() + '_atras' + n + '_' + Math.random().toString(36).slice(2,5),
+          tarjetaId, fecha: cierresAtras[n-1], fechaCompra: fecha, tipo: `${tipo} (cuota ${n}/${cecTotal})`, monto,
+          cargadoPor: 'Cris', gastoDe: quien, ts: Date.now(), compraId, cuotaNum: n, cuotaTotal: cecTotal,
+          esCuotaEnCurso: true, cierreEstimado: estimados[n-1] || false,
+        });
+        cuotasAtrasCargadas++;
+        if (estimados[n-1]) cuotasAtrasEstimadas++;
+      }
+    }
+
+    const msgAtras = cargarAtras
+      ? ` · ${cuotasAtrasCargadas} hacia atrás cargadas${cuotasAtrasEstimadas > 0 ? ` (${cuotasAtrasEstimadas} con fecha estimada ~30 días)` : ''}`
+      : '';
+    showToast(`✓ ${tipo}: cuota ${cecActual}/${cecTotal} + ${cuotasFaltantes-1} restante${cuotasFaltantes-1!==1?'s':''} de ${fmt(monto)} c/u${msgAtras}`);
   } else if (enCuotas && tarjeta) {
     const compraId = 'compra_' + Date.now();
     const montos = repartirEnCuotas(monto, cantCuotas);
@@ -4283,6 +4354,7 @@ function ownCargarGastoTarjeta() {
   if (document.getElementById('own-tj-cuota-en-curso')) document.getElementById('own-tj-cuota-en-curso').checked = false;
   if (document.getElementById('own-tj-cec-actual')) document.getElementById('own-tj-cec-actual').value = '';
   if (document.getElementById('own-tj-cec-total')) document.getElementById('own-tj-cec-total').value = '';
+  if (document.getElementById('own-tj-cec-atras')) document.getElementById('own-tj-cec-atras').checked = false;
   ownToggleCuotas();
   ownToggleCuotaEnCurso();
   renderGastosTarjetas();
