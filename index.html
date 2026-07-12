@@ -1978,7 +1978,7 @@ nav::-webkit-scrollbar{display:none}
     <div class="card" style="margin-bottom:14px">
       <div class="ct">🏷 Categorías de consumo — normalizar</div>
       <p style="font-size:var(--fs-sm);color:var(--muted2);margin-bottom:12px;line-height:1.5">
-        Antes había texto libre, así que pueden existir variantes del mismo gasto (ej. "nafta" y "Nafta"). Acá fusionás cada variante con la categoría correcta de la lista.
+        Antes había texto libre, así que pueden existir variantes del mismo gasto (ej. "nafta" y "Nafta"). Acá fusionás cada variante con la categoría correcta de la lista — cubre tanto Gastos Tarjetas como Flujo.
       </p>
       <div id="cfg-normalizador-list" style="margin-bottom:10px"></div>
     </div>
@@ -3681,6 +3681,17 @@ function detectarVariantesCategoria() {
     const base = limpiarSufijoCuota(g.tipo);
     if (base && !listaLower.includes(base.toLowerCase())) variantes.add(base);
   });
+
+  // También escanear Flujo (tx.cat) — antes esto quedaba afuera del normalizador por completo.
+  const txsAll = DB.get('txs', {});
+  Object.values(txsAll).forEach(mesArr => {
+    (mesArr || []).forEach(tx => {
+      if (tx.tipo === 'ingreso' || tx.tipo === 'tc') return;
+      const base = (tx.cat || '').trim();
+      if (base && !listaLower.includes(base.toLowerCase())) variantes.add(base);
+    });
+  });
+
   return [...variantes].sort();
 }
 
@@ -3730,7 +3741,25 @@ function fusionarVarianteCategoria(variante, destino) {
   if (cambios > 0) {
     saveGastosTarjetas(lista);
     if (typeof renderGastosTarjetas === 'function') renderGastosTarjetas();
-    showToast(`✓ ${cambios} gasto${cambios>1?'s':''} fusionado${cambios>1?'s':''} en "${categoriaFinal}"`);
+  }
+
+  // También fusionar en Flujo (tx.cat), que antes quedaba afuera de este normalizador
+  const txsAll = DB.get('txs', {});
+  let cambiosFlujo = 0;
+  Object.values(txsAll).forEach(mesArr => {
+    (mesArr || []).forEach(tx => {
+      if (tx.tipo === 'ingreso' || tx.tipo === 'tc') return;
+      if ((tx.cat || '').trim() === variante) { tx.cat = categoriaFinal; cambiosFlujo++; }
+    });
+  });
+  if (cambiosFlujo > 0) {
+    DB.set('txs', txsAll);
+    if (typeof renderFlujo === 'function') renderFlujo();
+  }
+
+  if (cambios > 0 || cambiosFlujo > 0) {
+    const totalCambios = cambios + cambiosFlujo;
+    showToast(`✓ ${totalCambios} gasto${totalCambios>1?'s':''} fusionado${totalCambios>1?'s':''} en "${categoriaFinal}"${cambiosFlujo>0 ? ` (${cambios} de Tarjetas + ${cambiosFlujo} de Flujo)` : ''}`);
   }
   renderNormalizadorCategorias();
 }
@@ -6657,6 +6686,10 @@ function sugerirGrupos() {
   gastosTarj.forEach(g => { if (g.tipo) catsUsadas.add(g.tipo.replace(/\s*\(cuota.*\)/i,'').trim()); });
   // También categorías configuradas
   getCategoriasConsumo().forEach(c => catsUsadas.add(c));
+  // "Tarjetas de crédito" es el residual sintético del pago no desglosado — no viene de
+  // ningún tx.cat ni g.tipo real, así que hay que registrarlo a mano para que se pueda
+  // reasignar a un grupo como cualquier otra categoría.
+  catsUsadas.add('Tarjetas de crédito');
 
   const cats = [...catsUsadas].filter(c => c && c.length > 0);
   const asignadas = new Set();
@@ -6698,6 +6731,17 @@ function renderConfigGrupos() {
   const el = document.getElementById('config-grupos-body');
   if (!el) return;
   if (!_gruposDraft) _gruposDraft = JSON.parse(JSON.stringify(getGruposCategorias() || sugerirGrupos()));
+
+  // "Tarjetas de crédito" es el residual sintético (pago de tarjeta no desglosado todavía).
+  // No sale de ningún tx.cat/g.tipo real, así que si ya tenías grupos guardados de antes,
+  // nunca se registró en ningún lado — la agregamos acá para que siempre sea reasignable.
+  const yaEsta = _gruposDraft.some(g => g.miembros.some(m => m.toLowerCase() === 'tarjetas de crédito'));
+  if (!yaEsta) {
+    let sinAgrupar = _gruposDraft.find(g => g.grupo === 'Sin agrupar');
+    if (!sinAgrupar) { sinAgrupar = { grupo: 'Sin agrupar', miembros: [] }; _gruposDraft.push(sinAgrupar); }
+    sinAgrupar.miembros.push('Tarjetas de crédito');
+  }
+
   const grupos = _gruposDraft;
   const nombresGrupos = grupos.map(g => g.grupo);
 
