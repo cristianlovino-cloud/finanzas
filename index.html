@@ -1894,6 +1894,20 @@ nav::-webkit-scrollbar{display:none}
       </div>
     </div>
 
+    <div class="card" style="margin-bottom:14px;border:1px solid var(--blue)">
+      <div class="ct">📥 Importar gastos de tarjeta (masivo)</div>
+      <p style="font-size:var(--fs-sm);color:var(--muted2);margin-bottom:12px;line-height:1.5">
+        Para cargar de una vez muchos gastos ya categorizados (ej. reconstrucción de resúmenes viejos). Pegá o subí un archivo JSON con la lista de gastos.
+      </p>
+      <textarea id="importar-gastos-textarea" placeholder='[{"fecha":"2026-01-22","tipo":"Combustible","monto":90199.01,"tarjetaNombre":"BSF VISA","gastoDe":"Cris"}, ...]' style="width:100%;min-height:90px;font-family:var(--fm);font-size:var(--fs-xs);padding:8px;border:1px solid var(--border2);border-radius:8px;background:var(--s1);color:var(--text);margin-bottom:8px"></textarea>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-o" onclick="document.getElementById('input-importar-gastos').click()" style="flex:1;min-width:140px">📁 Elegir archivo</button>
+        <input type="file" id="input-importar-gastos" accept=".json" style="display:none" onchange="cargarArchivoImportarGastos(event)">
+        <button class="btn btn-g" onclick="importarGastosTarjetaMasivo()" style="flex:1;min-width:140px">✓ Importar</button>
+      </div>
+      <div id="importar-gastos-resultado" style="font-size:var(--fs-sm);margin-top:10px"></div>
+    </div>
+
     <div class="card" style="margin-bottom:14px">
       <div class="ct">🔤 Tipografía</div>
       <p style="font-size:var(--fs-sm);color:var(--muted2);margin-bottom:12px;line-height:1.5">
@@ -2089,7 +2103,77 @@ function restaurarBackupCompleto(event) {
   event.target.value = ''; // permitir volver a elegir el mismo archivo si hace falta
 }
 
-// ── Backup automático diario cuando NO hay sesión conectada a la nube ──
+// ── Importación masiva de gastos de tarjeta (ej. reconstrucción de resúmenes viejos) ──
+function cargarArchivoImportarGastos(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => { document.getElementById('importar-gastos-textarea').value = e.target.result; };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+function importarGastosTarjetaMasivo() {
+  const resultEl = document.getElementById('importar-gastos-resultado');
+  const raw = document.getElementById('importar-gastos-textarea').value.trim();
+  if (!raw) { resultEl.innerHTML = '<span style="color:var(--red)">Pegá o subí el JSON primero.</span>'; return; }
+
+  let items;
+  try { items = JSON.parse(raw); } catch(e) {
+    resultEl.innerHTML = '<span style="color:var(--red)">JSON inválido: ' + e.message + '</span>';
+    return;
+  }
+  if (!Array.isArray(items)) {
+    resultEl.innerHTML = '<span style="color:var(--red)">El JSON debe ser una lista [ ] de gastos.</span>';
+    return;
+  }
+
+  const tarjetas = getTarjetas();
+  const lista = getGastosTarjetas();
+  let importados = 0, duplicados = 0, sinTarjeta = 0, invalidos = 0;
+  const tarjetasNoEncontradas = new Set();
+
+  items.forEach((it, idx) => {
+    if (!it.fecha || !it.tipo || !it.monto || !it.tarjetaNombre) { invalidos++; return; }
+
+    const tarjeta = tarjetas.find(t => t.nombre.toLowerCase() === String(it.tarjetaNombre).toLowerCase());
+    if (!tarjeta) { sinTarjeta++; tarjetasNoEncontradas.add(it.tarjetaNombre); return; }
+
+    // Dedupe: mismo tarjetaId + fecha + tipo + monto ya importado antes → no duplicar
+    const yaExiste = lista.some(g =>
+      g.tarjetaId === tarjeta.id && g.fecha === it.fecha && g.tipo === it.tipo && Math.abs(g.monto - it.monto) < 0.01
+    );
+    if (yaExiste) { duplicados++; return; }
+
+    lista.push({
+      id: 'gt_import_' + Date.now() + '_' + idx + '_' + Math.random().toString(36).slice(2,6),
+      tarjetaId: tarjeta.id,
+      fecha: it.fecha,
+      fechaCompra: it.fechaCompra || it.fecha,
+      tipo: it.tipo,
+      monto: parseFloat(it.monto),
+      moneda: it.moneda || 'ARS',
+      cargadoPor: 'Cris',
+      gastoDe: it.gastoDe || 'Cris',
+      ts: Date.now(),
+      ...(it.compraId ? { compraId: it.compraId } : {}),
+      ...(it.cuotaNum ? { cuotaNum: it.cuotaNum, cuotaTotal: it.cuotaTotal, esCuotaEnCurso: true } : {}),
+    });
+    importados++;
+  });
+
+  saveGastosTarjetas(lista);
+  renderGastosTarjetas();
+
+  let msg = `✓ ${importados} importados`;
+  if (duplicados > 0) msg += ` · ${duplicados} ya existían (omitidos)`;
+  if (sinTarjeta > 0) msg += ` · ${sinTarjeta} sin tarjeta reconocida (${[...tarjetasNoEncontradas].join(', ')})`;
+  if (invalidos > 0) msg += ` · ${invalidos} con datos incompletos`;
+  resultEl.innerHTML = `<span style="color:${importados>0?'var(--green)':'var(--red)'}">${msg}</span>`;
+  if (importados > 0) document.getElementById('importar-gastos-textarea').value = '';
+}
+
+
 // Si en algún momento el login con Google se rompe (como pasó), esto evita depender
 // solo de la nube: descarga un backup local una vez por día mientras no esté conectado.
 function chequearBackupAutomatico() {
