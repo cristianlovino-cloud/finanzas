@@ -7012,14 +7012,15 @@ function renderEvolCategorias() {
           </div>` : '').join('');
         return `
         <div style="padding:6px 0 6px 12px;border-left:2px solid var(--border)">
-          <div style="display:flex;align-items:center;gap:6px;cursor:pointer" ondblclick="toggleEvolCat('${idCat}')">
+          <div style="display:flex;align-items:center;gap:6px;cursor:pointer" onclick="verGastosDeCategoria('${cat.replace(/'/g,"\\'")}','${idCat}')">
             <span style="flex:1;font-size:var(--fs-xs);color:var(--muted2)">${cat}</span>
             <span style="font-size:var(--fs-sm);font-weight:600;color:var(--text)">${fmt(totalCat)}</span>
             <span style="font-size:var(--fs-xs);color:var(--muted)">·${(totalCat/data.totalAnio*100).toFixed(0)}%</span>
-            <a href="#" onclick="event.preventDefault();event.stopPropagation();${cat.startsWith('TC ') ? "go('tarjetas', document.querySelector('.nb[onclick*=tarjetas]'))" : "go('flujo', document.querySelector('.nb[onclick*=flujo]'))"}" style="font-size:var(--fs-xs);color:var(--blue);white-space:nowrap">Ver →</a>
+            <span id="${idCat}-chevron" style="font-size:var(--fs-xs);color:var(--blue)">Ver ▶</span>
           </div>
-          <div id="${idCat}" style="display:none;margin-top:6px;display:none">
-            <div style="display:flex;flex-wrap:wrap;gap:3px">${mesChips}</div>
+          <div id="${idCat}" style="display:none;margin-top:6px">
+            <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:6px">${mesChips}</div>
+            <div id="${idCat}-gastos"></div>
           </div>
         </div>`;
       }).join('');
@@ -7062,6 +7063,53 @@ function renderEvolCategorias() {
     </div>`;
 
   el.innerHTML = html + footer;
+}
+
+// ── Muestra los gastos reales (Flujo + Gastos Tarjetas) que componen una categoría, en el año actual ──
+function verGastosDeCategoria(catRaw, idCat) {
+  const body = document.getElementById(idCat);
+  const chev = document.getElementById(idCat + '-chevron');
+  const gastosDiv = document.getElementById(idCat + '-gastos');
+  const yaAbierto = body.style.display !== 'none';
+  if (yaAbierto) { body.style.display = 'none'; chev.textContent = 'Ver ▶'; return; }
+  body.style.display = 'block';
+  chev.textContent = 'Cerrar ▼';
+  if (gastosDiv.dataset.cargado === '1') return; // ya se buscó una vez, no repetir
+
+  const yr = document.getElementById('evol-cat-year')?.value || new Date().getFullYear().toString();
+  const encontrados = [];
+
+  // Fuente 1: Flujo (todos los meses del año)
+  for (let mes = 1; mes <= 12; mes++) {
+    const mesKey = yr + '-' + String(mes).padStart(2,'0');
+    (getTxs(mesKey) || []).forEach(tx => {
+      if (tx.tipo === 'ingreso') return;
+      const cat = tx.tipo === 'tc' ? ('TC ' + (tx.cat||'').replace(/^TC\s*/i,'')) : normalizeCat(tx.cat || 'Otros');
+      if (cat !== catRaw) return;
+      encontrados.push({ fecha: tx.fecha || mesKey+'-01', desc: tx.desc || tx.medio || '', monto: parseFloat(tx.monto)||0, fuente: 'Flujo' });
+    });
+  }
+  // Fuente 2: Gastos de tarjeta
+  (getGastosTarjetas() || []).forEach(g => {
+    if (!g.fecha || !g.fecha.startsWith(yr) || g.moneda === 'USD') return;
+    const cat = normalizeCat((g.tipo || 'Otros').replace(/\s*\(cuota\s*\d+\/\d+\)\s*/i,'').trim());
+    if (cat !== catRaw) return;
+    encontrados.push({ fecha: g.fecha, desc: g.nota || g.tipo, monto: parseFloat(g.monto)||0, fuente: g.gastoDe || g.cargadoPor || 'Tarjeta' });
+  });
+
+  encontrados.sort((a,b) => b.fecha.localeCompare(a.fecha));
+
+  if (encontrados.length === 0) {
+    gastosDiv.innerHTML = '<div style="font-size:var(--fs-xs);color:var(--muted);padding:6px 0">Sin gastos individuales encontrados (puede ser residual sin desglosar todavía).</div>';
+  } else {
+    const limite = 40;
+    gastosDiv.innerHTML = encontrados.slice(0, limite).map(e => `
+      <div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px solid var(--border);font-size:var(--fs-xs)">
+        <span style="color:var(--muted2)">${e.fecha} · ${e.desc} <span style="color:var(--muted)">(${e.fuente})</span></span>
+        <span style="font-weight:600;white-space:nowrap">${fmt(e.monto)}</span>
+      </div>`).join('') + (encontrados.length > limite ? `<div style="font-size:var(--fs-xs);color:var(--muted);padding:4px 0">+ ${encontrados.length - limite} más...</div>` : '');
+  }
+  gastosDiv.dataset.cargado = '1';
 }
 
 function toggleEvolCat(id) {
