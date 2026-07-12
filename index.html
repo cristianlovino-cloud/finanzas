@@ -2189,8 +2189,12 @@ function buscarGastosDuplicados() {
       if (usados.has(lista[j].id)) continue;
       const mismaTarjeta = lista[i].tarjetaId === lista[j].tarjetaId;
       const mismaFecha = lista[i].fecha === lista[j].fecha;
-      const montoParecido = Math.abs((lista[i].monto||0) - (lista[j].monto||0)) <= 1;
-      if (mismaTarjeta && mismaFecha && montoParecido) {
+      const montoExacto = Math.abs((lista[i].monto||0) - (lista[j].monto||0)) < 0.01; // exacto, no "parecido"
+      // No alcanza con fecha+monto (muchas cuotas distintas cierran el mismo día con montos chicos parecidos):
+      // exigimos ADEMÁS el mismo tipo/categoría, o la misma nota (comercio) si ambas la tienen.
+      const mismoTipo = (lista[i].tipo||'') === (lista[j].tipo||'') && lista[i].tipo;
+      const mismaNota = lista[i].nota && lista[j].nota && lista[i].nota === lista[j].nota;
+      if (mismaTarjeta && mismaFecha && montoExacto && (mismoTipo || mismaNota)) {
         candidatos.push(lista[j]);
         usados.add(lista[j].id);
       }
