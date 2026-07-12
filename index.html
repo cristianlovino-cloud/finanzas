@@ -1873,6 +1873,12 @@ nav::-webkit-scrollbar{display:none}
     <button onclick="ownCargarGastoTarjeta()" class="btn btn-g" style="width:100%">＋ Registrar mi gasto</button>
   </div>
 
+  <div style="display:flex;gap:8px;align-items:center;margin:12px 0 4px">
+    <span style="font-size:var(--fs-xs);color:var(--muted)">Ordenar por:</span>
+    <button id="orden-fecha-btn" class="chip" onclick="setOrdenGastosTarjeta('fecha')" style="border:1px solid var(--green);color:var(--green);background:rgba(34,211,160,.1)">Fecha</button>
+    <button id="orden-monto-btn" class="chip" onclick="setOrdenGastosTarjeta('monto')" style="border:1px solid var(--border2);color:var(--muted2);background:var(--s2)">Monto (ver duplicados)</button>
+  </div>
+
   <div id="tarjetas-periodos-list"></div>
 
 </div>
@@ -4552,6 +4558,20 @@ function marcarPeriodoConciliado(tarjetaId, cierre, conciliado) {
   renderGastosTarjetas();
 }
 
+let ordenGastosTarjeta = 'fecha'; // 'fecha' | 'monto' — monto ayuda a detectar duplicados (montos iguales quedan juntos)
+function setOrdenGastosTarjeta(modo) {
+  ordenGastosTarjeta = modo;
+  const btnFecha = document.getElementById('orden-fecha-btn');
+  const btnMonto = document.getElementById('orden-monto-btn');
+  if (btnFecha && btnMonto) {
+    const activo = 'border:1px solid var(--green);color:var(--green);background:rgba(34,211,160,.1)';
+    const inactivo = 'border:1px solid var(--border2);color:var(--muted2);background:var(--s2)';
+    btnFecha.style.cssText = modo === 'fecha' ? activo : inactivo;
+    btnMonto.style.cssText = modo === 'monto' ? activo : inactivo;
+  }
+  renderGastosTarjetas();
+}
+
 function renderGastosTarjetas() {
   const el = document.getElementById('tarjetas-periodos-list');
   if (!el) return;
@@ -4831,6 +4851,11 @@ function renderTarjetaCard(grupo, conciliaciones, colapsadoPorDefault) {
     <div id="detalle-${safeKey}" style="${colapsadoPorDefault ? 'display:none' : ''}">
     <div style="display:flex;flex-direction:column;gap:6px;margin:10px 0">
       ${grupo.gastos.sort((a,b) => {
+        if (ordenGastosTarjeta === 'monto') {
+          // Orden por monto descendente: los montos iguales o parecidos quedan pegados,
+          // mucho más fácil detectar duplicados a ojo (ej. dos "API 131k" seguidos).
+          return (Math.abs(b.monto)||0) - (Math.abs(a.monto)||0);
+        }
         // 1. Gastos manuales primero, luego cuotas, luego recurrentes
         const aCuota = !!(a.compraId || a.esCuotaEnCurso);
         const bCuota = !!(b.compraId || b.esCuotaEnCurso);
