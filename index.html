@@ -1920,6 +1920,7 @@ nav::-webkit-scrollbar{display:none}
         Busca gastos de la misma tarjeta con la misma fecha y monto (parecido o igual). Te muestra los candidatos uno al lado del otro para que elijas cuál borrar — no borra nada solo.
       </p>
       <button class="btn btn-o" onclick="buscarGastosDuplicados()" style="width:100%">🔍 Buscar duplicados</button>
+      <button class="btn btn-o" onclick="deshacerImportacionSinNota()" style="width:100%;margin-top:8px;color:var(--red);border-color:var(--red)">↩ Deshacer imports viejos (sin nota)</button>
       <div id="duplicados-resultado" style="margin-top:12px"></div>
     </div>
 
@@ -2126,6 +2127,25 @@ function cargarArchivoImportarGastos(event) {
   reader.onload = (e) => { document.getElementById('importar-gastos-textarea').value = e.target.result; };
   reader.readAsText(file);
   event.target.value = '';
+}
+
+// ── Deshacer específicamente los imports VIEJOS (sin nota) — no toca lo cargado a mano ni los imports finales con nota ──
+function deshacerImportacionSinNota() {
+  const lista = getGastosTarjetas();
+  const aBorrar = lista.filter(g => g.id && g.id.startsWith('gt_import_') && !g.nota);
+  if (aBorrar.length === 0) {
+    document.getElementById('duplicados-resultado').innerHTML = '<div style="color:var(--muted);font-size:var(--fs-sm)">No encontré gastos importados sin nota — no hay nada para deshacer.</div>';
+    return;
+  }
+  const suma = aBorrar.reduce((s,g) => s + (g.monto||0), 0);
+  if (!confirm(`Vas a borrar ${aBorrar.length} gastos importados SIN nota (los del lote viejo), sumando ${fmt(suma)}. Esto NO toca lo que cargaste a mano ni los imports nuevos con nota. ¿Confirmás?`)) return;
+
+  const idsABorrar = new Set(aBorrar.map(g => g.id));
+  const nuevaLista = lista.filter(g => !idsABorrar.has(g.id));
+  saveGastosTarjetas(nuevaLista);
+  renderGastosTarjetas();
+  document.getElementById('duplicados-resultado').innerHTML = `<div style="color:var(--green);font-size:var(--fs-sm)">✓ ${aBorrar.length} gastos viejos (sin nota) borrados. Los imports finales con nota y lo que cargaste a mano quedaron intactos.</div>`;
+  showToast(`✓ ${aBorrar.length} gastos viejos borrados`);
 }
 
 // ── Detectar posibles gastos duplicados (misma tarjeta, misma fecha, monto igual o muy parecido) ──
