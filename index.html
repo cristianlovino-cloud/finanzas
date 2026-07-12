@@ -3894,31 +3894,41 @@ function aplicarDebitosRecurrentes(mes) {
 
     if (r.tarjetaId) {
       // Tiene tarjeta asociada: va SOLO al desglose de gastos_tarjetas, nunca a Flujo.
+      // IMPORTANTE: ya no depende del mes calendario seleccionado arriba — revisa DIRECTAMENTE
+      // los períodos configurados de la tarjeta, porque un período puede empezar en un mes
+      // calendario y cerrar en el siguiente (ej. 26/06 a 23/07), y el "día del mes" del
+      // recurrente puede caer en cualquiera de los dos.
       const tarjetaDelRec = getTarjetas().find(t => t.id === r.tarjetaId);
       if (!tarjetaDelRec) return;
 
-      const diaSeguro = Math.min(r.diaDelMes || 1, new Date(parseInt(mes.slice(0,4)), parseInt(mes.slice(5,7)), 0).getDate());
-      const fecha = mes + '-' + String(diaSeguro).padStart(2,'0');
+      const periodosTarjeta = (tarjetaDelRec.periodos || []).filter(p => p.inicio && p.cierre);
+      const hoyStr = new Date().toISOString().slice(0,10);
 
-      // Verificar que la fecha caiga en un período definido de la tarjeta
-      const cierreDelPeriodo = periodoDeGasto(tarjetaDelRec, fecha);
-      if (!cierreDelPeriodo) return; // fecha fuera de todos los períodos → no insertar
+      periodosTarjeta.forEach(p => {
+        // Probar el día del recurrente tanto en el mes de inicio como en el de cierre del
+        // período (puede cruzar de un mes calendario a otro).
+        const mesesCandidatos = [p.inicio.slice(0,7), p.cierre.slice(0,7)];
+        let fechaEncontrada = null;
+        for (const mesCandidato of mesesCandidatos) {
+          const diaSeguro = Math.min(r.diaDelMes || 1, new Date(parseInt(mesCandidato.slice(0,4)), parseInt(mesCandidato.slice(5,7)), 0).getDate());
+          const fechaProbable = mesCandidato + '-' + String(diaSeguro).padStart(2,'0');
+          if (fechaProbable >= p.inicio && fechaProbable <= p.cierre) { fechaEncontrada = fechaProbable; break; }
+        }
+        if (!fechaEncontrada) return; // el día del recurrente no cae en este período específico
+        if (fechaEncontrada > hoyStr) return; // todavía no llegó la fecha
 
-      // No insertar hasta que llegue la fecha del recurrente
-      if (fecha > new Date().toISOString().slice(0,10)) return;
+        const yaExisteEnTarjetas = gastosTarjetas.some(g =>
+          g.recurrenteId === r.id && periodoDeGasto(tarjetaDelRec, g.fecha) === p.cierre
+        );
+        if (yaExisteEnTarjetas) return;
 
-      // No duplicar: ya existe un recurrente con este id para este cierre de período
-      const yaExisteEnTarjetas = gastosTarjetas.some(g =>
-        g.recurrenteId === r.id && periodoDeGasto(tarjetaDelRec, g.fecha) === cierreDelPeriodo
-      );
-      if (yaExisteEnTarjetas) return;
-
-      gastosTarjetas.push({
-        id: 'gt_rec_' + r.id + '_' + cierreDelPeriodo,
-        tarjetaId: r.tarjetaId, fecha, tipo: r.nombre, monto: r.monto, moneda: r.moneda || 'ARS',
-        cargadoPor: 'Recurrente automático', ts: Date.now(), recurrenteId: r.id,
+        gastosTarjetas.push({
+          id: 'gt_rec_' + r.id + '_' + p.cierre,
+          tarjetaId: r.tarjetaId, fecha: fechaEncontrada, tipo: r.nombre, monto: r.monto, moneda: r.moneda || 'ARS',
+          cargadoPor: 'Recurrente automático', ts: Date.now(), recurrenteId: r.id,
+        });
+        huboCambiosTarjetas = true;
       });
-      huboCambiosTarjetas = true;
       return;
     }
 
