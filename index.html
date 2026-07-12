@@ -4589,7 +4589,7 @@ function renderGastosTarjetas() {
               <select id="edit-periodo-${g.id}" class="fi" style="width:100%;font-size:var(--fs-sm);padding:6px 6px">
                 ${tarjetasDisponiblesEdit.map(t => {
                   const ps = (t.periodos||[]).filter(p=>p.inicio&&p.cierre);
-                  return ps.map(p=>`<option value="${t.id}|${p.cierre}">${t.nombre} → cierre ${new Date(p.cierre+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'})}</option>`).join('');
+                  return ps.map(p=>`<option value="${t.id}|${p.cierre}" ${g.tarjetaId===t.id&&g.fecha===p.cierre?'selected':''}>${t.nombre} → cierre ${new Date(p.cierre+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'})}</option>`).join('');
                 }).join('')}
               </select>
             </div>
@@ -4620,7 +4620,7 @@ function renderTotalesPorPersona(gruposAbiertos) {
   const porPersona = {}; // nombre -> { ars, usd }
   gruposAbiertos.forEach(grupo => {
     grupo.gastos.forEach(g => {
-      const nombre = g.cargadoPor || 'Sin asignar';
+      const nombre = g.gastoDe || g.cargadoPor || 'Sin asignar';
       if (!porPersona[nombre]) porPersona[nombre] = { ars: 0, usd: 0 };
       if (g.moneda === 'USD') porPersona[nombre].usd += (g.monto||0);
       else porPersona[nombre].ars += (g.monto||0);
