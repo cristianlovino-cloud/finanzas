@@ -7082,11 +7082,11 @@ function verGastosDeCategoria(catRaw, idCat) {
   // Fuente 1: Flujo (todos los meses del año)
   for (let mes = 1; mes <= 12; mes++) {
     const mesKey = yr + '-' + String(mes).padStart(2,'0');
-    (getTxs(mesKey) || []).forEach(tx => {
+    (getTxs(mesKey) || []).forEach((tx, idx) => {
       if (tx.tipo === 'ingreso') return;
       const cat = tx.tipo === 'tc' ? ('TC ' + (tx.cat||'').replace(/^TC\s*/i,'')) : normalizeCat(tx.cat || 'Otros');
       if (cat !== catRaw) return;
-      encontrados.push({ fecha: tx.fecha || mesKey+'-01', desc: tx.desc || tx.medio || '', monto: parseFloat(tx.monto)||0, fuente: 'Flujo' });
+      encontrados.push({ fecha: tx.fecha || mesKey+'-01', desc: tx.desc || tx.medio || '', monto: parseFloat(tx.monto)||0, fuente: 'Flujo', tipo: 'tx', mes: mesKey, idx });
     });
   }
   // Fuente 2: Gastos de tarjeta
@@ -7094,7 +7094,7 @@ function verGastosDeCategoria(catRaw, idCat) {
     if (!g.fecha || !g.fecha.startsWith(yr) || g.moneda === 'USD') return;
     const cat = normalizeCat((g.tipo || 'Otros').replace(/\s*\(cuota\s*\d+\/\d+\)\s*/i,'').trim());
     if (cat !== catRaw) return;
-    encontrados.push({ fecha: g.fecha, desc: g.nota || g.tipo, monto: parseFloat(g.monto)||0, fuente: g.gastoDe || g.cargadoPor || 'Tarjeta' });
+    encontrados.push({ fecha: g.fecha, desc: g.nota || g.tipo, monto: parseFloat(g.monto)||0, fuente: g.gastoDe || g.cargadoPor || 'Tarjeta', tipo: 'gt', id: g.id });
   });
 
   encontrados.sort((a,b) => b.fecha.localeCompare(a.fecha));
@@ -7103,13 +7103,54 @@ function verGastosDeCategoria(catRaw, idCat) {
     gastosDiv.innerHTML = '<div style="font-size:var(--fs-xs);color:var(--muted);padding:6px 0">Sin gastos individuales encontrados (puede ser residual sin desglosar todavía).</div>';
   } else {
     const limite = 40;
-    gastosDiv.innerHTML = encontrados.slice(0, limite).map(e => `
-      <div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px solid var(--border);font-size:var(--fs-xs)">
+    gastosDiv.innerHTML = encontrados.slice(0, limite).map(e => {
+      const accionesHtml = e.tipo === 'tx'
+        ? `<button onclick="openEditModal('${e.mes}',${e.idx})" style="background:none;border:none;color:var(--blue);cursor:pointer;font-size:var(--fs-xs);padding:2px 4px">✎</button>`
+        : `<button onclick="editarGastoDesdeCategoria('${e.id}','${idCat}','${catRaw.replace(/'/g,"\\'")}')" style="background:none;border:none;color:var(--blue);cursor:pointer;font-size:var(--fs-xs);padding:2px 4px">✎</button>
+           <button onclick="borrarGastoDesdeCategoria('${e.id}','${idCat}','${catRaw.replace(/'/g,"\\'")}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:var(--fs-xs);padding:2px 4px">✕</button>`;
+      return `
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--border);font-size:var(--fs-xs)">
         <span style="color:var(--muted2)">${e.fecha} · ${e.desc} <span style="color:var(--muted)">(${e.fuente})</span></span>
-        <span style="font-weight:600;white-space:nowrap">${fmt(e.monto)}</span>
-      </div>`).join('') + (encontrados.length > limite ? `<div style="font-size:var(--fs-xs);color:var(--muted);padding:4px 0">+ ${encontrados.length - limite} más...</div>` : '');
+        <div style="display:flex;align-items:center;gap:4px;white-space:nowrap">
+          <span style="font-weight:600">${fmt(e.monto)}</span>
+          ${accionesHtml}
+        </div>
+      </div>`;
+    }).join('') + (encontrados.length > limite ? `<div style="font-size:var(--fs-xs);color:var(--muted);padding:4px 0">+ ${encontrados.length - limite} más...</div>` : '');
   }
   gastosDiv.dataset.cargado = '1';
+}
+
+// ── Editar (categoría/monto) un gasto de tarjeta directo desde la vista de Evolución por categoría ──
+function editarGastoDesdeCategoria(id, idCat, catRaw) {
+  const lista = getGastosTarjetas();
+  const g = lista.find(x => x.id === id);
+  if (!g) return;
+  const nuevoTipo = prompt('Categoría/tipo:', g.tipo || '');
+  if (nuevoTipo === null) return; // canceló
+  const nuevoMontoStr = prompt('Monto (en miles):', g.monto);
+  if (nuevoMontoStr === null) return;
+  const nuevoMonto = parseFloat(nuevoMontoStr);
+  g.tipo = nuevoTipo.trim() || g.tipo;
+  if (!isNaN(nuevoMonto) && nuevoMonto > 0) g.monto = nuevoMonto;
+  saveGastosTarjetas(lista);
+  renderGastosTarjetas();
+  if (typeof renderEvolCategorias === 'function') renderEvolCategorias();
+  showToast('✓ Gasto actualizado');
+  // Refrescar esta misma lista (puede que ya no matchee esta categoría si la cambiaste)
+  const gastosDiv = document.getElementById(idCat + '-gastos');
+  if (gastosDiv) { gastosDiv.dataset.cargado = ''; verGastosDeCategoria(catRaw, idCat); verGastosDeCategoria(catRaw, idCat); }
+}
+
+function borrarGastoDesdeCategoria(id, idCat, catRaw) {
+  if (!confirm('¿Borrar este gasto? No se puede deshacer.')) return;
+  const lista = getGastosTarjetas().filter(g => g.id !== id);
+  saveGastosTarjetas(lista);
+  renderGastosTarjetas();
+  if (typeof renderEvolCategorias === 'function') renderEvolCategorias();
+  showToast('✓ Gasto borrado');
+  const gastosDiv = document.getElementById(idCat + '-gastos');
+  if (gastosDiv) { gastosDiv.dataset.cargado = ''; verGastosDeCategoria(catRaw, idCat); verGastosDeCategoria(catRaw, idCat); }
 }
 
 function toggleEvolCat(id) {
