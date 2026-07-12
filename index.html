@@ -1576,6 +1576,7 @@ nav::-webkit-scrollbar{display:none}
       <!-- Editor de posiciones -->
       <div id="inv-editor" style="display:none;margin-bottom:16px">
         <div style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:12px">Actualizá precio y cantidad. El valor ARS se calcula con el TC configurado.</div>
+        <input type="text" id="inv-editor-buscar" placeholder="🔎 Buscar por ticker o nombre..." class="fi" style="width:100%;font-size:var(--fs-sm);padding:9px 12px;margin-bottom:12px" oninput="renderInvEditor()">
         <div id="inv-editor-rows" style="overflow-x:auto"></div>
         <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
           <button class="btn btn-o" onclick="addInvRow()" style="padding:6px 14px;font-size:var(--fs-sm)">＋ Agregar activo</button>
@@ -6947,7 +6948,7 @@ async function fetchCotizaciones() {
       url => `https://thingproxy.freeboard.io/fetch/${url}`,
     ];
 
-    async function fetchYahoo(ticker) {
+    async function fetchYahoo(ticker, reintentos = 1) {
       const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d`;
       for (const makeProxy of PROXIES) {
         try {
@@ -6961,6 +6962,11 @@ async function fetchCotizaciones() {
           const prevClose = meta?.previousClose || meta?.chartPreviousClose;
           if (price && price > 0) return { price, prevClose: (prevClose > 0 ? prevClose : null) };
         } catch(e) { continue; }
+      }
+      // Si ningún proxy respondió (rate-limit 429 transitorio es común), un reintento más antes de rendirse
+      if (reintentos > 0) {
+        await new Promise(r => setTimeout(r, 800));
+        return fetchYahoo(ticker, reintentos - 1);
       }
       return null;
     }
@@ -7502,10 +7508,40 @@ function toggleInvEditor() {
   }
 }
 
+// ── Normaliza cualquier formato de fecha guardado a AAAA-MM-DD (lo único que <input type="date"> acepta) ──
+function normalizarFechaISO(str) {
+  if (!str) return '';
+  str = String(str).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str; // ya está bien
+  const dm = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); // DD/MM/AAAA o MM/DD/AAAA
+  if (dm) {
+    const [, a, b, y] = dm;
+    const dia = parseInt(a) > 12 ? a : b; // heurística simple: si el primero es >12, es día
+    const mes = parseInt(a) > 12 ? b : a;
+    return `${y}-${String(mes).padStart(2,'0')}-${String(dia).padStart(2,'0')}`;
+  }
+  const parsed = new Date(str);
+  if (!isNaN(parsed.getTime())) return parsed.toISOString().slice(0,10);
+  return ''; // no se pudo interpretar, mejor vacío que un error
+}
+
 function renderInvEditor() {
   const invs = getInv();
-  document.getElementById('inv-editor-rows').innerHTML = invs.map((inv, i) => `
-    <div style="background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:10px">
+  const busqueda = (document.getElementById('inv-editor-buscar')?.value || '').trim().toLowerCase();
+  document.getElementById('inv-editor-rows').innerHTML = invs.map((inv, i) => {
+    const matchea = !busqueda
+      || (inv.activo||'').toLowerCase().includes(busqueda)
+      || (inv.ticker||'').toLowerCase().includes(busqueda)
+      || (inv.nota||'').toLowerCase().includes(busqueda)
+      || (inv.broker||'').toLowerCase().includes(busqueda);
+
+    // Si la fecha guardada necesitó normalizarse (no estaba ya en AAAA-MM-DD), lo marcamos para que la verifiques
+    const fechaOriginal = String(inv.fechaEntrada || '').trim();
+    const fechaNormalizada = normalizarFechaISO(fechaOriginal);
+    const fueNormalizada = fechaOriginal && fechaOriginal !== fechaNormalizada;
+
+    return `
+    <div style="background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:10px;${matchea ? '' : 'display:none'}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
         <div style="font-size:var(--fs-md);font-weight:600;color:var(--text)">${inv.activo}</div>
         <button onclick="delInvRow(${i})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:var(--fs-md);padding:2px 6px">✕ Eliminar</button>
@@ -7531,8 +7567,8 @@ function renderInvEditor() {
           <input type="text" value="${inv.ticker||''}" id="ie-tk-${i}" class="fi" placeholder="ej: S31M5" style="font-size:var(--fs-sm);padding:7px 10px;text-transform:uppercase"></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <div><div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">Fecha entrada</div>
-          <input type="date" value="${inv.fechaEntrada||''}" id="ie-fe-${i}" class="fi" style="font-size:var(--fs-sm);padding:7px 8px"></div>
+        <div><div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">Fecha entrada${fueNormalizada ? ' <span style="color:var(--yellow)" title="Formato original: '+fechaOriginal+'">⚠ verificar</span>' : ''}</div>
+          <input type="date" value="${fechaNormalizada}" id="ie-fe-${i}" class="fi" style="font-size:var(--fs-sm);padding:7px 8px;${fueNormalizada?'border-color:var(--yellow)':''}"></div>
         <div><div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">Broker / comitente</div>
           <select id="ie-br-${i}" class="fi" style="font-size:var(--fs-sm);padding:7px 6px" onchange="ieBrokerChange(this,${i})">
             ${['Cocos','Inviu','Balanz','BBVA','BSF','Binance','BingX'].map(b=>`<option ${b===inv.broker?'selected':''}>${b}</option>`).join('')}
@@ -7543,7 +7579,8 @@ function renderInvEditor() {
       <div style="margin-top:8px">
         <div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">Notas</div>
         <input type="text" value="${inv.nota||''}" id="ie-no-${i}" class="fi" style="font-size:var(--fs-sm);padding:7px 10px"></div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 function ieBrokerChange(selectEl, i) {
