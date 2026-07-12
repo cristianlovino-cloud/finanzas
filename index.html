@@ -2187,6 +2187,7 @@ function importarGastosTarjetaMasivo() {
         moneda: it.moneda || 'ARS',
         cargadoPor: 'Cris',
         gastoDe: it.gastoDe || 'Cris',
+        nota: it.nota || '',
         ts: Date.now(),
         ...(it.compraId ? { compraId: it.compraId } : {}),
         ...(it.cuotaNum ? { cuotaNum: it.cuotaNum, cuotaTotal: it.cuotaTotal, esCuotaEnCurso: true } : {}),
@@ -4890,7 +4891,7 @@ function renderTarjetaCard(grupo, conciliaciones, colapsadoPorDefault) {
               ${quienBadge}
               ${g.esCuotaEnCurso ? `<span style="font-size:var(--fs-xs);color:var(--muted);background:var(--s1);border:1px solid var(--border);padding:1px 5px;border-radius:4px">cuota en curso</span>` : ''}
             </div>
-            <div style="font-size:var(--fs-xs);color:var(--muted)">${new Date((g.fechaCompra || g.fecha)+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'})}</div>
+            <div style="font-size:var(--fs-xs);color:var(--muted)">${new Date((g.fechaCompra || g.fecha)+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'})}${g.nota ? ' · ' + g.nota : ''}</div>
           </div>
           <div style="text-align:right;flex-shrink:0;cursor:${estaConciliado?'default':'pointer'}" ${!estaConciliado ? `onclick="toggleEditarMontoGasto('${g.id}')"` : ''}>
             <div style="font-weight:700;color:var(--red);font-size:var(--fs-md)">${montoDisplay}${!estaConciliado ? ' ✎' : ''}</div>
