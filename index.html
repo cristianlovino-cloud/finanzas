@@ -2118,58 +2118,93 @@ function importarGastosTarjetaMasivo() {
   const raw = document.getElementById('importar-gastos-textarea').value.trim();
   if (!raw) { resultEl.innerHTML = '<span style="color:var(--red)">Pegá o subí el JSON primero.</span>'; return; }
 
-  let items;
-  try { items = JSON.parse(raw); } catch(e) {
+  let data;
+  try { data = JSON.parse(raw); } catch(e) {
     resultEl.innerHTML = '<span style="color:var(--red)">JSON inválido: ' + e.message + '</span>';
     return;
   }
-  if (!Array.isArray(items)) {
-    resultEl.innerHTML = '<span style="color:var(--red)">El JSON debe ser una lista [ ] de gastos.</span>';
+
+  // Acepta dos formatos: array plano de gastos (como antes), o { periodos: {...}, gastos: [...] }
+  const items = Array.isArray(data) ? data : (Array.isArray(data.gastos) ? data.gastos : null);
+  const periodosPorTarjeta = Array.isArray(data) ? null : data.periodos;
+
+  if (!items && !periodosPorTarjeta) {
+    resultEl.innerHTML = '<span style="color:var(--red)">El JSON debe ser una lista [ ] de gastos, o un objeto { periodos, gastos }.</span>';
     return;
   }
 
   const tarjetas = getTarjetas();
-  const lista = getGastosTarjetas();
+  let periodosAgregados = 0, periodosYaExistian = 0;
+  const tarjetasPeriodosNoEncontradas = new Set();
+
+  if (periodosPorTarjeta) {
+    Object.entries(periodosPorTarjeta).forEach(([nombreTarjeta, periodos]) => {
+      const tarjeta = tarjetas.find(t => t.nombre.toLowerCase() === nombreTarjeta.toLowerCase());
+      if (!tarjeta) { tarjetasPeriodosNoEncontradas.add(nombreTarjeta); return; }
+      if (!tarjeta.periodos) tarjeta.periodos = [];
+      (periodos || []).forEach(p => {
+        if (!p.inicio || !p.cierre) return;
+        const yaExiste = tarjeta.periodos.some(existente => existente.cierre === p.cierre);
+        if (yaExiste) { periodosYaExistian++; return; }
+        tarjeta.periodos.push({ inicio: p.inicio, cierre: p.cierre });
+        periodosAgregados++;
+      });
+      tarjeta.periodos.sort((a,b) => a.cierre.localeCompare(b.cierre));
+    });
+    if (periodosAgregados > 0) saveTarjetas(tarjetas);
+  }
+
   let importados = 0, duplicados = 0, sinTarjeta = 0, invalidos = 0;
   const tarjetasNoEncontradas = new Set();
 
-  items.forEach((it, idx) => {
-    if (!it.fecha || !it.tipo || !it.monto || !it.tarjetaNombre) { invalidos++; return; }
+  if (items) {
+    const lista = getGastosTarjetas();
+    items.forEach((it, idx) => {
+      if (!it.fecha || !it.tipo || !it.monto || !it.tarjetaNombre) { invalidos++; return; }
 
-    const tarjeta = tarjetas.find(t => t.nombre.toLowerCase() === String(it.tarjetaNombre).toLowerCase());
-    if (!tarjeta) { sinTarjeta++; tarjetasNoEncontradas.add(it.tarjetaNombre); return; }
+      const tarjeta = tarjetas.find(t => t.nombre.toLowerCase() === String(it.tarjetaNombre).toLowerCase());
+      if (!tarjeta) { sinTarjeta++; tarjetasNoEncontradas.add(it.tarjetaNombre); return; }
 
-    // Dedupe: mismo tarjetaId + fecha + tipo + monto ya importado antes → no duplicar
-    const yaExiste = lista.some(g =>
-      g.tarjetaId === tarjeta.id && g.fecha === it.fecha && g.tipo === it.tipo && Math.abs(g.monto - it.monto) < 0.01
-    );
-    if (yaExiste) { duplicados++; return; }
+      // Dedupe: mismo tarjetaId + fecha + tipo + monto ya importado antes → no duplicar
+      const yaExiste = lista.some(g =>
+        g.tarjetaId === tarjeta.id && g.fecha === it.fecha && g.tipo === it.tipo && Math.abs(g.monto - it.monto) < 0.01
+      );
+      if (yaExiste) { duplicados++; return; }
 
-    lista.push({
-      id: 'gt_import_' + Date.now() + '_' + idx + '_' + Math.random().toString(36).slice(2,6),
-      tarjetaId: tarjeta.id,
-      fecha: it.fecha,
-      fechaCompra: it.fechaCompra || it.fecha,
-      tipo: it.tipo,
-      monto: parseFloat(it.monto),
-      moneda: it.moneda || 'ARS',
-      cargadoPor: 'Cris',
-      gastoDe: it.gastoDe || 'Cris',
-      ts: Date.now(),
-      ...(it.compraId ? { compraId: it.compraId } : {}),
-      ...(it.cuotaNum ? { cuotaNum: it.cuotaNum, cuotaTotal: it.cuotaTotal, esCuotaEnCurso: true } : {}),
+      lista.push({
+        id: 'gt_import_' + Date.now() + '_' + idx + '_' + Math.random().toString(36).slice(2,6),
+        tarjetaId: tarjeta.id,
+        fecha: it.fecha,
+        fechaCompra: it.fechaCompra || it.fecha,
+        tipo: it.tipo,
+        monto: parseFloat(it.monto),
+        moneda: it.moneda || 'ARS',
+        cargadoPor: 'Cris',
+        gastoDe: it.gastoDe || 'Cris',
+        ts: Date.now(),
+        ...(it.compraId ? { compraId: it.compraId } : {}),
+        ...(it.cuotaNum ? { cuotaNum: it.cuotaNum, cuotaTotal: it.cuotaTotal, esCuotaEnCurso: true } : {}),
+      });
+      importados++;
     });
-    importados++;
-  });
+    saveGastosTarjetas(lista);
+    renderGastosTarjetas();
+  }
 
-  saveGastosTarjetas(lista);
-  renderGastosTarjetas();
-
-  let msg = `✓ ${importados} importados`;
-  if (duplicados > 0) msg += ` · ${duplicados} ya existían (omitidos)`;
-  if (sinTarjeta > 0) msg += ` · ${sinTarjeta} sin tarjeta reconocida (${[...tarjetasNoEncontradas].join(', ')})`;
-  if (invalidos > 0) msg += ` · ${invalidos} con datos incompletos`;
-  resultEl.innerHTML = `<span style="color:${importados>0?'var(--green)':'var(--red)'}">${msg}</span>`;
+  let msg = '';
+  if (periodosPorTarjeta) {
+    msg += `✓ ${periodosAgregados} períodos agregados`;
+    if (periodosYaExistian > 0) msg += ` · ${periodosYaExistian} ya existían`;
+    if (tarjetasPeriodosNoEncontradas.size > 0) msg += ` · tarjeta no encontrada: ${[...tarjetasPeriodosNoEncontradas].join(', ')}`;
+    msg += '<br>';
+  }
+  if (items) {
+    msg += `✓ ${importados} gastos importados`;
+    if (duplicados > 0) msg += ` · ${duplicados} ya existían (omitidos)`;
+    if (sinTarjeta > 0) msg += ` · ${sinTarjeta} sin tarjeta reconocida (${[...tarjetasNoEncontradas].join(', ')})`;
+    if (invalidos > 0) msg += ` · ${invalidos} con datos incompletos`;
+  }
+  resultEl.innerHTML = `<span style="color:${(importados>0||periodosAgregados>0)?'var(--green)':'var(--red)'}">${msg}</span>`;
   if (importados > 0) document.getElementById('importar-gastos-textarea').value = '';
 }
 
