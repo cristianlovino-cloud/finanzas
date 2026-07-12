@@ -1914,6 +1914,15 @@ nav::-webkit-scrollbar{display:none}
       <div id="importar-gastos-resultado" style="font-size:var(--fs-sm);margin-top:10px"></div>
     </div>
 
+    <div class="card" style="margin-bottom:14px;border:1px solid var(--red)">
+      <div class="ct">🔍 Detectar posibles gastos duplicados</div>
+      <p style="font-size:var(--fs-sm);color:var(--muted2);margin-bottom:12px;line-height:1.5">
+        Busca gastos de la misma tarjeta con la misma fecha y monto (parecido o igual). Te muestra los candidatos uno al lado del otro para que elijas cuál borrar — no borra nada solo.
+      </p>
+      <button class="btn btn-o" onclick="buscarGastosDuplicados()" style="width:100%">🔍 Buscar duplicados</button>
+      <div id="duplicados-resultado" style="margin-top:12px"></div>
+    </div>
+
     <div class="card" style="margin-bottom:14px">
       <div class="ct">🔤 Tipografía</div>
       <p style="font-size:var(--fs-sm);color:var(--muted2);margin-bottom:12px;line-height:1.5">
@@ -2117,6 +2126,66 @@ function cargarArchivoImportarGastos(event) {
   reader.onload = (e) => { document.getElementById('importar-gastos-textarea').value = e.target.result; };
   reader.readAsText(file);
   event.target.value = '';
+}
+
+// ── Detectar posibles gastos duplicados (misma tarjeta, misma fecha, monto igual o muy parecido) ──
+function buscarGastosDuplicados() {
+  const lista = getGastosTarjetas();
+  const tarjetas = getTarjetas();
+  const grupos = [];
+  const usados = new Set();
+
+  for (let i = 0; i < lista.length; i++) {
+    if (usados.has(lista[i].id)) continue;
+    const candidatos = [lista[i]];
+    for (let j = i+1; j < lista.length; j++) {
+      if (usados.has(lista[j].id)) continue;
+      const mismaTarjeta = lista[i].tarjetaId === lista[j].tarjetaId;
+      const mismaFecha = lista[i].fecha === lista[j].fecha;
+      const montoParecido = Math.abs((lista[i].monto||0) - (lista[j].monto||0)) <= 1;
+      if (mismaTarjeta && mismaFecha && montoParecido) {
+        candidatos.push(lista[j]);
+        usados.add(lista[j].id);
+      }
+    }
+    if (candidatos.length > 1) {
+      usados.add(lista[i].id);
+      grupos.push(candidatos);
+    }
+  }
+
+  const resultEl = document.getElementById('duplicados-resultado');
+  if (grupos.length === 0) {
+    resultEl.innerHTML = '<div style="color:var(--green);font-size:var(--fs-sm)">✓ No encontré candidatos a duplicado.</div>';
+    return;
+  }
+
+  resultEl.innerHTML = `<div style="font-size:var(--fs-sm);color:var(--red);margin-bottom:10px;font-weight:600">⚠ ${grupos.length} grupo${grupos.length>1?'s':''} de posibles duplicados</div>` +
+    grupos.map((grupo, gi) => {
+      const tarjetaNombre = (tarjetas.find(t => t.id === grupo[0].tarjetaId) || {}).nombre || '?';
+      return `
+      <div style="border:1px solid var(--border2);border-radius:8px;padding:10px;margin-bottom:10px;background:var(--s2)">
+        <div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:8px">${tarjetaNombre} · ${grupo[0].fecha}</div>
+        ${grupo.map(g => `
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:var(--fs-sm);font-weight:600">${g.tipo} <span style="font-weight:400;color:var(--muted)">(${g.gastoDe || g.cargadoPor})</span></div>
+              <div style="font-size:var(--fs-xs);color:var(--muted)">${fmt(g.monto)}${g.nota ? ' · ' + g.nota : ' · sin nota'}${g.esCuotaEnCurso ? ' · cuota trackeada' : ''}</div>
+            </div>
+            <button onclick="borrarGastoDuplicado('${g.id}')" class="btn btn-o" style="padding:5px 10px;font-size:var(--fs-xs);color:var(--red);border-color:var(--red)">✕ Borrar este</button>
+          </div>
+        `).join('')}
+      </div>`;
+    }).join('');
+}
+
+function borrarGastoDuplicado(id) {
+  if (!confirm('¿Borrar este gasto? No se puede deshacer.')) return;
+  const lista = getGastosTarjetas().filter(g => g.id !== id);
+  saveGastosTarjetas(lista);
+  renderGastosTarjetas();
+  buscarGastosDuplicados(); // refresca la lista de duplicados restantes
+  showToast('✓ Gasto borrado');
 }
 
 function importarGastosTarjetaMasivo() {
