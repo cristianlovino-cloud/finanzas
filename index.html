@@ -1923,6 +1923,7 @@ nav::-webkit-scrollbar{display:none}
       </p>
       <button class="btn btn-o" onclick="buscarGastosDuplicados()" style="width:100%">🔍 Buscar duplicados</button>
       <button class="btn btn-o" onclick="deshacerImportacionSinNota()" style="width:100%;margin-top:8px;color:var(--red);border-color:var(--red)">↩ Deshacer imports viejos (sin nota)</button>
+      <button class="btn btn-o" onclick="arreglarFechasExtra()" style="width:100%;margin-top:8px">🩹 Corregir fechas rotas (cuotas sin período)</button>
       <div id="duplicados-resultado" style="margin-top:12px"></div>
     </div>
 
@@ -2132,6 +2133,30 @@ function cargarArchivoImportarGastos(event) {
 }
 
 // ── Deshacer específicamente los imports VIEJOS (sin nota) — no toca lo cargado a mano ni los imports finales con nota ──
+// ── Corrige gastos con fecha rota tipo "2026-08-27_extra_5" (bug viejo de cuotas sin período configurado) ──
+function arreglarFechasExtra() {
+  const lista = getGastosTarjetas();
+  let corregidos = 0;
+  lista.forEach(g => {
+    if (!g.fecha || !g.fecha.includes('_extra_')) return;
+    const [baseFecha, , pasoStr] = g.fecha.split('_');
+    const paso = parseInt(pasoStr) || 0;
+    const base = new Date(baseFecha + 'T00:00:00');
+    if (isNaN(base.getTime())) return; // no se pudo interpretar, dejar como está
+    base.setDate(base.getDate() + 30 * (paso + 1));
+    g.fecha = base.toISOString().slice(0,10);
+    corregidos++;
+  });
+  if (corregidos === 0) {
+    showToast('No encontré fechas rotas para corregir');
+    return;
+  }
+  saveGastosTarjetas(lista);
+  renderGastosTarjetas();
+  if (typeof renderEvolCategorias === 'function') renderEvolCategorias();
+  showToast(`✓ ${corregidos} fecha${corregidos>1?'s':''} corregida${corregidos>1?'s':''}`);
+}
+
 function deshacerImportacionSinNota() {
   const lista = getGastosTarjetas();
   const aBorrar = lista.filter(g => g.id && g.id.startsWith('gt_import_') && !g.nota);
@@ -4342,9 +4367,12 @@ function generarSecuenciaCierres(tarjeta, fechaCompra, cantidad) {
       if (idx < periodos.length) {
         cierres.push(periodos[idx].cierre);
       } else {
-        // Más cuotas que períodos definidos — usar el cierre del último período disponible
-        // (la cuota quedará huérfana hasta que configures más períodos)
-        cierres.push(periodos[periodos.length - 1].cierre + '_extra_' + i);
+        // Más cuotas que períodos definidos: estimar ~30 días por cuota adicional
+        // desde el último período real conocido (no una fecha inventada como texto).
+        const pasosDeMas = idx - periodos.length + 1;
+        const base = new Date(periodos[periodos.length - 1].cierre + 'T00:00:00');
+        base.setDate(base.getDate() + 30 * pasosDeMas);
+        cierres.push(base.toISOString().slice(0,10));
       }
     }
     return cierres;
