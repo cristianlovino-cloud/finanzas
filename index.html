@@ -1137,6 +1137,7 @@ nav::-webkit-scrollbar{display:none}
           </select>
         </div>
       </div>
+      <div id="evol-gasto-sueldo-kpi" style="margin-bottom:12px"></div>
       <!-- Panel de configuración de grupos (contraído por defecto) -->
       <div id="config-grupos-panel" style="display:none;margin-bottom:14px;padding:12px;background:var(--s2);border-radius:8px">
         <div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:10px">
@@ -1981,6 +1982,14 @@ nav::-webkit-scrollbar{display:none}
         Antes había texto libre, así que pueden existir variantes del mismo gasto (ej. "nafta" y "Nafta"). Acá fusionás cada variante con la categoría correcta de la lista — cubre tanto Gastos Tarjetas como Flujo.
       </p>
       <div id="cfg-normalizador-list" style="margin-bottom:10px"></div>
+    </div>
+
+    <div class="card" style="margin-bottom:14px">
+      <div class="ct">✎ Renombrar categorías</div>
+      <p style="font-size:var(--fs-sm);color:var(--muted2);margin-bottom:12px;line-height:1.5">
+        Cambiá el nombre de cualquier categoría existente — se actualiza en Gastos Tarjetas, Flujo y en los grupos donde esté asignada, todo de una vez.
+      </p>
+      <div id="cfg-renombrar-list" style="max-height:280px;overflow-y:auto"></div>
     </div>
 
     <div class="card" style="margin-bottom:14px">
@@ -2845,7 +2854,7 @@ function go(id, btn) {
   if (id === 'flujo')       renderFlujo();
   if (id === 'patrimonio')  updatePatrimonio();
   if (id === 'cuentas')   { renderCuentas(); updateMediosDePago(); updateOverviewSaldos(); renderHistorialTransf(); }
-  if (id === 'config')     { rotarPeriodosTarjetas(); renderTarjetasCfg(); renderRecurrentesCfg(); renderNormalizadorCategorias(); applyFontPreset(localStorage.getItem('cl_font_preset') || 'original'); }
+  if (id === 'config')     { rotarPeriodosTarjetas(); renderTarjetasCfg(); renderRecurrentesCfg(); renderNormalizadorCategorias(); renderRenombrarCategorias(); applyFontPreset(localStorage.getItem('cl_font_preset') || 'original'); }
   if (id === 'tarjetas')    {
     renderGastosTarjetas();
     renderOwnTarjetaSelector();
@@ -3714,6 +3723,85 @@ function renderNormalizadorCategorias() {
         <option value="__nueva__">＋ Nueva...</option>
       </select>
     </div>`).join('');
+}
+
+// ── Listar TODAS las categorías reales en uso (Flujo + Gastos Tarjetas + lista oficial) para poder renombrarlas ──
+function todasLasCategoriasReales() {
+  const set = new Set(getCategoriasConsumo());
+  const txsAll = DB.get('txs', {});
+  Object.values(txsAll).forEach(mesArr => {
+    (mesArr || []).forEach(tx => { if (tx.tipo !== 'ingreso' && tx.cat) set.add(tx.cat.trim()); });
+  });
+  getGastosTarjetas().forEach(g => {
+    if (g.tipo) set.add(g.tipo.replace(/\s*\(cuota\s*\d+\/\d+\)\s*$/i,'').trim());
+  });
+  return [...set].filter(Boolean).sort((a,b) => a.localeCompare(b));
+}
+
+function renderRenombrarCategorias() {
+  const el = document.getElementById('cfg-renombrar-list');
+  if (!el) return;
+  const cats = todasLasCategoriasReales();
+  el.innerHTML = cats.map(c => `
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
+      <span style="flex:1;font-size:var(--fs-sm)">${c}</span>
+      <button onclick="renombrarCategoriaGlobal('${c.replace(/'/g,"\\'")}')" style="background:none;border:1px solid var(--border2);border-radius:6px;color:var(--blue);cursor:pointer;font-size:var(--fs-xs);padding:4px 10px">✎ Renombrar</button>
+    </div>`).join('');
+}
+
+function renombrarCategoriaGlobal(nombreViejo) {
+  const nombreNuevo = prompt(`Nuevo nombre para "${nombreViejo}":`, nombreViejo);
+  if (!nombreNuevo || !nombreNuevo.trim() || nombreNuevo.trim() === nombreViejo) return;
+  const nuevo = nombreNuevo.trim();
+
+  let cambios = 0;
+
+  // 1. Lista oficial de categorías
+  const categorias = getCategoriasConsumo();
+  const idx = categorias.findIndex(c => c === nombreViejo);
+  if (idx >= 0) { categorias[idx] = nuevo; saveCategoriasConsumo(categorias); }
+
+  // 2. Gastos Tarjetas (preservando el sufijo de cuota si lo tiene)
+  const lista = getGastosTarjetas();
+  lista.forEach(g => {
+    const match = (g.tipo || '').match(/^(.*?)(\s*\(cuota\s*\d+\/\d+\))?$/i);
+    const base = match ? match[1].trim() : g.tipo;
+    const sufijo = match && match[2] ? match[2] : '';
+    if (base === nombreViejo) { g.tipo = nuevo + sufijo; cambios++; }
+  });
+  if (cambios > 0) { saveGastosTarjetas(lista); if (typeof renderGastosTarjetas === 'function') renderGastosTarjetas(); }
+
+  // 3. Flujo
+  const txsAll = DB.get('txs', {});
+  let cambiosFlujo = 0;
+  Object.values(txsAll).forEach(mesArr => {
+    (mesArr || []).forEach(tx => {
+      if (tx.tipo !== 'ingreso' && (tx.cat || '').trim() === nombreViejo) { tx.cat = nuevo; cambiosFlujo++; }
+    });
+  });
+  if (cambiosFlujo > 0) { DB.set('txs', txsAll); if (typeof renderFlujo === 'function') renderFlujo(); }
+
+  // 4. Grupos de categorías — renombrar el miembro donde esté, sin sacarlo del grupo
+  const grupos = getGruposCategorias();
+  if (grupos) {
+    let tocoGrupo = false;
+    grupos.forEach(g => {
+      const mi = g.miembros.findIndex(m => m === nombreViejo);
+      if (mi >= 0) { g.miembros[mi] = nuevo; tocoGrupo = true; }
+    });
+    if (tocoGrupo) DB.set('grupos_categorias', grupos);
+  }
+  if (_gruposDraft) {
+    _gruposDraft.forEach(g => {
+      const mi = g.miembros.findIndex(m => m === nombreViejo);
+      if (mi >= 0) g.miembros[mi] = nuevo;
+    });
+  }
+
+  if (typeof renderEvolCategorias === 'function') renderEvolCategorias();
+  renderRenombrarCategorias();
+  if (typeof renderNormalizadorCategorias === 'function') renderNormalizadorCategorias();
+  showToast(`✓ "${nombreViejo}" renombrada a "${nuevo}" (${cambios + cambiosFlujo} gastos actualizados)`);
 }
 
 function fusionarVarianteCategoria(variante, destino) {
@@ -7157,6 +7245,37 @@ function renderEvolCategorias() {
     </div>`;
 
   el.innerHTML = html + footer;
+
+  // ── KPI Gasto/Sueldo: total gastado (todas las categorías) vs. ingreso de SUELDO puro ──
+  // Excluye a propósito Aguinaldo, Adicionales, Dividendos, Reintegros, Venta de activos, etc.
+  // — son ingresos irregulares, no representativos del sueldo mensual real. Sirve para
+  // comparar contra benchmarks estándar de cuánto del sueldo se destina a gastos.
+  const kpiEl = document.getElementById('evol-gasto-sueldo-kpi');
+  if (kpiEl) {
+    let totalSueldo = 0;
+    meses.forEach(m => {
+      const mesKey = yr + '-' + m;
+      (getTxs(mesKey) || []).forEach(tx => {
+        if (tx.tipo === 'ingreso' && (tx.cat || '').trim().toLowerCase() === 'sueldo') {
+          totalSueldo += parseFloat(tx.monto) || 0;
+        }
+      });
+    });
+    if (totalSueldo > 0) {
+      const pct = (totalAnio / totalSueldo) * 100;
+      const color = pct > 100 ? 'var(--red)' : pct > 70 ? 'var(--yellow)' : 'var(--green)';
+      kpiEl.innerHTML = `
+        <div style="background:var(--s2);border-radius:8px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div style="font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Gasto total / Sueldo (sin aguinaldo ni bonos)</div>
+            <div style="font-size:var(--fs-xs);color:var(--muted2);margin-top:2px">${fmt(totalAnio)} de ${fmt(totalSueldo)} de sueldo puro en ${yr}</div>
+          </div>
+          <div style="font-size:1.3rem;font-weight:700;color:${color}">${pct.toFixed(0)}%</div>
+        </div>`;
+    } else {
+      kpiEl.innerHTML = '';
+    }
+  }
 }
 
 // ── Muestra los gastos reales (Flujo + Gastos Tarjetas) que componen una categoría, en el año actual ──
