@@ -7163,9 +7163,45 @@ function renderEvolCategorias() {
   // Ordenar por total desc
   const gruposOrdenados = Object.entries(grupoMap).sort((a,b) => b[1].totalAnio - a[1].totalAnio);
 
+  // ── Total de SUELDO puro del año (excluye Aguinaldo, Adicionales, Dividendos, Reintegros, etc.) ──
+  // Se usa para el % de cada grupo sobre el sueldo y para marcar cuáles están fuera de lo razonable.
+  let totalSueldo = 0;
+  meses.forEach(m => {
+    const mesKey = yr + '-' + m;
+    (getTxs(mesKey) || []).forEach(tx => {
+      if (tx.tipo === 'ingreso' && (tx.cat || '').trim().toLowerCase() === 'sueldo') {
+        totalSueldo += parseFloat(tx.monto) || 0;
+      }
+    });
+  });
+
+  // ── Benchmarks estándar (guías generales de finanzas personales, no son una norma exacta —
+  // ajustalos si tu realidad es distinta). % razonable del sueldo por tipo de grupo. ──
+  const BENCHMARKS_SUELDO = {
+    'vivienda': 0.30, 'alimentación': 0.15, 'alimentacion': 0.15, 'transporte': 0.15,
+    'salud': 0.08, 'educación': 0.10, 'educacion': 0.10, 'entretenimiento': 0.08,
+    'entretenimiento y club': 0.08, 'seguros': 0.05, 'ropa y personal': 0.05,
+    'familia': 0.10, 'tecnología': 0.05, 'tecnologia': 0.05, 'impuestos y servicios': 0.10,
+  };
+  // Grupos que no son gasto "real" comparable (residual sin desglosar, catch-alls) — no se benchmarkean
+  const SIN_BENCHMARK = ['tarjetas de crédito', 'otros', 'sin agrupar'];
+
   const html = gruposOrdenados.map(([nombre, data]) => {
     const pct = totalAnio > 0 ? (data.totalAnio / totalAnio * 100).toFixed(1) : '0';
     const barW = Math.min(100, parseFloat(pct) * 3).toFixed(0);
+
+    // % sobre el sueldo puro y comparación contra el benchmark estándar
+    let badgeSueldo = '';
+    if (totalSueldo > 0 && !SIN_BENCHMARK.includes(nombre.toLowerCase())) {
+      const pctSueldo = data.totalAnio / totalSueldo;
+      const benchmark = BENCHMARKS_SUELDO[nombre.toLowerCase()];
+      const pctSueldoStr = (pctSueldo * 100).toFixed(0) + '%';
+      if (benchmark && pctSueldo > benchmark) {
+        badgeSueldo = `<div style="font-size:var(--fs-xs);color:var(--red);margin-top:2px">⚠ ${pctSueldoStr} del sueldo <span style="color:var(--muted)">(esperado ≤${(benchmark*100).toFixed(0)}%)</span></div>`;
+      } else {
+        badgeSueldo = `<div style="font-size:var(--fs-xs);color:var(--muted);margin-top:2px">${pctSueldoStr} del sueldo</div>`;
+      }
+    }
 
     // Tendencia último mes vs anterior
     const mesesConVal = data.montos.map((v,i)=>({v,i})).filter(x=>x.v>0);
@@ -7222,6 +7258,7 @@ function renderEvolCategorias() {
         <div style="text-align:right;flex-shrink:0">
           <div style="font-size:var(--fs-md);font-weight:700">${fmt(data.totalAnio)}</div>
           <div style="font-size:var(--fs-xs);color:var(--muted)">${pct}% del gasto</div>
+          ${badgeSueldo}
         </div>
         <span id="ic-${id}" style="color:var(--muted);font-size:var(--fs-xs)">▶</span>
       </div>
@@ -7246,21 +7283,10 @@ function renderEvolCategorias() {
 
   el.innerHTML = html + footer;
 
-  // ── KPI Gasto/Sueldo: total gastado (todas las categorías) vs. ingreso de SUELDO puro ──
-  // Excluye a propósito Aguinaldo, Adicionales, Dividendos, Reintegros, Venta de activos, etc.
-  // — son ingresos irregulares, no representativos del sueldo mensual real. Sirve para
-  // comparar contra benchmarks estándar de cuánto del sueldo se destina a gastos.
+  // ── KPI Gasto/Sueldo general: total gastado (todas las categorías) vs. ingreso de SUELDO puro ──
+  // totalSueldo ya se calculó arriba, junto con los benchmarks por grupo — se reusa acá.
   const kpiEl = document.getElementById('evol-gasto-sueldo-kpi');
   if (kpiEl) {
-    let totalSueldo = 0;
-    meses.forEach(m => {
-      const mesKey = yr + '-' + m;
-      (getTxs(mesKey) || []).forEach(tx => {
-        if (tx.tipo === 'ingreso' && (tx.cat || '').trim().toLowerCase() === 'sueldo') {
-          totalSueldo += parseFloat(tx.monto) || 0;
-        }
-      });
-    });
     if (totalSueldo > 0) {
       const pct = (totalAnio / totalSueldo) * 100;
       const color = pct > 100 ? 'var(--red)' : pct > 70 ? 'var(--yellow)' : 'var(--green)';
