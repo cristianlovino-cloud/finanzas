@@ -6732,14 +6732,24 @@ function renderConfigGrupos() {
   if (!el) return;
   if (!_gruposDraft) _gruposDraft = JSON.parse(JSON.stringify(getGruposCategorias() || sugerirGrupos()));
 
-  // "Tarjetas de crédito" es el residual sintético (pago de tarjeta no desglosado todavía).
-  // No sale de ningún tx.cat/g.tipo real, así que si ya tenías grupos guardados de antes,
-  // nunca se registró en ningún lado — la agregamos acá para que siempre sea reasignable.
-  const yaEsta = _gruposDraft.some(g => g.miembros.some(m => m.toLowerCase() === 'tarjetas de crédito'));
-  if (!yaEsta) {
+  // Sincronizar categorías nuevas que hayan aparecido después de la última vez que se armó
+  // este draft (_gruposDraft se cachea en memoria y no se refresca solo). Cualquier categoría
+  // real —de Flujo (tx.cat) o de Gastos Tarjetas (g.tipo)— o el residual sintético "Tarjetas
+  // de crédito", que no esté ya en ALGÚN grupo, se agrega a "Sin agrupar" para que sea visible
+  // y reasignable, en vez de quedar invisible hasta recargar la página entera.
+  const yaAsignadas = new Set(_gruposDraft.flatMap(g => g.miembros.map(m => m.toLowerCase())));
+  const catsActuales = new Set(['Tarjetas de crédito']);
+  const txsAll = DB.get('txs', {});
+  Object.values(txsAll).forEach(mesArr => {
+    (mesArr || []).forEach(tx => { if (tx.tipo !== 'ingreso' && tx.cat) catsActuales.add(tx.cat.trim()); });
+  });
+  getGastosTarjetas().forEach(g => { if (g.tipo) catsActuales.add(g.tipo.replace(/\s*\(cuota.*\)/i,'').trim()); });
+
+  const nuevasSinAsignar = [...catsActuales].filter(c => c && !yaAsignadas.has(c.toLowerCase()));
+  if (nuevasSinAsignar.length > 0) {
     let sinAgrupar = _gruposDraft.find(g => g.grupo === 'Sin agrupar');
     if (!sinAgrupar) { sinAgrupar = { grupo: 'Sin agrupar', miembros: [] }; _gruposDraft.push(sinAgrupar); }
-    sinAgrupar.miembros.push('Tarjetas de crédito');
+    nuevasSinAsignar.forEach(c => sinAgrupar.miembros.push(c));
   }
 
   const grupos = _gruposDraft;
