@@ -7931,7 +7931,10 @@ async function renderInvList() {
     const rc      = rendPct === null ? P.yellow : rendPct > 0 ? P.green : rendPct < 0 ? P.red : P.yellow;
     const rendLabel = rendPct === null
       ? '<span style="font-size:var(--fs-xs);color:var(--muted)">— falta costo de entrada</span>'
-      : `<span style="color:${rc};font-size:var(--fs-sm);font-weight:600">${rendPct>=0?'+':''}${(rendPct*100).toFixed(1)}%${ganLoss!==0?' ('+fmt(Math.abs(ganLoss))+')':''}</span>`;
+      : `<div style="display:flex;align-items:center;gap:5px;justify-content:flex-end;margin-top:3px">
+          <span style="font-size:var(--fs-xs);font-weight:600;color:${rc}">${ganLoss>=0?'+':'-'}${fmt(Math.abs(ganLoss))}</span>
+          <span style="font-size:var(--fs-xs);font-weight:700;color:#fff;background:${rc};padding:2px 8px;border-radius:12px;white-space:nowrap">${rendPct>=0?'+':''}${(rendPct*100).toFixed(2)}%</span>
+        </div>`;
     const badge   = buildCotizBadge(inv, cotiz);
     return `<div class="inv-row">
       <div class="inv-icon" style="background:${color}15">${icons[inv.tipo]||'📈'}</div>
