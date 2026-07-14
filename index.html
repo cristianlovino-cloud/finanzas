@@ -1928,6 +1928,31 @@ nav::-webkit-scrollbar{display:none}
       <div id="duplicados-resultado" style="margin-top:12px"></div>
     </div>
 
+    <div class="card" style="margin-bottom:14px;border:1px solid var(--red)">
+      <div class="ct">🗑 Borrar gastos importados por tarjeta y rango de fechas</div>
+      <p style="font-size:var(--fs-sm);color:var(--muted2);margin-bottom:12px;line-height:1.5">
+        Para limpiar un lote de importación antes de reimportar una versión corregida. Solo afecta gastos importados (los que tienen id de import) — nunca toca lo que cargaste a mano vos, Lara o Emma.
+      </p>
+      <div style="display:grid;grid-template-columns:1fr;gap:8px;margin-bottom:8px">
+        <select id="borrar-rango-tarjeta" class="fi"></select>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div>
+            <label style="font-size:var(--fs-xs);color:var(--muted);display:block;margin-bottom:4px">Desde</label>
+            <input type="date" id="borrar-rango-desde" class="fi">
+          </div>
+          <div>
+            <label style="font-size:var(--fs-xs);color:var(--muted);display:block;margin-bottom:4px">Hasta</label>
+            <input type="date" id="borrar-rango-hasta" class="fi">
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-o" onclick="previsualizarBorradoPorRango()" style="flex:1;min-width:140px">👁 Vista previa</button>
+        <button class="btn" onclick="ejecutarBorradoPorRango()" style="flex:1;min-width:140px;background:var(--red);color:white;border:none;border-radius:7px;cursor:pointer;font-family:var(--fh);font-size:.78rem;font-weight:700">🗑 Borrar</button>
+      </div>
+      <div id="borrar-rango-resultado" style="font-size:var(--fs-sm);margin-top:10px"></div>
+    </div>
+
     <div class="card" style="margin-bottom:14px">
       <div class="ct">🔤 Tipografía</div>
       <p style="font-size:var(--fs-sm);color:var(--muted2);margin-bottom:12px;line-height:1.5">
@@ -2246,6 +2271,69 @@ function borrarGastoDuplicado(id) {
   renderGastosTarjetas();
   buscarGastosDuplicados(); // refresca la lista de duplicados restantes
   showToast('✓ Gasto borrado');
+}
+
+// ── Borrado masivo por tarjeta + rango de fechas (solo gastos importados, nunca los cargados a mano) ──
+function populateTarjetaSelectBorrado() {
+  const sel = document.getElementById('borrar-rango-tarjeta');
+  if (!sel) return;
+  const tarjetas = getTarjetas();
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">— elegí una tarjeta —</option>' +
+    tarjetas.map(t => `<option value="${t.id}">${t.nombre}</option>`).join('');
+  if (prev && tarjetas.some(t => t.id === prev)) sel.value = prev;
+}
+
+function _gastosEnRangoImportados() {
+  const tarjetaId = document.getElementById('borrar-rango-tarjeta').value;
+  const desde = document.getElementById('borrar-rango-desde').value;
+  const hasta = document.getElementById('borrar-rango-hasta').value;
+  if (!tarjetaId) { return { error: 'Elegí una tarjeta primero.' }; }
+  if (!desde || !hasta) { return { error: 'Completá las dos fechas (desde/hasta).' }; }
+  if (desde > hasta) { return { error: '"Desde" no puede ser posterior a "hasta".' }; }
+  const lista = getGastosTarjetas();
+  const matches = lista.filter(g =>
+    g.tarjetaId === tarjetaId &&
+    g.id && g.id.startsWith('gt_import_') &&
+    g.fecha >= desde && g.fecha <= hasta
+  );
+  return { matches, tarjetaId, desde, hasta };
+}
+
+function previsualizarBorradoPorRango() {
+  const resultEl = document.getElementById('borrar-rango-resultado');
+  const r = _gastosEnRangoImportados();
+  if (r.error) { resultEl.innerHTML = `<span style="color:var(--red)">${r.error}</span>`; return; }
+  const { matches } = r;
+  if (matches.length === 0) {
+    resultEl.innerHTML = '<span style="color:var(--muted)">No hay gastos importados de esa tarjeta en ese rango.</span>';
+    return;
+  }
+  const sumaARS = matches.filter(g => (g.moneda||'ARS') === 'ARS').reduce((s,g) => s + (g.monto||0), 0);
+  const sumaUSD = matches.filter(g => g.moneda === 'USD').reduce((s,g) => s + (g.monto||0), 0);
+  resultEl.innerHTML = `<span style="color:var(--yellow)">⚠ Se borrarían <b>${matches.length}</b> gastos — ARS ${fmt(sumaARS)}${sumaUSD>0 ? ' · U$S ' + sumaUSD.toFixed(2) : ''}. Revisá y tocá "Borrar" para confirmar.</span>`;
+}
+
+function ejecutarBorradoPorRango() {
+  const resultEl = document.getElementById('borrar-rango-resultado');
+  const r = _gastosEnRangoImportados();
+  if (r.error) { resultEl.innerHTML = `<span style="color:var(--red)">${r.error}</span>`; return; }
+  const { matches, tarjetaId } = r;
+  if (matches.length === 0) {
+    resultEl.innerHTML = '<span style="color:var(--muted)">No hay gastos importados de esa tarjeta en ese rango.</span>';
+    return;
+  }
+  const tarjetaNombre = (getTarjetas().find(t => t.id === tarjetaId) || {}).nombre || '?';
+  const sumaARS = matches.filter(g => (g.moneda||'ARS') === 'ARS').reduce((s,g) => s + (g.monto||0), 0);
+  const sumaUSD = matches.filter(g => g.moneda === 'USD').reduce((s,g) => s + (g.monto||0), 0);
+  if (!confirm(`Vas a borrar ${matches.length} gastos importados de ${tarjetaNombre} entre ${r.desde} y ${r.hasta} (ARS ${fmt(sumaARS)}${sumaUSD>0 ? ' + U$S ' + sumaUSD.toFixed(2) : ''}). Esto NO se puede deshacer. ¿Confirmás?`)) return;
+
+  const idsABorrar = new Set(matches.map(g => g.id));
+  const lista = getGastosTarjetas().filter(g => !idsABorrar.has(g.id));
+  saveGastosTarjetas(lista);
+  renderGastosTarjetas();
+  resultEl.innerHTML = `<span style="color:var(--green)">✓ ${matches.length} gastos borrados de ${tarjetaNombre}.</span>`;
+  showToast(`✓ ${matches.length} gastos borrados`);
 }
 
 function importarGastosTarjetaMasivo() {
@@ -2854,7 +2942,7 @@ function go(id, btn) {
   if (id === 'flujo')       renderFlujo();
   if (id === 'patrimonio')  updatePatrimonio();
   if (id === 'cuentas')   { renderCuentas(); updateMediosDePago(); updateOverviewSaldos(); renderHistorialTransf(); }
-  if (id === 'config')     { rotarPeriodosTarjetas(); renderTarjetasCfg(); renderRecurrentesCfg(); renderNormalizadorCategorias(); renderRenombrarCategorias(); applyFontPreset(localStorage.getItem('cl_font_preset') || 'original'); }
+  if (id === 'config')     { rotarPeriodosTarjetas(); renderTarjetasCfg(); renderRecurrentesCfg(); renderNormalizadorCategorias(); renderRenombrarCategorias(); applyFontPreset(localStorage.getItem('cl_font_preset') || 'original'); populateTarjetaSelectBorrado(); }
   if (id === 'tarjetas')    {
     renderGastosTarjetas();
     renderOwnTarjetaSelector();
