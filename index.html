@@ -3030,22 +3030,26 @@ function rotarPeriodosTarjetas() {
   const tarjetas = getTarjetas();
   let huboCambio = false;
   tarjetas.forEach(t => {
-    if (!t.periodos) return;
-    const actual = t.periodos[1] || {};
-    if (!actual.cierre) return;
-    if (hoy > actual.cierre) {
-      // Rotar: anterior = actual, actual = próximo, próximo = vacío
-      t.periodos[0] = { ...actual };
-      t.periodos[1] = { ...(t.periodos[2] || {inicio:'',cierre:''}) };
-      t.periodos[2] = { inicio: '', cierre: '' };
-      // Auto inicio del próximo = cierre actual + 1 día
-      if (t.periodos[1].cierre) {
-        const d = new Date(t.periodos[1].cierre + 'T00:00:00');
-        d.setDate(d.getDate() + 1);
-        t.periodos[2].inicio = d.toISOString().slice(0,10);
-      }
-      huboCambio = true;
-    }
+    if (!Array.isArray(t.periodos) || t.periodos.length === 0) return;
+    // Ordenamos por cierre para trabajar siempre sobre el más reciente, sin asumir
+    // posiciones fijas — la lista puede tener 3 períodos o 100, da igual.
+    const validos = t.periodos.filter(p => p.inicio && p.cierre);
+    if (validos.length === 0) return;
+    validos.sort((a,b) => a.cierre.localeCompare(b.cierre));
+    const ultimo = validos[validos.length - 1];
+    if (hoy <= ultimo.cierre) return; // el último período configurado todavía no cerró, nada que hacer
+
+    // Ya pasó la fecha de cierre del último período conocido y no hay uno más nuevo cargado:
+    // agregamos el siguiente período (no tocamos ni borramos los anteriores).
+    const dInicio = new Date(ultimo.cierre + 'T00:00:00');
+    dInicio.setDate(dInicio.getDate() + 1);
+    const inicioNuevo = dInicio.toISOString().slice(0,10);
+    const yaExiste = validos.some(p => p.inicio === inicioNuevo);
+    if (yaExiste) return;
+
+    const cierreCalc = calcularProximoCierre(t, dInicio);
+    t.periodos.push({ inicio: inicioNuevo, cierre: cierreCalc.toISOString().slice(0,10) });
+    huboCambio = true;
   });
   if (huboCambio) {
     saveTarjetas(tarjetas);
@@ -4077,21 +4081,47 @@ function toggleTarjetaCfg(id) {
   if (chev) chev.textContent = open ? '▼' : '▶';
 }
 
-function guardarPeriodoTarjeta(tarjetaId, idx, campo, valor) {
+// ── Los períodos de una tarjeta son una lista histórica que crece con el tiempo (no 3
+//    casilleros fijos). "Anterior / Actual / Próximo" es solo una VENTANA de 3 sobre esa
+//    lista para poder editarla cómodo — nunca se sobreescribe ni se trunca el historial. ──
+function periodosOrdenados(t) {
+  return (t.periodos || []).slice().sort((a,b) => (a.cierre||a.inicio||'').localeCompare(b.cierre||b.inicio||''));
+}
+function ventanaPeriodos(t) {
+  const hoy = new Date().toISOString().slice(0,10);
+  const ordenados = periodosOrdenados(t);
+  let idxActual = ordenados.findIndex(p => !p.cierre || p.cierre >= hoy);
+  if (idxActual === -1) idxActual = ordenados.length; // todos los cargados ya cerraron: "actual" queda vacío, a completar
+  return {
+    anterior: ordenados[idxActual - 1] || null,
+    actual:   ordenados[idxActual] || null,
+    proximo:  ordenados[idxActual + 1] || null,
+  };
+}
+
+function guardarPeriodoTarjeta(tarjetaId, slot, campo, valor) {
   const tarjetas = getTarjetas();
   const t = tarjetas.find(t => t.id === tarjetaId);
   if (!t) return;
-  if (!t.periodos) t.periodos = [{inicio:'',cierre:''},{inicio:'',cierre:''},{inicio:'',cierre:''}];
-  if (!t.periodos[idx]) t.periodos[idx] = {inicio:'',cierre:''};
-  t.periodos[idx][campo] = valor;
-  // Auto-completar: si cargaste el cierre de un período, pone el inicio del siguiente como cierre+1 día
-  if (campo === 'cierre' && valor && idx < 2) {
-    const siguiente = t.periodos[idx + 1] || {inicio:'',cierre:''};
-    if (!siguiente.inicio) {
+  if (!Array.isArray(t.periodos)) t.periodos = [];
+  const ventana = ventanaPeriodos(t);
+  let target = ventana[slot];
+  if (!target) {
+    // No existe todavía ese slot en el historial (ej. "próximo" antes de cargarlo) — se
+    // agrega como período NUEVO, sin tocar ninguno de los ya guardados.
+    target = { inicio: '', cierre: '' };
+    t.periodos.push(target);
+  }
+  target[campo] = valor; // 'target' es la misma referencia que el objeto dentro de t.periodos
+  // Auto-completar: si cargaste el cierre de "anterior" o "actual", proponé el inicio del
+  // siguiente slot como cierre+1 día (si ese siguiente todavía no existe en el historial).
+  if (campo === 'cierre' && valor && (slot === 'anterior' || slot === 'actual')) {
+    const ventanaAhora = ventanaPeriodos(t);
+    const siguienteSlot = slot === 'anterior' ? 'actual' : 'proximo';
+    if (!ventanaAhora[siguienteSlot]) {
       const d = new Date(valor + 'T00:00:00');
       d.setDate(d.getDate() + 1);
-      siguiente.inicio = d.toISOString().slice(0,10);
-      t.periodos[idx + 1] = siguiente;
+      t.periodos.push({ inicio: d.toISOString().slice(0,10), cierre: '' });
     }
   }
   saveTarjetas(tarjetas);
@@ -4118,22 +4148,22 @@ function renderTarjetasCfg() {
     el.innerHTML = '<div style="font-size:var(--fs-sm);color:var(--muted);padding:8px 0">No hay tarjetas configuradas todavía.</div>';
     return;
   }
-  const periodoLabels = ['anterior', 'actual', 'próximo'];
+  const periodoLabels = [['anterior','Período anterior'], ['actual','Período actual'], ['proximo','Período próximo']];
   el.innerHTML = tarjetas.map(t => {
-    const periodos = t.periodos || [{inicio:'',cierre:''},{inicio:'',cierre:''},{inicio:'',cierre:''}];
-    const periodosHTML = periodoLabels.map((label, i) => {
-      const p = periodos[i] || {inicio:'',cierre:''};
+    const ventana = ventanaPeriodos(t);
+    const periodosHTML = periodoLabels.map(([slot, label]) => {
+      const p = ventana[slot] || {inicio:'',cierre:''};
       return `
       <div style="background:var(--bg);border-radius:6px;padding:8px;margin-top:4px">
-        <div style="font-size:var(--fs-xs);color:var(--muted);font-weight:600;text-transform:uppercase;margin-bottom:4px">Período ${label}</div>
+        <div style="font-size:var(--fs-xs);color:var(--muted);font-weight:600;text-transform:uppercase;margin-bottom:4px">${label}</div>
         <div style="display:flex;gap:6px;align-items:center">
           <div style="flex:1">
             <div style="font-size:.55rem;color:var(--muted);margin-bottom:2px">Inicio</div>
-            <input type="date" value="${p.inicio||''}" onchange="guardarPeriodoTarjeta('${t.id}',${i},'inicio',this.value)" class="fi" style="width:100%;font-size:var(--fs-sm);padding:5px 7px">
+            <input type="date" value="${p.inicio||''}" onchange="guardarPeriodoTarjeta('${t.id}','${slot}','inicio',this.value)" class="fi" style="width:100%;font-size:var(--fs-sm);padding:5px 7px">
           </div>
           <div style="flex:1">
             <div style="font-size:.55rem;color:var(--muted);margin-bottom:2px">Cierre</div>
-            <input type="date" value="${p.cierre||''}" onchange="guardarPeriodoTarjeta('${t.id}',${i},'cierre',this.value)" class="fi" style="width:100%;font-size:var(--fs-sm);padding:5px 7px">
+            <input type="date" value="${p.cierre||''}" onchange="guardarPeriodoTarjeta('${t.id}','${slot}','cierre',this.value)" class="fi" style="width:100%;font-size:var(--fs-sm);padding:5px 7px">
           </div>
         </div>
       </div>`;
@@ -5241,7 +5271,7 @@ function renderTarjetaCard(grupo, conciliaciones, colapsadoPorDefaultArg) {
   const totalARS = grupo.gastos.filter(g => g.moneda !== 'USD').reduce((s,g) => s + (g.monto||0), 0);
   const totalUSD = grupo.gastos.filter(g => g.moneda === 'USD').reduce((s,g) => s + (g.monto||0), 0);
   const totalLabel = totalUSD > 0
-    ? (totalARS > 0 ? `${fmt(totalARS)} · U$S ${totalUSD}` : `U$S ${Number(totalUSD).toFixed(2)}`)
+    ? (totalARS > 0 ? `${fmt(totalARS)} · U$S ${Number(totalUSD).toFixed(2)}` : `U$S ${Number(totalUSD).toFixed(2)}`)
     : fmt(totalARS);
   const fechaCierreLabel = new Date(grupo.cierre + 'T00:00:00').toLocaleDateString('es-AR', {day:'2-digit', month:'long', year:'numeric'});
 
@@ -5349,7 +5379,7 @@ function renderTarjetaCard(grupo, conciliaciones, colapsadoPorDefaultArg) {
     <div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px solid var(--border2)">
       <div>
         <div style="font-size:var(--fs-sm);font-weight:700">Total período: ${totalLabel}</div>
-        ${totalUSD > 0 ? `<div style="font-size:var(--fs-xs);color:var(--muted)">U$S ${totalUSD} sin pesificar · ARS ${fmt(totalARS)}</div>` : ''}
+        ${totalUSD > 0 ? `<div style="font-size:var(--fs-xs);color:var(--muted)">U$S ${Number(totalUSD).toFixed(2)} sin pesificar · ARS ${fmt(totalARS)}</div>` : ''}
       </div>
       <button onclick="marcarPeriodoConciliado('${grupo.tarjeta.id}','${grupo.cierre}', ${!estaConciliado})" class="btn ${estaConciliado ? 'btn-o' : 'btn-g'}" style="padding:6px 14px;font-size:var(--fs-sm)">
         ${estaConciliado ? '↺ Reabrir' : '✓ Marcar conciliado'}
@@ -5381,7 +5411,7 @@ function renderFuturosAgrupados(gruposFuturos) {
     const d = porMes[mes];
     const label = new Date(mes + '-01T00:00:00').toLocaleDateString('es-AR', {month:'long', year:'numeric'});
     const totalLabel = d.totalUSD > 0
-      ? (d.totalARS > 0 ? `${fmt(d.totalARS)} · U$S ${d.totalUSD.toLocaleString('es-AR')}` : `U$S ${d.totalUSD.toLocaleString('es-AR')}`)
+      ? (d.totalARS > 0 ? `${fmt(d.totalARS)} · U$S ${Number(d.totalUSD).toFixed(2)}` : `U$S ${Number(d.totalUSD).toFixed(2)}`)
       : fmt(d.totalARS);
     const safeId = 'fut_' + mes.replace('-','_');
     // Gastos individuales con editor
