@@ -186,7 +186,7 @@ async function loadFromFirestore(uid) {
   _alreadyLoaded = true;
   setSyncStatus('syncing');
 
-  const keys = ['txs', 'plans', 'inversiones', 'tc', 'cuentas', 'ct_movimientos', 'gastos_tarjetas', 'tarjetas_cfg', 'categorias_consumo', 'tarjetas_conciliadas', 'debitos_recurrentes'];
+  const keys = ['txs', 'plans', 'inversiones', 'tc', 'cuentas', 'ct_movimientos', 'gastos_tarjetas', 'tarjetas_cfg', 'categorias_consumo', 'tarjetas_conciliadas', 'debitos_recurrentes', 'recurrentes_excluidos'];
   let restoredFromCloud = false;
 
   for (const key of keys) {
@@ -1925,6 +1925,7 @@ nav::-webkit-scrollbar{display:none}
       <button class="btn btn-o" onclick="buscarGastosDuplicados()" style="width:100%">🔍 Buscar duplicados</button>
       <button class="btn btn-o" onclick="deshacerImportacionSinNota()" style="width:100%;margin-top:8px;color:var(--red);border-color:var(--red)">↩ Deshacer imports viejos (sin nota)</button>
       <button class="btn btn-o" onclick="arreglarFechasExtra()" style="width:100%;margin-top:8px">🩹 Corregir fechas rotas (cuotas sin período)</button>
+      <button class="btn btn-o" onclick="limpiarPeriodosRotos()" style="width:100%;margin-top:8px">🩹 Limpiar períodos vacíos y conciliaciones huérfanas</button>
       <div id="duplicados-resultado" style="margin-top:12px"></div>
     </div>
 
@@ -2106,7 +2107,7 @@ const DB = {
 
 // ── Backup manual completo: TODAS las claves de localStorage que usa la app, independiente de Firebase ──
 const BACKUP_KEYS = ['txs','plans','inversiones','tc','cuentas','ct_movimientos','gastos_tarjetas',
-  'tarjetas_cfg','categorias_consumo','tarjetas_conciliadas','debitos_recurrentes','inv_movimientos','cl_font_preset','grupos_categorias'];
+  'tarjetas_cfg','categorias_consumo','tarjetas_conciliadas','debitos_recurrentes','inv_movimientos','cl_font_preset','grupos_categorias','recurrentes_excluidos'];
 
 function descargarBackupCompleto() {
   try {
@@ -2189,6 +2190,42 @@ function arreglarFechasExtra() {
   renderGastosTarjetas();
   if (typeof renderEvolCategorias === 'function') renderEvolCategorias();
   showToast(`✓ ${corregidos} fecha${corregidos>1?'s':''} corregida${corregidos>1?'s':''}`);
+}
+
+// ── Limpiar períodos vacíos (inicio o cierre en blanco, quedan de altas incompletas)
+//    y conciliaciones huérfanas (marcadas para un cierre que ya no existe en la tarjeta,
+//    típicamente porque se corrigió la fecha de cierre y quedó la vieja marcada aparte) ──
+function limpiarPeriodosRotos() {
+  const tarjetas = getTarjetas();
+  let periodosLimpiados = 0;
+  tarjetas.forEach(t => {
+    const antes = (t.periodos || []).length;
+    t.periodos = (t.periodos || []).filter(p => p.inicio && p.cierre);
+    periodosLimpiados += antes - t.periodos.length;
+  });
+  if (periodosLimpiados > 0) saveTarjetas(tarjetas);
+
+  const conciliaciones = DB.get('tarjetas_conciliadas', {});
+  const clavesValidas = new Set();
+  tarjetas.forEach(t => (t.periodos || []).forEach(p => clavesValidas.add(t.id + '|' + p.cierre)));
+  let huerfanasBorradas = 0;
+  Object.keys(conciliaciones).forEach(key => {
+    if (!clavesValidas.has(key)) { delete conciliaciones[key]; huerfanasBorradas++; }
+  });
+  if (huerfanasBorradas > 0) {
+    DB.set('tarjetas_conciliadas', conciliaciones);
+    if (window.FBsave) window.FBsave('tarjetas_conciliadas', conciliaciones);
+  }
+
+  const resultEl = document.getElementById('duplicados-resultado');
+  if (periodosLimpiados === 0 && huerfanasBorradas === 0) {
+    if (resultEl) resultEl.innerHTML = '<div style="color:var(--muted);font-size:var(--fs-sm)">No encontré períodos vacíos ni conciliaciones huérfanas.</div>';
+    return;
+  }
+  if (resultEl) resultEl.innerHTML = `<div style="color:var(--green);font-size:var(--fs-sm)">✓ ${periodosLimpiados} período${periodosLimpiados!==1?'s':''} vacío${periodosLimpiados!==1?'s':''} borrado${periodosLimpiados!==1?'s':''} · ${huerfanasBorradas} conciliación${huerfanasBorradas!==1?'es':''} huérfana${huerfanasBorradas!==1?'s':''} borrada${huerfanasBorradas!==1?'s':''}.</div>`;
+  renderGastosTarjetas();
+  if (typeof renderTarjetasCfg === 'function') renderTarjetasCfg();
+  showToast('✓ Períodos y conciliaciones limpiados');
 }
 
 function deshacerImportacionSinNota() {
@@ -3297,6 +3334,16 @@ function txTotals(mes) {
   return { totals, total };
 }
 
+// El pago de una tarjeta sale de la cuenta un mes DESPUÉS del cierre del resumen
+// (ej. BSF cierra el 23 y se paga ~05 del mes siguiente). Todo lo que agrupa gastos
+// de tarjeta por "mes de pago" usa esta misma función, para que no haya dos criterios
+// distintos conviviendo en la app.
+function mesSiguienteDePago(mesStr) {
+  const [y, m] = mesStr.split('-').map(Number);
+  const d = new Date(y, m, 1); // m ya viene 1-indexado, Date con mes=m avanza un mes
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+}
+
 let curTipo = 'gasto';
 
 function setTipo(tipo, btn) {
@@ -4130,6 +4177,23 @@ function saveRecurrentes(lista, opts) {
   if (!opts || !opts.skipRender) renderRecurrentesCfg();
 }
 
+// ── Instancias de recurrentes borradas a mano: "recurrenteId|cierre" ──
+// Sin esto, aplicarDebitosRecurrentes() las vuelve a crear la próxima vez que se navega,
+// porque su único chequeo es "¿ya existe un gasto con este id para este período?" — al
+// borrarlo, la respuesta pasa a ser "no" y lo recrea. Esta lista es la memoria que faltaba.
+function getRecurrentesExcluidos() {
+  return DB.get('recurrentes_excluidos', []);
+}
+function excluirInstanciaRecurrente(recurrenteId, cierre) {
+  const lista = getRecurrentesExcluidos();
+  const key = recurrenteId + '|' + cierre;
+  if (!lista.includes(key)) {
+    lista.push(key);
+    DB.set('recurrentes_excluidos', lista);
+    if (window.FBsave) window.FBsave('recurrentes_excluidos', lista);
+  }
+}
+
 function agregarRecurrenteCfg() {
   const lista = getRecurrentes();
   lista.push({ id: 'rec_' + Date.now(), nombre: 'Nuevo débito', categoria: '', monto: 0, diaDelMes: 1 });
@@ -4334,6 +4398,7 @@ function recurrenteCategoriaChange(id, selectEl) {
 function aplicarDebitosRecurrentes(mes) {
   const recurrentes = getRecurrentes();
   if (recurrentes.length === 0) return;
+  const excluidos = new Set(getRecurrentesExcluidos());
 
   const txsAll = DB.get('txs', {});
   const txsDelMes = txsAll[mes] || [];
@@ -4368,6 +4433,7 @@ function aplicarDebitosRecurrentes(mes) {
         }
         if (!fechaEncontrada) return; // el día del recurrente no cae en este período específico
         if (fechaEncontrada > hoyStr) return; // todavía no llegó la fecha
+        if (excluidos.has(r.id + '|' + p.cierre)) return; // lo borraste a mano — no se recrea
 
         const yaExisteEnTarjetas = gastosTarjetas.some(g =>
           g.recurrenteId === r.id && periodoDeGasto(tarjetaDelRec, g.fecha) === p.cierre
@@ -4385,6 +4451,7 @@ function aplicarDebitosRecurrentes(mes) {
     }
 
     // Sin tarjeta asociada: comportamiento original, va directo a Flujo.
+    if (excluidos.has(r.id + '|' + mes)) return; // lo borraste a mano este mes — no se recrea
     const yaExiste = txsDelMes.some(tx => tx.recurrenteId === r.id);
     if (yaExiste) return;
 
@@ -4619,8 +4686,16 @@ function saveGastosTarjetas(lista) {
 }
 
 function eliminarGastoTarjeta(id) {
-  const lista = getGastosTarjetas().filter(g => g.id !== id);
-  saveGastosTarjetas(lista);
+  const lista = getGastosTarjetas();
+  const g = lista.find(g => g.id === id);
+  if (g && g.recurrenteId) {
+    // Anotamos qué instancia se borró a mano para que aplicarDebitosRecurrentes no la recree.
+    const tj = getTarjetas().find(t => t.id === g.tarjetaId);
+    const cierreKey = tj ? (periodoDeGasto(tj, g.fecha) || g.fecha) : g.fecha.slice(0,7);
+    excluirInstanciaRecurrente(g.recurrenteId, cierreKey);
+  }
+  const nuevaLista = lista.filter(g => g.id !== id);
+  saveGastosTarjetas(nuevaLista);
   gtEditAbiertos.delete(id);
   renderGastosTarjetas();
   // Borrar también de Firestore para que el listener onSnapshot no lo restaure
@@ -7166,11 +7241,7 @@ function renderEvolCategorias() {
   // cierra el 23 y se paga ~05 del mes siguiente). Para que el desglose por categoría neteé
   // bien contra el pago real de Flujo, agrupamos cada gasto de tarjeta por su "mes de pago"
   // (cierre + 1 mes), no por el mes en que se hizo la compra.
-  const mesSiguiente = (mesStr) => {
-    const [y, m] = mesStr.split('-').map(Number);
-    const d = new Date(y, m, 1); // m ya viene 1-indexado, Date con mes=m avanza un mes
-    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
-  };
+  const mesSiguiente = mesSiguienteDePago;
 
   // Pre-agrupar todos los gastos de tarjeta por su mes de PAGO (no por mes de cierre)
   const gastosTarjPorMesDePago = {};
@@ -8912,6 +8983,8 @@ function deleteTx() {
   const idx  = parseInt(document.getElementById('edit-idx').value);
   const txsAll = DB.get('txs', {});
   if (!txsAll[mes]) return;
+  const tx = txsAll[mes][idx];
+  if (tx && tx.recurrenteId) excluirInstanciaRecurrente(tx.recurrenteId, mes);
   txsAll[mes].splice(idx, 1);
   DB.set('txs', txsAll);
   closeEditModal();
