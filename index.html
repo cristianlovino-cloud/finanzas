@@ -3031,25 +3031,49 @@ function rotarPeriodosTarjetas() {
   let huboCambio = false;
   tarjetas.forEach(t => {
     if (!Array.isArray(t.periodos) || t.periodos.length === 0) return;
-    // Ordenamos por cierre para trabajar siempre sobre el más reciente, sin asumir
-    // posiciones fijas — la lista puede tener 3 períodos o 100, da igual.
-    const validos = t.periodos.filter(p => p.inicio && p.cierre);
+
+    // Un ciclo de tarjeta real nunca dura menos de ~20 días. Sacamos cualquier período
+    // "basura" (generado por versiones anteriores de esta función con un intervalo mal
+    // calculado) antes de seguir, para que no arruine el promedio ni quede dando vueltas.
+    const antes = t.periodos.length;
+    t.periodos = t.periodos.filter(p => {
+      if (!p.inicio || !p.cierre) return true; // vacío = placeholder legítimo, no tocar
+      const dias = (new Date(p.cierre+'T00:00:00') - new Date(p.inicio+'T00:00:00')) / 86400000;
+      return dias >= 18;
+    });
+    if (t.periodos.length !== antes) huboCambio = true;
+
+    const validos = t.periodos.filter(p => p.inicio && p.cierre).sort((a,b) => a.cierre.localeCompare(b.cierre));
     if (validos.length === 0) return;
-    validos.sort((a,b) => a.cierre.localeCompare(b.cierre));
-    const ultimo = validos[validos.length - 1];
-    if (hoy <= ultimo.cierre) return; // el último período configurado todavía no cerró, nada que hacer
 
-    // Ya pasó la fecha de cierre del último período conocido y no hay uno más nuevo cargado:
-    // agregamos el siguiente período (no tocamos ni borramos los anteriores).
-    const dInicio = new Date(ultimo.cierre + 'T00:00:00');
-    dInicio.setDate(dInicio.getDate() + 1);
-    const inicioNuevo = dInicio.toISOString().slice(0,10);
-    const yaExiste = validos.some(p => p.inicio === inicioNuevo);
-    if (yaExiste) return;
+    // Intervalo típico de ESTA tarjeta: mediana de la duración de sus últimos períodos reales
+    // (no un valor global) — cada tarjeta cierra en un día distinto del mes.
+    const duraciones = [];
+    for (let i = 1; i < validos.length; i++) {
+      const d = (new Date(validos[i].cierre+'T00:00:00') - new Date(validos[i-1].cierre+'T00:00:00')) / 86400000;
+      if (d >= 20 && d <= 40) duraciones.push(d); // descarta saltos raros (ej. resumen faltante)
+    }
+    duraciones.sort((a,b) => a-b);
+    const intervalo = duraciones.length
+      ? duraciones[Math.floor(duraciones.length/2)]
+      : 30; // sin historial suficiente: 30 días de default razonable
 
-    const cierreCalc = calcularProximoCierre(t, dInicio);
-    t.periodos.push({ inicio: inicioNuevo, cierre: cierreCalc.toISOString().slice(0,10) });
-    huboCambio = true;
+    let ultimo = validos[validos.length - 1];
+    let iteraciones = 0;
+    while (hoy > ultimo.cierre && iteraciones < 24) { // tope de seguridad: nunca más de 2 años de una sentada
+      const dInicio = new Date(ultimo.cierre + 'T00:00:00');
+      dInicio.setDate(dInicio.getDate() + 1);
+      const inicioNuevo = dInicio.toISOString().slice(0,10);
+      if (t.periodos.some(p => p.inicio === inicioNuevo)) break; // ya existe, no duplicar
+
+      const dCierre = new Date(dInicio);
+      dCierre.setDate(dCierre.getDate() + intervalo - 1);
+      const nuevo = { inicio: inicioNuevo, cierre: dCierre.toISOString().slice(0,10) };
+      t.periodos.push(nuevo);
+      ultimo = nuevo;
+      huboCambio = true;
+      iteraciones++;
+    }
   });
   if (huboCambio) {
     saveTarjetas(tarjetas);
