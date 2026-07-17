@@ -7418,16 +7418,33 @@ function renderEvolCategorias() {
   // Ordenar por total desc
   const gruposOrdenados = Object.entries(grupoMap).sort((a,b) => b[1].totalAnio - a[1].totalAnio);
 
+  // ── Meses transcurridos: si el año consultado es el actual, se corta en el mes en curso —
+  // así no comparamos 12 meses de gasto (incluyendo cuotas futuras ya cargadas pero todavía
+  // no pagadas) contra el sueldo de menos meses de los que ya cobraste. Años anteriores
+  // cuentan completos (ya transcurrieron los 12 meses).
+  const hoy = new Date();
+  const esAnioActual = parseInt(yr) === hoy.getFullYear();
+  const mesActualIdx = esAnioActual ? hoy.getMonth() : 11; // 0-indexado, incluye el mes en curso
+
   // ── Total de SUELDO puro del año (excluye Aguinaldo, Adicionales, Dividendos, Reintegros, etc.) ──
   // Se usa para el % de cada grupo sobre el sueldo y para marcar cuáles están fuera de lo razonable.
   let totalSueldo = 0;
-  meses.forEach(m => {
+  meses.forEach((m, i) => {
+    if (i > mesActualIdx) return; // sin sueldo de meses futuros
     const mesKey = yr + '-' + m;
     (getTxs(mesKey) || []).forEach(tx => {
       if (tx.tipo === 'ingreso' && (tx.cat || '').trim().toLowerCase() === 'sueldo') {
         totalSueldo += parseFloat(tx.monto) || 0;
       }
     });
+  });
+
+  // Gasto total pero solo de los meses ya transcurridos — para el KPI Gasto/Sueldo, que
+  // compara "lo que gasté hasta ahora" contra "lo que cobré hasta ahora", sin arrastrar
+  // cuotas de meses futuros que ya están cargadas pero todavía no se pagaron.
+  let totalAnioTranscurrido = 0;
+  Object.values(catMap).forEach(montos => {
+    montos.forEach((v, i) => { if (i <= mesActualIdx) totalAnioTranscurrido += v; });
   });
 
   // ── Benchmarks estándar (guías generales de finanzas personales, no son una norma exacta —
@@ -7543,13 +7560,14 @@ function renderEvolCategorias() {
   const kpiEl = document.getElementById('evol-gasto-sueldo-kpi');
   if (kpiEl) {
     if (totalSueldo > 0) {
-      const pct = (totalAnio / totalSueldo) * 100;
+      const pct = (totalAnioTranscurrido / totalSueldo) * 100;
       const color = pct > 100 ? 'var(--red)' : pct > 70 ? 'var(--yellow)' : 'var(--green)';
+      const labelMeses = esAnioActual ? ` (Ene–${mesLabels[mesActualIdx]})` : '';
       kpiEl.innerHTML = `
         <div style="background:var(--s2);border-radius:8px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center">
           <div>
-            <div style="font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Gasto total / Sueldo (sin aguinaldo ni bonos)</div>
-            <div style="font-size:var(--fs-xs);color:var(--muted2);margin-top:2px">${fmt(totalAnio)} de ${fmt(totalSueldo)} de sueldo puro en ${yr}</div>
+            <div style="font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Gasto total / Sueldo (sin aguinaldo ni bonos)${labelMeses}</div>
+            <div style="font-size:var(--fs-xs);color:var(--muted2);margin-top:2px">${fmt(totalAnioTranscurrido)} de ${fmt(totalSueldo)} de sueldo puro en ${yr}</div>
           </div>
           <div style="font-size:1.3rem;font-weight:700;color:${color}">${pct.toFixed(0)}%</div>
         </div>`;
