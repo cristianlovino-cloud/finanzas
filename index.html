@@ -7299,11 +7299,32 @@ function renderEvolCategorias() {
   // (cierre + 1 mes), no por el mes en que se hizo la compra.
   const mesSiguiente = mesSiguienteDePago;
 
-  // Pre-agrupar todos los gastos de tarjeta por su mes de PAGO (no por mes de cierre)
+  // Mapa tarjetaId → períodos ordenados, para ubicar el CIERRE real del resumen al que
+  // pertenece cada gasto. Un resumen se paga TODO junto, una sola vez — agrupar por la
+  // fecha individual de cada compra partía en dos meses de pago distintos algo que en la
+  // vida real es un solo pago (ej. un período 22-May→25-Jun tiene compras fechadas en
+  // mayo Y junio, pero se paga entero en julio).
+  const periodosPorTarjeta = {};
+  getTarjetas().forEach(t => {
+    periodosPorTarjeta[t.id] = (t.periodos || [])
+      .filter(p => p.inicio && p.cierre)
+      .slice()
+      .sort((a,b) => a.cierre.localeCompare(b.cierre));
+  });
+  function cierreDelPeriodo(tarjetaId, fecha) {
+    const periodos = periodosPorTarjeta[tarjetaId] || [];
+    const match = periodos.find(p => p.inicio <= fecha && fecha <= p.cierre);
+    return match ? match.cierre : null;
+  }
+
+  // Pre-agrupar todos los gastos de tarjeta por su mes de PAGO (mes siguiente al cierre
+  // del período/resumen al que pertenecen — no el mes de la fecha individual de la compra)
   const gastosTarjPorMesDePago = {};
   getGastosTarjetas().forEach(g => {
     if (!g.fecha || g.moneda === 'USD') return;
-    const mesDePago = mesSiguiente(g.fecha.slice(0,7));
+    const cierreReal = cierreDelPeriodo(g.tarjetaId, g.fecha);
+    const mesBase = cierreReal ? cierreReal.slice(0,7) : g.fecha.slice(0,7); // fallback: sin período configurado para esa fecha
+    const mesDePago = mesSiguiente(mesBase);
     if (!gastosTarjPorMesDePago[mesDePago]) gastosTarjPorMesDePago[mesDePago] = [];
     gastosTarjPorMesDePago[mesDePago].push(g);
   });
