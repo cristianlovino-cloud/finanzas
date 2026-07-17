@@ -256,7 +256,8 @@ function iniciarEscuchaGastosFamiliares() {
     if (nuevos.length === 0) return;
 
     const actualizados = [...locales, ...nuevos];
-    localStorage.setItem('gastos_tarjetas', JSON.stringify(actualizados));
+    if (typeof saveGastosTarjetas === 'function') saveGastosTarjetas(actualizados);
+    else { localStorage.setItem('gastos_tarjetas', JSON.stringify(actualizados)); if (window.FBsave) window.FBsave('gastos_tarjetas', actualizados); }
     if (typeof renderGastosTarjetas === 'function') renderGastosTarjetas();
     if (typeof showToast === 'function') showToast(`💳 ${nuevos.length} gasto${nuevos.length>1?'s':''} nuevo${nuevos.length>1?'s':''} de tarjeta`);
     actualizarBadgeTarjetas();
@@ -289,7 +290,8 @@ window.cfSincronizarAhora = async function() {
 
     if (nuevos.length > 0) {
       const actualizados = [...locales, ...nuevos];
-      localStorage.setItem('gastos_tarjetas', JSON.stringify(actualizados));
+      if (typeof saveGastosTarjetas === 'function') saveGastosTarjetas(actualizados);
+      else { localStorage.setItem('gastos_tarjetas', JSON.stringify(actualizados)); if (window.FBsave) window.FBsave('gastos_tarjetas', actualizados); }
       if (typeof renderGastosTarjetas === 'function') renderGastosTarjetas();
     }
     if (typeof showToast === 'function') {
