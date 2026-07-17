@@ -5315,7 +5315,7 @@ function renderTarjetaCard(grupo, conciliaciones, colapsadoPorDefaultArg) {
         <div style="font-size:var(--fs-xs);color:var(--muted)">cierre ${fechaCierreLabel}</div>
       </div>
       <div style="display:flex;align-items:center;gap:8px">
-        <span style="font-size:var(--fs-md);font-weight:700;color:${estaConciliado ? 'var(--muted)' : 'var(--orange)'}">${estaConciliado ? '✓' : totalLabel}</span>
+        <span style="font-size:var(--fs-md);font-weight:700;color:${estaConciliado ? 'var(--muted)' : 'var(--orange)'}">${estaConciliado ? '✓ ' + totalLabel : totalLabel}</span>
         <span id="toggle-icon-${safeKey}" style="color:var(--muted);font-size:var(--fs-md)">${colapsadoPorDefault ? '▶' : '▼'}</span>
       </div>
     </div>
