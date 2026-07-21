@@ -7622,23 +7622,35 @@ function verGastosDeCategoria(catRaw, idCat) {
   if (encontrados.length === 0) {
     gastosDiv.innerHTML = '<div style="font-size:var(--fs-xs);color:var(--muted);padding:6px 0">Sin gastos individuales encontrados (puede ser residual sin desglosar todavía).</div>';
   } else {
-    const limite = 40;
-    gastosDiv.innerHTML = encontrados.slice(0, limite).map(e => {
-      const accionesHtml = e.tipo === 'tx'
-        ? `<button onclick="openEditModal('${e.mes}',${e.idx})" style="background:none;border:none;color:var(--blue);cursor:pointer;font-size:var(--fs-xs);padding:2px 4px">✎</button>`
-        : `<button onclick="editarGastoDesdeCategoria('${e.id}','${idCat}','${catRaw.replace(/'/g,"\\'")}')" style="background:none;border:none;color:var(--blue);cursor:pointer;font-size:var(--fs-xs);padding:2px 4px">✎</button>
-           <button onclick="borrarGastoDesdeCategoria('${e.id}','${idCat}','${catRaw.replace(/'/g,"\\'")}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:var(--fs-xs);padding:2px 4px">✕</button>`;
-      return `
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--border);font-size:var(--fs-xs)">
-        <span style="color:var(--muted2)">${e.fecha} · ${e.desc} <span style="color:var(--muted)">(${e.fuente})</span></span>
-        <div style="display:flex;align-items:center;gap:4px;white-space:nowrap">
-          <span style="font-weight:600">${fmt(e.monto)}</span>
-          ${accionesHtml}
-        </div>
-      </div>`;
-    }).join('') + (encontrados.length > limite ? `<div style="font-size:var(--fs-xs);color:var(--muted);padding:4px 0">+ ${encontrados.length - limite} más...</div>` : '');
+    window.__catGastosCache = window.__catGastosCache || {};
+    window.__catGastosCache[idCat] = { encontrados, idCat, catRaw };
+    renderListaGastosCategoria(idCat, 40);
   }
   gastosDiv.dataset.cargado = '1';
+}
+
+function renderListaGastosCategoria(idCat, limite) {
+  const cache = window.__catGastosCache && window.__catGastosCache[idCat];
+  if (!cache) return;
+  const { encontrados, catRaw } = cache;
+  const gastosDiv = document.getElementById(idCat + '-gastos');
+  if (!gastosDiv) return;
+  gastosDiv.innerHTML = encontrados.slice(0, limite).map(e => {
+    const accionesHtml = e.tipo === 'tx'
+      ? `<button onclick="openEditModal('${e.mes}',${e.idx})" style="background:none;border:none;color:var(--blue);cursor:pointer;font-size:var(--fs-xs);padding:2px 4px">✎</button>`
+      : `<button onclick="editarGastoDesdeCategoria('${e.id}','${idCat}','${catRaw.replace(/'/g,"\\'")}')" style="background:none;border:none;color:var(--blue);cursor:pointer;font-size:var(--fs-xs);padding:2px 4px">✎</button>
+         <button onclick="borrarGastoDesdeCategoria('${e.id}','${idCat}','${catRaw.replace(/'/g,"\\'")}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:var(--fs-xs);padding:2px 4px">✕</button>`;
+    return `
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--border);font-size:var(--fs-xs)">
+      <span style="color:var(--muted2)">${e.fecha} · ${e.desc} <span style="color:var(--muted)">(${e.fuente})</span></span>
+      <div style="display:flex;align-items:center;gap:4px;white-space:nowrap">
+        <span style="font-weight:600">${fmt(e.monto)}</span>
+        ${accionesHtml}
+      </div>
+    </div>`;
+  }).join('') + (encontrados.length > limite
+    ? `<button onclick="renderListaGastosCategoria('${idCat}', Infinity)" style="background:none;border:none;color:var(--blue);cursor:pointer;text-decoration:underline;font-size:var(--fs-xs);padding:6px 0;width:100%;text-align:left">+ ${encontrados.length - limite} más... (tocar para ver todos)</button>`
+    : '');
 }
 
 // ── Editar (categoría/monto) un gasto de tarjeta directo desde la vista de Evolución por categoría ──
