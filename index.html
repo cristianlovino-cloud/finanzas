@@ -1844,7 +1844,13 @@ nav::-webkit-scrollbar{display:none}
       </div>
       <div>
         <div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px" id="own-tj-monto-label">MONTO</div>
-        <input type="number" id="own-tj-monto" class="fi" placeholder="0" style="font-size:var(--fs-md);padding:8px 9px;text-align:right">
+        <div style="display:flex;gap:6px">
+          <input type="number" id="own-tj-monto" class="fi" placeholder="0" style="font-size:var(--fs-md);padding:8px 9px;text-align:right;flex:1;min-width:0">
+          <select id="own-tj-moneda" class="fi" style="width:70px;flex-shrink:0;padding:8px 4px;font-size:var(--fs-sm)">
+            <option value="ARS" selected>ARS</option>
+            <option value="USD">USD</option>
+          </select>
+        </div>
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
@@ -4858,6 +4864,7 @@ function ownCargarGastoTarjeta() {
   const quien     = document.getElementById('own-tj-quien')?.value || 'Cris';
   const tipo      = document.getElementById('own-tj-tipo').value.trim();
   const monto     = parseFloat(document.getElementById('own-tj-monto').value);
+  const moneda    = document.getElementById('own-tj-moneda')?.value || 'ARS';
   const enCuotas  = document.getElementById('own-tj-cuotas-check').checked;
   const cantCuotas = enCuotas ? parseInt(document.getElementById('own-tj-cuotas-cant').value) : 1;
   const esCuotaEnCurso = document.getElementById('own-tj-cuota-en-curso')?.checked || false;
@@ -4887,7 +4894,7 @@ function ownCargarGastoTarjeta() {
       const numeroCuota = cecActual + i;
       lista.push({
         id: 'gt_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2,5),
-        tarjetaId, fecha: cierre, fechaCompra: fecha, tipo: `${tipo} (cuota ${numeroCuota}/${cecTotal})`, monto,
+        tarjetaId, fecha: cierre, fechaCompra: fecha, tipo: `${tipo} (cuota ${numeroCuota}/${cecTotal})`, monto, moneda,
         cargadoPor: 'Cris', gastoDe: quien, ts: Date.now(), compraId, cuotaNum: numeroCuota, cuotaTotal: cecTotal,
         esCuotaEnCurso: true,
       });
@@ -4902,7 +4909,7 @@ function ownCargarGastoTarjeta() {
       for (let n = 1; n <= cantidadAtras; n++) {
         lista.push({
           id: 'gt_' + Date.now() + '_atras' + n + '_' + Math.random().toString(36).slice(2,5),
-          tarjetaId, fecha: cierresAtras[n-1], fechaCompra: fecha, tipo: `${tipo} (cuota ${n}/${cecTotal})`, monto,
+          tarjetaId, fecha: cierresAtras[n-1], fechaCompra: fecha, tipo: `${tipo} (cuota ${n}/${cecTotal})`, monto, moneda,
           cargadoPor: 'Cris', gastoDe: quien, ts: Date.now(), compraId, cuotaNum: n, cuotaTotal: cecTotal,
           esCuotaEnCurso: true, cierreEstimado: estimados[n-1] || false,
         });
@@ -4922,7 +4929,7 @@ function ownCargarGastoTarjeta() {
     cierres.forEach((cierre, i) => {
       lista.push({
         id: 'gt_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2,5),
-        tarjetaId, fecha: cierre, fechaCompra: fecha, tipo: `${tipo} (cuota ${i+1}/${cantCuotas})`, monto: montos[i],
+        tarjetaId, fecha: cierre, fechaCompra: fecha, tipo: `${tipo} (cuota ${i+1}/${cantCuotas})`, monto: montos[i], moneda,
         cargadoPor: 'Cris', gastoDe: quien, ts: Date.now(), compraId, cuotaNum: i+1, cuotaTotal: cantCuotas,
       });
     });
@@ -4930,7 +4937,7 @@ function ownCargarGastoTarjeta() {
   } else {
     lista.push({
       id: 'gt_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
-      tarjetaId, fecha, tipo, monto,
+      tarjetaId, fecha, tipo, monto, moneda,
       cargadoPor: 'Cris', gastoDe: quien, ts: Date.now(),
     });
     showToast('✓ Gasto registrado: ' + tipo + ' — ' + fmt(monto));
@@ -4948,6 +4955,7 @@ function ownCargarGastoTarjeta() {
 
   document.getElementById('own-tj-tipo').value = '';
   document.getElementById('own-tj-monto').value = '';
+  if (document.getElementById('own-tj-moneda')) document.getElementById('own-tj-moneda').value = 'ARS';
   document.getElementById('own-tj-cuotas-check').checked = false;
   document.getElementById('own-tj-cuotas-cant').value = '';
   if (document.getElementById('own-tj-cuota-en-curso')) document.getElementById('own-tj-cuota-en-curso').checked = false;
