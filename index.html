@@ -7586,15 +7586,17 @@ function renderEvolCategorias() {
 }
 
 // ── Muestra los gastos reales (Flujo + Gastos Tarjetas) que componen una categoría, en el año actual ──
-function verGastosDeCategoria(catRaw, idCat) {
+function verGastosDeCategoria(catRaw, idCat, forceReload) {
   const body = document.getElementById(idCat);
   const chev = document.getElementById(idCat + '-chevron');
   const gastosDiv = document.getElementById(idCat + '-gastos');
   const yaAbierto = body.style.display !== 'none';
-  if (yaAbierto) { body.style.display = 'none'; chev.textContent = 'Ver ▶'; return; }
-  body.style.display = 'block';
-  chev.textContent = 'Cerrar ▼';
-  if (gastosDiv.dataset.cargado === '1') return; // ya se buscó una vez, no repetir
+  if (!forceReload) {
+    if (yaAbierto) { body.style.display = 'none'; chev.textContent = 'Ver ▶'; return; }
+    body.style.display = 'block';
+    chev.textContent = 'Cerrar ▼';
+    if (gastosDiv.dataset.cargado === '1') return; // ya se buscó una vez, no repetir
+  }
 
   const yr = document.getElementById('evol-cat-year')?.value || new Date().getFullYear().toString();
   const encontrados = [];
@@ -7623,8 +7625,10 @@ function verGastosDeCategoria(catRaw, idCat) {
     gastosDiv.innerHTML = '<div style="font-size:var(--fs-xs);color:var(--muted);padding:6px 0">Sin gastos individuales encontrados (puede ser residual sin desglosar todavía).</div>';
   } else {
     window.__catGastosCache = window.__catGastosCache || {};
-    window.__catGastosCache[idCat] = { encontrados, idCat, catRaw };
-    renderListaGastosCategoria(idCat, 40);
+    const previo = window.__catGastosCache[idCat];
+    const limiteActual = previo && previo.limiteActual ? previo.limiteActual : 40;
+    window.__catGastosCache[idCat] = { encontrados, idCat, catRaw, limiteActual };
+    renderListaGastosCategoria(idCat, limiteActual);
   }
   gastosDiv.dataset.cargado = '1';
 }
@@ -7632,6 +7636,7 @@ function verGastosDeCategoria(catRaw, idCat) {
 function renderListaGastosCategoria(idCat, limite) {
   const cache = window.__catGastosCache && window.__catGastosCache[idCat];
   if (!cache) return;
+  cache.limiteActual = limite;
   const { encontrados, catRaw } = cache;
   const gastosDiv = document.getElementById(idCat + '-gastos');
   if (!gastosDiv) return;
@@ -7666,23 +7671,25 @@ function editarGastoDesdeCategoria(id, idCat, catRaw) {
   g.tipo = nuevoTipo.trim() || g.tipo;
   if (!isNaN(nuevoMonto) && nuevoMonto > 0) g.monto = nuevoMonto;
   saveGastosTarjetas(lista);
-  renderGastosTarjetas();
-  if (typeof renderEvolCategorias === 'function') renderEvolCategorias();
+  if (typeof renderGastosTarjetas === 'function') renderGastosTarjetas();
   showToast('✓ Gasto actualizado');
-  // Refrescar esta misma lista (puede que ya no matchee esta categoría si la cambiaste)
+  // Refrescar esta misma lista in-place, sin colapsar ni recalcular toda la pantalla de
+  // Evolución (así se puede seguir editando/borrando varios seguidos sin perder el lugar).
+  // OJO: el total en $ del encabezado de esta categoría queda desactualizado hasta cerrar y
+  // volver a abrir la sección — solo se refresca la lista de abajo.
   const gastosDiv = document.getElementById(idCat + '-gastos');
-  if (gastosDiv) { gastosDiv.dataset.cargado = ''; verGastosDeCategoria(catRaw, idCat); verGastosDeCategoria(catRaw, idCat); }
+  if (gastosDiv) { gastosDiv.dataset.cargado = ''; verGastosDeCategoria(catRaw, idCat, true); }
 }
 
 function borrarGastoDesdeCategoria(id, idCat, catRaw) {
   if (!confirm('¿Borrar este gasto? No se puede deshacer.')) return;
   const lista = getGastosTarjetas().filter(g => g.id !== id);
   saveGastosTarjetas(lista);
-  renderGastosTarjetas();
-  if (typeof renderEvolCategorias === 'function') renderEvolCategorias();
+  if (typeof renderGastosTarjetas === 'function') renderGastosTarjetas();
   showToast('✓ Gasto borrado');
+  // Mismo criterio que arriba: refresco in-place, no toda la pantalla.
   const gastosDiv = document.getElementById(idCat + '-gastos');
-  if (gastosDiv) { gastosDiv.dataset.cargado = ''; verGastosDeCategoria(catRaw, idCat); verGastosDeCategoria(catRaw, idCat); }
+  if (gastosDiv) { gastosDiv.dataset.cargado = ''; verGastosDeCategoria(catRaw, idCat, true); }
 }
 
 function toggleEvolCat(id) {
