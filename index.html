@@ -8288,16 +8288,20 @@ async function renderInvList() {
       return totalB - totalA;
     });
 
-    const posicionesHtml = tickersDelBroker.map(ticker => {
+    const posicionesHtml = tickersDelBroker.map((ticker, ti) => {
       const posTicker = porTickerBroker[ticker];
-      if (posTicker.length === 1) return filaPosicion(posTicker[0]); // un solo lote: sin sub-header, directo
+      const esUltimo = ti === tickersDelBroker.length - 1;
+      const sep = esUltimo ? '' : 'border-bottom:2px solid var(--border2);margin-bottom:6px;padding-bottom:2px';
+      if (posTicker.length === 1) return `<div style="${sep}">${filaPosicion(posTicker[0])}</div>`; // un solo lote: sin sub-header, directo
       const totalTicker = posTicker.reduce((s,i) => s + (i.ars||0), 0);
       return `
-      <div style="margin:6px 0 2px;padding:4px 8px;background:var(--s2);border-radius:6px;display:flex;justify-content:space-between;align-items:center">
-        <span style="font-weight:700;font-family:var(--fh);font-size:var(--fs-sm)">${ticker}</span>
-        <span style="font-size:var(--fs-xs);color:var(--muted)">${posTicker.length} lotes · ${fmt(totalTicker)}</span>
-      </div>
-      ${posTicker.map(filaPosicion).join('')}`;
+      <div style="${sep}">
+        <div style="margin:6px 0 2px;padding:4px 8px;background:var(--s2);border-radius:6px;display:flex;justify-content:space-between;align-items:center">
+          <span style="font-weight:700;font-family:var(--fh);font-size:var(--fs-sm)">${ticker}</span>
+          <span style="font-size:var(--fs-xs);color:var(--muted)">${posTicker.length} lotes · ${fmt(totalTicker)}</span>
+        </div>
+        ${posTicker.map(filaPosicion).join('')}
+      </div>`;
     }).join('');
 
     return `
