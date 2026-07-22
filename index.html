@@ -1593,11 +1593,6 @@ nav::-webkit-scrollbar{display:none}
       <div id="inv-list"></div>
     </div>
 
-    <div class="card">
-      <div class="ct">Distribución</div>
-      <canvas id="c-inv-donut" height="200"></canvas>
-    </div>
-
     <div class="card span2" style="margin-bottom:0">
       <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="toggleAnalisisCartera()">
         <div class="ct" style="margin-bottom:0">📊 Análisis de cartera — riesgo vs rendimiento</div>
@@ -6486,7 +6481,6 @@ function setEvolYear(yr, btn) {
 
 let chartAnual = null;
 let chartDonut = null;
-let chartInvDonut = null;
 let chartPat = null;
 let chartAhorro = null;
 
@@ -8327,30 +8321,8 @@ async function renderInvList() {
     `<div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:10px;text-align:right">Cotizaciones: ${tsLabel}</div>` +
     portafolioHtml;
 
-  // Donut — agrupado por TICKER (una sola porción por activo, sumando todos los lotes/brokers;
-  // antes era una porción por posición individual, por eso un mismo ticker con varios lotes
-  // -ej. MELI comprado 3 veces- aparecía repetido en vez de sumado).
-  if (total > 0) {
-    const porTicker = new Map();
-    invs.forEach(i => {
-      const key = (i.ticker || i.activo || '').toUpperCase() || i.activo || '?';
-      porTicker.set(key, (porTicker.get(key) || 0) + (i.ars || 0));
-    });
-    const tickersOrdenados = [...porTicker.entries()].sort((a, b) => b[1] - a[1]);
-    const paletaBase = [P.purple,'rgba(167,139,250,.6)',P.yellow,'rgba(251,191,36,.6)',P.blue,P.green,
-      P.red,'rgba(248,113,113,.6)','#22d3ee','rgba(34,211,238,.6)','#f472b6','rgba(244,114,182,.6)'];
-    const colores = tickersOrdenados.map((_, idx) => paletaBase[idx % paletaBase.length]);
-    chartInvDonut = destroyChart(chartInvDonut);
-    chartInvDonut = new Chart(document.getElementById('c-inv-donut').getContext('2d'), {
-      type:'doughnut',
-      data:{labels:tickersOrdenados.map(t=>t[0]), datasets:[{data:tickersOrdenados.map(t=>t[1]),
-        backgroundColor:colores,
-        borderColor:'#080a0f',borderWidth:3}]},
-      options:{responsive:true,cutout:'58%',
-        plugins:{legend:{position:'right',labels:{boxWidth:8,padding:8,font:{size:9}}},
-          tooltip:{callbacks:{label:c=>`${fmt(c.parsed)} (${(c.parsed/total*100).toFixed(1)}%)`}}}}
-    });
-  }
+  // Donut de Distribución eliminado — con muchos tickers no aportaba, la lista de abajo
+  // ya agrupa bien por ticker dentro de cada broker.
 
   // Movimientos de inversión (desde inv_movimientos, no txs) — lista plana, cada operación por separado
   const invMovs = DB.get('inv_movimientos', []);
