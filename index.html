@@ -8494,7 +8494,11 @@ function saveInv() {
     inv.ars         = ars;
     inv.costo       = costo;
     inv.rend        = costo > 0 ? (ars - costo) / costo : 0; // auto-calc from values
-    inv.fechaEntrada= document.getElementById(`ie-fe-${i}`)?.value || '';
+    // No pisar con vacío si el campo quedó sin valor (ej. porque la fecha original no se pudo
+    // normalizar al formato del <input type=date> y se mostró en blanco) — así no se pierde
+    // el dato original al guardar sin querer. Solo se actualiza si realmente se cargó algo.
+    const nuevaFecha = document.getElementById(`ie-fe-${i}`)?.value || '';
+    inv.fechaEntrada = nuevaFecha || inv.fechaEntrada || '';
     inv.nota        = document.getElementById(`ie-no-${i}`)?.value || '';
     inv.cantidad    = parseFloat(document.getElementById(`ie-qty-${i}`)?.value) || inv.cantidad || 0;
     inv.ticker      = (document.getElementById(`ie-tk-${i}`)?.value || '').toUpperCase() || inv.ticker || '';
