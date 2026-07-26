@@ -7887,15 +7887,17 @@ function getArsFromCotiz(inv, cotiz) {
   const tc   = cotiz.MEP || TC;
 
   if (tipo === 'CEDEAR') {
+    if (!(inv.cantidad > 0)) return 0; // vendida en su totalidad — no mostrar el último valor como residual fantasma
     const key = 'CEDEAR_' + inv.activo.toUpperCase();
     const price = cotiz[key];
-    if (price && inv.cantidad > 0) return Math.round(inv.cantidad * price);
-    return inv.ars || 0; // fallback to manual if no live price
+    if (price) return Math.round(inv.cantidad * price);
+    return inv.ars || 0; // fallback solo si el precio en vivo no respondió, pero sí hay cantidad real
   }
   if (tipo === 'Cripto') {
+    if (!(inv.cantidad > 0)) return 0; // vendida en su totalidad
     const sym = inv.activo.toUpperCase();
     const usdPrice = cotiz[sym];
-    if (usdPrice && inv.cantidad > 0) return Math.round(inv.cantidad * usdPrice * tc);
+    if (usdPrice) return Math.round(inv.cantidad * usdPrice * tc);
     return inv.ars || 0;
   }
   if (tipo === 'CEDEAR') {
