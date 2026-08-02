@@ -1025,6 +1025,9 @@ nav::-webkit-scrollbar{display:none}
   <button class="nb" onclick="go('patrimonio',this)" style="display:none">⬟ Patrimonio</button>
 </nav>
 
+<!-- ALERTAS DE CONSUMO DE TARJETA -->
+<div id="alertas-consumo-banner" style="display:none"></div>
+
 <!-- TOAST -->
 <div class="toast-wrap"><div class="toast" id="toast"></div></div>
 
@@ -4195,6 +4198,23 @@ function renderTarjetasCfg() {
         </div>
       </div>`;
     }).join('');
+    const ac = t.alertaConsumo || { activa: false, modo: 'promedio', valorFijo: 0 };
+    const alertaHTML = `
+      <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:10px;margin-bottom:4px">🔔 Alerta de consumo</div>
+      <div style="background:var(--bg);border-radius:6px;padding:8px;display:flex;flex-direction:column;gap:6px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:var(--fs-sm);cursor:pointer">
+          <input type="checkbox" ${ac.activa ? 'checked' : ''} onchange="actualizarAlertaConsumo('${t.id}','activa',this.checked)">
+          Activar para esta tarjeta
+        </label>
+        <div style="display:flex;gap:6px;align-items:center">
+          <select onchange="actualizarAlertaConsumo('${t.id}','modo',this.value)" class="fi" style="flex:1;font-size:var(--fs-sm);padding:6px 8px">
+            <option value="promedio" ${ac.modo === 'promedio' ? 'selected' : ''}>Promedio últimos 3 cierres</option>
+            <option value="fijo" ${ac.modo === 'fijo' ? 'selected' : ''}>Tope fijo</option>
+          </select>
+          ${ac.modo === 'fijo' ? `<input type="number" value="${ac.valorFijo || ''}" placeholder="Monto (en miles)" oninput="actualizarAlertaConsumo('${t.id}','valorFijo',this.value)" class="fi" style="width:130px;font-size:var(--fs-sm);padding:6px 8px">` : ''}
+        </div>
+        <div style="font-size:.6rem;color:var(--muted)">Avisa cuando el consumo del período en curso proyecte superar ${ac.modo === 'fijo' ? 'el tope' : 'tu promedio'}, y de nuevo si ya lo superó de verdad.</div>
+      </div>`;
     return `
     <div style="display:flex;flex-direction:column;gap:6px;padding:10px;background:var(--s2);border-radius:8px;margin-bottom:8px">
       <div style="display:flex;gap:6px;align-items:center">
@@ -4205,9 +4225,105 @@ function renderTarjetasCfg() {
       <div id="tj-cfg-body-${t.id}" style="display:none">
         <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:2px;margin-bottom:4px">📅 Períodos de resumen</div>
         ${periodosHTML}
+        ${alertaHTML}
       </div>
     </div>`;
   }).join('');
+}
+
+// ── Alerta de consumo de tarjeta: aviso temprano por proyección + alerta fuerte si ya se
+// superó de verdad, comparado contra un tope fijo o el promedio de los últimos 3 cierres.
+function actualizarAlertaConsumo(tarjetaId, campo, valor) {
+  const tarjetas = getTarjetas();
+  const t = tarjetas.find(t => t.id === tarjetaId);
+  if (!t) return;
+  if (!t.alertaConsumo) t.alertaConsumo = { activa: false, modo: 'promedio', valorFijo: 0 };
+  t.alertaConsumo[campo] = campo === 'valorFijo' ? (parseFloat(valor) || 0) : valor;
+  const requiereRerender = campo === 'modo'; // muestra/oculta el input de tope fijo
+  saveTarjetas(tarjetas, { skipRender: !requiereRerender });
+  if (typeof renderAlertasConsumoBanner === 'function') renderAlertasConsumoBanner();
+}
+
+function calcularAlertasConsumo() {
+  const tarjetas = getTarjetas().filter(t => t.alertaConsumo && t.alertaConsumo.activa);
+  if (tarjetas.length === 0) return [];
+  const gastos = getGastosTarjetas();
+  const hoy = new Date();
+  const alertas = [];
+
+  tarjetas.forEach(t => {
+    const actual = ventanaPeriodos(t).actual;
+    if (!actual || !actual.inicio || !actual.cierre) return; // sin período actual cargado, nada que chequear
+
+    const gastoEnPeriodo = (inicio, cierre) => gastos
+      .filter(g => g.tarjetaId === t.id && g.moneda !== 'USD' && g.fecha >= inicio && g.fecha <= cierre)
+      .reduce((s, g) => s + (g.monto || 0), 0);
+
+    const gastoActual = gastoEnPeriodo(actual.inicio, actual.cierre);
+
+    const esFijo = t.alertaConsumo.modo === 'fijo';
+    let umbral = 0;
+    if (esFijo) {
+      umbral = t.alertaConsumo.valorFijo || 0;
+    } else {
+      const cerrados = periodosOrdenados(t).filter(p => p.cierre && p.cierre < actual.inicio).slice(-3);
+      if (cerrados.length === 0) return; // todavía no hay historial suficiente para promediar
+      const totales = cerrados.map(p => gastoEnPeriodo(p.inicio, p.cierre));
+      umbral = totales.reduce((a, b) => a + b, 0) / totales.length;
+    }
+    if (umbral <= 0) return;
+
+    const inicioD = new Date(actual.inicio + 'T00:00:00');
+    const cierreD = new Date(actual.cierre + 'T00:00:00');
+    const diasTotales = Math.max(1, Math.round((cierreD - inicioD) / 86400000) + 1);
+    const diasTranscurridos = Math.min(diasTotales, Math.max(1, Math.round((hoy - inicioD) / 86400000) + 1));
+    const proyeccion = gastoActual * (diasTotales / diasTranscurridos);
+
+    const yaSuperado = gastoActual > umbral;
+    const proyectadoSuperado = !yaSuperado && proyeccion > umbral * 1.10; // 10% de margen para no ser ruidoso
+
+    if (!yaSuperado && !proyectadoSuperado) return;
+
+    const keyDescarte = `alerta_consumo_descartada_${t.id}_${actual.cierre}`;
+    if (localStorage.getItem(keyDescarte) === '1') return;
+
+    alertas.push({
+      tarjetaId: t.id, nombre: t.nombre, gastoActual, umbral, proyeccion, esFijo,
+      nivel: yaSuperado ? 'superado' : 'proyeccion', keyDescarte,
+    });
+  });
+
+  return alertas;
+}
+
+function renderAlertasConsumoBanner() {
+  const cont = document.getElementById('alertas-consumo-banner');
+  if (!cont) return;
+  let alertas;
+  try { alertas = calcularAlertasConsumo(); } catch (e) { console.warn('alertas consumo error:', e); cont.style.display = 'none'; return; }
+  if (!alertas.length) { cont.style.display = 'none'; cont.innerHTML = ''; return; }
+
+  cont.style.display = 'block';
+  cont.innerHTML = alertas.map(a => {
+    const esSuperado = a.nivel === 'superado';
+    const color = esSuperado ? 'var(--red)' : 'var(--yellow)';
+    const fondo = esSuperado ? 'rgba(244,63,94,.12)' : 'rgba(251,191,36,.12)';
+    const icono = esSuperado ? '🔴' : '🟡';
+    const refUmbral = a.esFijo ? 'tu tope' : 'tu promedio';
+    const msg = esSuperado
+      ? `Ya gastaste ${fmt(a.gastoActual)} en ${a.nombre} este período — superó ${refUmbral} de ${fmt(a.umbral)}.`
+      : `Al ritmo actual vas a terminar gastando ~${fmt(a.proyeccion)} en ${a.nombre}, por encima de ${refUmbral} de ${fmt(a.umbral)}.`;
+    return `
+    <div style="background:${fondo};border:1px solid ${color};border-radius:8px;padding:10px 12px;margin:6px 10px;display:flex;justify-content:space-between;align-items:center;gap:10px">
+      <div style="font-size:var(--fs-sm);color:var(--fg)">${icono} ${msg}</div>
+      <button onclick="descartarAlertaConsumo('${a.keyDescarte}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:var(--fs-md);flex-shrink:0;padding:0 2px">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function descartarAlertaConsumo(key) {
+  localStorage.setItem(key, '1');
+  renderAlertasConsumoBanner();
 }
 
 // ── Lista de categorías reales usadas en transacciones + plan, para mapear tarjetas ──
@@ -9626,6 +9742,9 @@ document.addEventListener('DOMContentLoaded', () => {
   if (fabInit) { fabInit.style.display = 'flex'; fabInit.dataset.ctx = 'overview'; }
   // Init badge tarjetas — por si hay cargas previas no vistas
   actualizarBadgeTarjetas();
+
+  // Init alertas de consumo de tarjeta (banner arriba de todo)
+  if (typeof renderAlertasConsumoBanner === 'function') renderAlertasConsumoBanner();
 
   // Init overview (KPIs primero, antes que los charts)
   updateOverview();
