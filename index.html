@@ -8533,26 +8533,36 @@ function renderInvEditor() {
     const fechaNormalizada = normalizarFechaISO(fechaOriginal);
     const fueNormalizada = fechaOriginal && fechaOriginal !== fechaNormalizada;
 
+    const esUSD = inv.moneda === 'USD';
+    const valorMostrar = esUSD ? (inv.usdValor ?? (TC ? +((inv.ars||0)/TC).toFixed(2) : '')) : (inv.ars||0);
+    const costoMostrar = esUSD ? (inv.usdCosto ?? (TC ? +((inv.costo||inv.ars||0)/TC).toFixed(2) : '')) : (inv.costo||inv.ars||0);
+
     return `
     <div style="background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:10px;${matchea ? '' : 'display:none'}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
         <div style="font-size:var(--fs-md);font-weight:600;color:var(--text)">${inv.activo}</div>
         <button onclick="delInvRow(${i})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:var(--fs-md);padding:2px 6px">✕ Eliminar</button>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 84px;gap:8px;margin-bottom:8px">
         <div><div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">Nombre</div>
           <input type="text" value="${inv.activo}" id="ie-n-${i}" class="fi" style="font-size:var(--fs-sm);padding:7px 10px"></div>
         <div><div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">Tipo</div>
           <select id="ie-t-${i}" class="fi" style="font-size:var(--fs-sm);padding:7px 6px">
             ${['FCI','Cripto','Stablecoin','Dólar','Bono','CEDEAR','Acciones'].map(t=>`<option ${t===inv.tipo?'selected':''}>${t}</option>`).join('')}
           </select></div>
+        <div><div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">Moneda</div>
+          <select id="ie-mo-${i}" class="fi" style="font-size:var(--fs-sm);padding:7px 4px" onchange="ieMonedaChange(this,${i})">
+            <option value="ARS" ${!esUSD?'selected':''}>ARS</option>
+            <option value="USD" ${esUSD?'selected':''}>USD</option>
+          </select></div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-        <div><div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">Valor actual ARS $</div>
-          <input type="number" value="${inv.ars}" id="ie-a-${i}" class="fi" style="font-size:var(--fs-md);padding:8px 10px;color:var(--green);text-align:right;font-weight:600"></div>
-        <div><div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">Costo de entrada ARS $</div>
-          <input type="number" value="${inv.costo||inv.ars}" id="ie-c-${i}" class="fi" style="font-size:var(--fs-md);padding:8px 10px;color:var(--blue);text-align:right"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:${esUSD?'2px':'8px'}">
+        <div><div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">Valor actual ${esUSD?'USD':'ARS'} $</div>
+          <input type="number" value="${valorMostrar}" id="ie-a-${i}" class="fi" style="font-size:var(--fs-md);padding:8px 10px;color:var(--green);text-align:right;font-weight:600"></div>
+        <div><div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">Costo de entrada ${esUSD?'USD':'ARS'} $</div>
+          <input type="number" value="${costoMostrar}" id="ie-c-${i}" class="fi" style="font-size:var(--fs-md);padding:8px 10px;color:var(--blue);text-align:right"></div>
       </div>
+      ${esUSD ? `<div style="font-size:.6rem;color:var(--muted);margin-bottom:8px">≈ ${fmt((valorMostrar||0)*TC)} ARS al TC actual (${fmt(TC)})</div>` : ''}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
         <div><div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">Cantidad <span style="color:var(--muted)">(cripto/USD)</span></div>
           <input type="number" value="${inv.cantidad||''}" id="ie-qty-${i}" class="fi" placeholder="ej: 0.001" step="any" style="font-size:var(--fs-sm);padding:7px 10px;text-align:right"></div>
@@ -8574,6 +8584,14 @@ function renderInvEditor() {
         <input type="text" value="${inv.nota||''}" id="ie-no-${i}" class="fi" style="font-size:var(--fs-sm);padding:7px 10px"></div>
     </div>`;
   }).join('');
+}
+
+function ieMonedaChange(selectEl, i) {
+  const invs = getInv();
+  if (!invs[i]) return;
+  invs[i].moneda = selectEl.value;
+  DB.set('inversiones', invs);
+  renderInvEditor();
 }
 
 function ieBrokerChange(selectEl, i) {
@@ -8605,13 +8623,25 @@ function delInvRow(i) {
 function saveInv() {
   const invs = getInv();
   invs.forEach((inv, i) => {
-    const ars   = parseFloat(document.getElementById(`ie-a-${i}`)?.value) || 0;
-    const costo = parseFloat(document.getElementById(`ie-c-${i}`)?.value) || ars;
+    const moneda      = document.getElementById(`ie-mo-${i}`)?.value || inv.moneda || 'ARS';
+    const valorInput  = parseFloat(document.getElementById(`ie-a-${i}`)?.value) || 0;
+    const costoInput  = parseFloat(document.getElementById(`ie-c-${i}`)?.value) || valorInput;
+    inv.moneda = moneda;
+    if (moneda === 'USD') {
+      // Se cargan los montos en dólares tal cual, y se guarda también el equivalente en ARS
+      // (convertido al TC actual) para que el resto de la app -que suma todo en ARS- siga
+      // funcionando sin tocar nada más.
+      inv.usdValor = valorInput;
+      inv.usdCosto = costoInput;
+      inv.ars   = Math.round(valorInput * TC);
+      inv.costo = Math.round(costoInput * TC);
+    } else {
+      inv.ars   = valorInput;
+      inv.costo = costoInput;
+    }
     inv.activo      = document.getElementById(`ie-n-${i}`)?.value  || inv.activo;
     inv.tipo        = document.getElementById(`ie-t-${i}`)?.value  || inv.tipo;
-    inv.ars         = ars;
-    inv.costo       = costo;
-    inv.rend        = costo > 0 ? (ars - costo) / costo : 0; // auto-calc from values
+    inv.rend        = inv.costo > 0 ? (inv.ars - inv.costo) / inv.costo : 0; // auto-calc from values
     // No pisar con vacío si el campo quedó sin valor (ej. porque la fecha original no se pudo
     // normalizar al formato del <input type=date> y se mostró en blanco) — así no se pierde
     // el dato original al guardar sin querer. Solo se actualiza si realmente se cargó algo.
@@ -8620,7 +8650,6 @@ function saveInv() {
     inv.nota        = document.getElementById(`ie-no-${i}`)?.value || '';
     inv.cantidad    = parseFloat(document.getElementById(`ie-qty-${i}`)?.value) || inv.cantidad || 0;
     inv.ticker      = (document.getElementById(`ie-tk-${i}`)?.value || '').toUpperCase() || inv.ticker || '';
-    inv.moneda      = inv.moneda || 'ARS';
     inv.pos         = inv.pos    || '';
     inv.broker      = document.getElementById(`ie-br-${i}`)?.value || inv.broker || '';
   });
