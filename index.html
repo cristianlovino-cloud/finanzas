@@ -1655,19 +1655,28 @@ nav::-webkit-scrollbar{display:none}
           </div>
         </div>
 
-        <!-- Broker / comitente -->
-        <div style="margin-bottom:8px">
-          <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">BROKER / COMITENTE</div>
-          <select id="op-broker" class="fi" style="font-size:var(--fs-sm);padding:8px 6px" onchange="opBrokerChange(this)">
-            <option value="Cocos">Cocos</option>
-            <option value="Inviu">Inviu</option>
-            <option value="Balanz">Balanz</option>
-            <option value="BBVA">BBVA</option>
-            <option value="BSF">BSF</option>
-            <option value="Binance">Binance</option>
-            <option value="BingX">BingX</option>
-            <option value="__otro__">Otro...</option>
-          </select>
+        <!-- Broker / comitente + Moneda -->
+        <div style="display:grid;grid-template-columns:1fr 90px;gap:8px;margin-bottom:8px">
+          <div>
+            <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">BROKER / COMITENTE</div>
+            <select id="op-broker" class="fi" style="font-size:var(--fs-sm);padding:8px 6px" onchange="opBrokerChange(this)">
+              <option value="Cocos">Cocos</option>
+              <option value="Inviu">Inviu</option>
+              <option value="Balanz">Balanz</option>
+              <option value="BBVA">BBVA</option>
+              <option value="BSF">BSF</option>
+              <option value="Binance">Binance</option>
+              <option value="BingX">BingX</option>
+              <option value="__otro__">Otro...</option>
+            </select>
+          </div>
+          <div>
+            <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">MONEDA</div>
+            <select id="op-moneda" class="fi" style="font-size:var(--fs-sm);padding:8px 4px" onchange="opCalcMonto()">
+              <option value="ARS">ARS</option>
+              <option value="USD">USD</option>
+            </select>
+          </div>
         </div>
 
         <!-- Ticker nuevo (solo si elige "nuevo") -->
@@ -8723,6 +8732,7 @@ function opResetForm() {
   document.getElementById('op-nuevo-ticker').value = '';
   document.getElementById('op-nuevo-desc').value   = '';
   document.getElementById('op-nuevo-tipo').value   = 'CEDEAR';
+  document.getElementById('op-moneda').value       = 'ARS';
   document.getElementById('op-nuevo-wrap').style.display = 'none';
   document.getElementById('op-preview').style.display    = 'none';
   opToggleModoMonto('precio');
@@ -8740,11 +8750,14 @@ function opTickerChange() {
   const val = document.getElementById('op-ticker-sel').value;
   document.getElementById('op-nuevo-wrap').style.display = val === 'nuevo' ? 'block' : 'none';
 
-  // Si es venta de una posición existente, sugerir precio actual
+  // Si es venta de una posición existente, sugerir precio actual y heredar su moneda
   if (val !== '' && val !== 'nuevo') {
     const inv = getInv()[parseInt(val)];
-    if (inv && inv.ars > 0 && inv.cantidad > 0) {
-      const precioUnit = Math.round(inv.ars / inv.cantidad);
+    if (inv) document.getElementById('op-moneda').value = inv.moneda || 'ARS';
+    if (inv && inv.cantidad > 0) {
+      const esUSD = inv.moneda === 'USD';
+      const base  = esUSD ? (inv.usdValor || 0) : (inv.ars || 0);
+      const precioUnit = esUSD ? +(base / inv.cantidad).toFixed(2) : Math.round(base / inv.cantidad);
       if (precioUnit > 0) document.getElementById('op-precio').value = precioUnit;
     }
   }
@@ -8788,6 +8801,7 @@ function opCalcDesdeTotal() {
 function opCalcMonto() {
   const cant   = parseFloat(document.getElementById('op-cant').value)   || 0;
   const tipo   = document.getElementById('op-tipo').value;
+  const moneda = document.getElementById('op-moneda')?.value || 'ARS';
   const prev   = document.getElementById('op-preview');
   const montoEl = document.getElementById('op-preview-monto');
 
@@ -8801,7 +8815,9 @@ function opCalcMonto() {
 
   if (cant > 0 && monto > 0) {
     prev.style.display = 'flex';
-    montoEl.textContent = fmt(monto);
+    montoEl.textContent = moneda === 'USD'
+      ? `U$S ${monto.toLocaleString('es-AR',{maximumFractionDigits:2})} (≈ ${fmt(monto*TC)})`
+      : fmt(monto);
     montoEl.style.color = tipo === 'venta' ? P.red : P.green;
   } else {
     prev.style.display = 'none';
@@ -8843,6 +8859,7 @@ function opAgregar() {
   const fecha   = document.getElementById('op-fecha').value;
   const brokerSel = document.getElementById('op-broker').value;
   const broker  = brokerSel === '__otro__' ? (document.getElementById('op-broker').dataset.custom || 'Otro') : brokerSel;
+  const moneda  = document.getElementById('op-moneda')?.value || 'ARS';
 
   if (!tickerVal)    { showToast('Seleccioná el ticker', P.red); return; }
   if (cant <= 0)     { showToast('Ingresá los nominales', P.red); return; }
@@ -8863,8 +8880,11 @@ function opAgregar() {
     desc   = inv.nota || '';
   }
 
-  const monto = Math.round(cant * precio);
-  _opLote.push({ tipo, ticker, desc, cant, precio, monto, fecha, invIdx, esNuevo: tickerVal === 'nuevo', tipoInstrumento: tipoNuevo, broker });
+  // montoOriginal queda en la moneda elegida (ARS o USD); monto es siempre el equivalente en ARS,
+  // que es lo que usan las sumas/listas existentes en el resto de la app.
+  const montoOriginal = Math.round(cant * precio * 100) / 100;
+  const monto = moneda === 'USD' ? Math.round(montoOriginal * TC) : montoOriginal;
+  _opLote.push({ tipo, ticker, desc, cant, precio, moneda, montoOriginal, monto, fecha, invIdx, esNuevo: tickerVal === 'nuevo', tipoInstrumento: tipoNuevo, broker });
 
   opRenderLista();
   opResetForm();
@@ -8894,18 +8914,21 @@ function opRenderLista() {
     const color = op.tipo === 'venta' ? P.red : P.green;
     const signo = op.tipo === 'venta' ? '📤' : '📥';
     const fechaLabel = op.fecha ? new Date(op.fecha + 'T12:00:00').toLocaleDateString('es-AR', {day:'2-digit',month:'2-digit'}) : '';
+    const esUSD = op.moneda === 'USD';
+    const precioLabel = esUSD ? `U$S ${op.precio.toLocaleString('es-AR',{maximumFractionDigits:2})}` : fmt(op.precio);
+    const montoLabel  = esUSD ? `U$S ${op.montoOriginal.toLocaleString('es-AR',{maximumFractionDigits:2})}` : fmt(op.monto);
     return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:var(--fs-sm)">
       <span style="font-size:var(--fs-md)">${signo}</span>
       <div style="flex:1">
         <span style="font-weight:700;color:${color}">${op.ticker}</span>
-        <span style="color:var(--muted);font-size:var(--fs-xs)"> · ${op.cant} nom. × ${fmt(op.precio)} · ${fechaLabel}${op.esNuevo ? ' · ' + (op.tipoInstrumento || 'CEDEAR') : ''}${op.broker ? ' · ' + op.broker : ''}</span>
+        <span style="color:var(--muted);font-size:var(--fs-xs)"> · ${op.cant} nom. × ${precioLabel} · ${fechaLabel}${op.esNuevo ? ' · ' + (op.tipoInstrumento || 'CEDEAR') : ''}${op.broker ? ' · ' + op.broker : ''}</span>
       </div>
-      <span style="font-weight:700;color:${color};white-space:nowrap">${op.tipo === 'venta' ? '+' : '-'}${fmt(op.monto)}</span>
+      <span style="font-weight:700;color:${color};white-space:nowrap">${op.tipo === 'venta' ? '+' : '-'}${montoLabel}</span>
       <button onclick="opRemover(${i})" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:var(--fs-md);padding:2px 5px">✕</button>
     </div>`;
   }).join('');
 
-  // Totales
+  // Totales (siempre en ARS, para que sumen bien contra lo que ya vale la cartera)
   const totalVenta  = _opLote.filter(o => o.tipo === 'venta').reduce((s, o) => s + o.monto, 0);
   const totalCompra = _opLote.filter(o => o.tipo === 'compra').reduce((s, o) => s + o.monto, 0);
   const dif = totalVenta - totalCompra;
@@ -8934,18 +8957,24 @@ function opEjecutar() {
 
     if (op.tipo === 'compra') {
       if (op.esNuevo) {
-        invs.push({
-          activo: op.ticker, tipo: op.tipoInstrumento || 'CEDEAR', moneda: 'ARS',
+        const nuevaPos = {
+          activo: op.ticker, tipo: op.tipoInstrumento || 'CEDEAR', moneda: op.moneda || 'ARS',
           ars: op.monto, costo: op.monto, rend: 0,
           cantidad: op.cant, ticker: op.ticker,
           nota: op.desc || op.ticker, broker: op.broker || '',
           fechaEntrada: hoy, pos: `${op.cant} acciones`,
-        });
+        };
+        if (op.moneda === 'USD') { nuevaPos.usdValor = op.montoOriginal; nuevaPos.usdCosto = op.montoOriginal; }
+        invs.push(nuevaPos);
       } else {
         const inv    = invs[op.invIdx];
         inv.ars      = (inv.ars      || 0) + op.monto;
         inv.costo    = (inv.costo    || 0) + op.monto;
         inv.cantidad = (inv.cantidad || 0) + op.cant;
+        if (op.moneda === 'USD') {
+          inv.usdValor = (inv.usdValor || 0) + op.montoOriginal;
+          inv.usdCosto = (inv.usdCosto || 0) + op.montoOriginal;
+        }
         inv.rend     = inv.costo > 0 ? (inv.ars - inv.costo) / inv.costo : 0;
         inv.pos      = `${inv.cantidad} acciones`;
         if (!inv.fechaEntrada) inv.fechaEntrada = hoy;
@@ -8953,7 +8982,7 @@ function opEjecutar() {
       // Registrar en inv_movimientos (sin tocar txs)
       invMovs.unshift({
         ts: Date.now() + Math.random(), fecha: fechaLabel, tipo: 'compra',
-        ticker: op.ticker, cant: op.cant, precio: op.precio, monto: op.monto, pnl: null,
+        ticker: op.ticker, cant: op.cant, precio: op.precio, moneda: op.moneda, monto: op.monto, pnl: null,
         broker: op.broker || '',
       });
 
@@ -8969,13 +8998,18 @@ function opEjecutar() {
         inv.ars      = Math.max(0, (inv.ars      || 0) - op.monto);
         inv.costo    = Math.max(0, (inv.costo    || 0) - costoVendido);
         inv.cantidad = Math.max(0, (inv.cantidad || 0) - op.cant);
+        if (inv.moneda === 'USD') {
+          const costoVendidoUSD = Math.round((inv.usdCosto || 0) * pct * 100) / 100;
+          inv.usdValor = Math.max(0, (inv.usdValor || 0) - op.montoOriginal);
+          inv.usdCosto = Math.max(0, (inv.usdCosto || 0) - costoVendidoUSD);
+        }
         inv.rend     = inv.costo > 0 ? (inv.ars - inv.costo) / inv.costo : 0;
         inv.pos      = `${inv.cantidad} acciones`;
 
         // Registrar en inv_movimientos (sin tocar txs)
         invMovs.unshift({
           ts: Date.now() + Math.random(), fecha: fechaLabel, tipo: 'venta',
-          ticker: op.ticker, cant: op.cant, precio: op.precio, monto: op.monto,
+          ticker: op.ticker, cant: op.cant, precio: op.precio, moneda: op.moneda, monto: op.monto,
           pnl: ganancia, costoVendido, broker: op.broker || '',
         });
       }
