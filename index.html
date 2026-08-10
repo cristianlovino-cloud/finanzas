@@ -9170,6 +9170,19 @@ function saveTc() {
   showToast(`✓ TC actualizado: $${TC}/USD`);
 }
 
+// ── Aplica (factor=1) o revierte (factor=-1) el efecto de una tx sobre el saldo de su cuenta.
+// Se usa al editar/borrar transacciones, que antes dejaban el saldo desactualizado para
+// siempre porque solo se tocaba al CREAR la tx, nunca al editarla o borrarla.
+function aplicarDeltaSaldoTx(tx, factor) {
+  if (!tx || !tx.medio || !tx.monto) return;
+  const cuentas = getCuentas();
+  const ct = cuentas.find(c => c.nombre === tx.medio);
+  if (!ct || ct.moneda !== tx.moneda) return;
+  const delta = (tx.tipo === 'ingreso' ? 1 : -1) * tx.monto * factor;
+  ct.saldo += delta;
+  saveCuentas(cuentas);
+}
+
 function openEditModal(mes, idx) {
   const txsAll = DB.get('txs', {});
   const tx = txsAll[mes]?.[idx];
@@ -9253,7 +9266,13 @@ function saveEditTx() {
   const rawCat = (document.getElementById('edit-cat').value || txsAll[mes][idx].cat || '');
   const newCat = normalizeCat(rawCat);
 
-  const tx = { ...txsAll[mes][idx], fecha: newFecha, monto: newMonto, desc: newDesc, cat: newCat };
+  const oldTx = txsAll[mes][idx]; // se guarda ANTES de pisarla, para poder revertir su efecto en el saldo
+  const tx = { ...oldTx, fecha: newFecha, monto: newMonto, desc: newDesc, cat: newCat };
+
+  // Corregir el saldo de cuenta: sacar el efecto de la versión vieja, meter el de la nueva
+  // (cubre cambio de monto, de medio, de tipo o de moneda, todo junto)
+  aplicarDeltaSaldoTx(oldTx, -1);
+  aplicarDeltaSaldoTx(tx, 1);
 
   if (newMes !== mes) {
     txsAll[mes].splice(idx, 1);
@@ -9268,6 +9287,7 @@ function saveEditTx() {
   renderFlujo();
   renderRecentTxs();
   updateOverview();
+  if (typeof renderCuentas === 'function') renderCuentas();
   showToast('✓ Transacción actualizada');
 }
 
@@ -9279,12 +9299,14 @@ function deleteTx() {
   if (!txsAll[mes]) return;
   const tx = txsAll[mes][idx];
   if (tx && tx.recurrenteId) excluirInstanciaRecurrente(tx.recurrenteId, mes);
+  aplicarDeltaSaldoTx(tx, -1); // revertir su efecto en el saldo antes de borrarla, si no queda fantasma para siempre
   txsAll[mes].splice(idx, 1);
   DB.set('txs', txsAll);
   closeEditModal();
   renderFlujo();
   renderRecentTxs();
   updateOverview();
+  if (typeof renderCuentas === 'function') renderCuentas();
   showToast('✓ Transacción eliminada');
 }
 
