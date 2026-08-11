@@ -463,7 +463,7 @@ window.cfCargarMiHistorial = async function() {
 
     // Regla simple: si el cierre del período ya pasó → período cerrado → va al histórico
     // Si el cierre es hoy o futuro → período abierto → va al pendiente con detalle
-    const hoy = new Date().toISOString().slice(0,10);
+    const hoy = hoyLocal();
     function getCierre(g) {
       return g.cierreDelPeriodo || g.fecha;
     }
@@ -2131,7 +2131,7 @@ function descargarBackupCompleto() {
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
-    const fechaArchivo = new Date().toISOString().slice(0,10);
+    const fechaArchivo = hoyLocal();
     a.href = url;
     a.download = `cl-finanzas-backup-${fechaArchivo}.json`;
     document.body.appendChild(a);
@@ -2492,7 +2492,7 @@ function chequearBackupAutomatico() {
     const conectado = !!window._uid;
     if (conectado) return; // hay sesión y sync a la nube, no hace falta el auto-backup
 
-    const hoy = new Date().toISOString().slice(0,10);
+    const hoy = hoyLocal();
     const ultimoAuto = localStorage.getItem('_last_auto_backup_date');
     if (ultimoAuto === hoy) return; // ya se hizo hoy
 
@@ -2935,6 +2935,17 @@ const fmtK = n => {
   return (n < 0 ? '-' : '') + '$' + abs.toLocaleString('es-AR');
 };
 const fmtp = p => (p > 0 ? '+' : '') + (p * 100).toFixed(1) + '%';
+// Fecha de HOY en la hora LOCAL del dispositivo (no UTC). new Date().toISOString() siempre
+// convierte a UTC antes de formatear, así que a la noche en Argentina (UTC-3) quedaba fechado
+// al día siguiente. getFullYear/getMonth/getDate son locales, así que esto no tiene ese problema.
+function hoyLocal() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 let TC = parseInt(DB.get('tc','1250')) || 1250;
 
 // ── Separador de miles en tiempo real ──
@@ -3000,7 +3011,7 @@ function go(id, btn) {
     renderOwnTarjetaSelector();
     renderOwnCategoriaSelector();
     const fechaEl = document.getElementById('own-tj-fecha');
-    if (fechaEl && !fechaEl.value) fechaEl.value = new Date().toISOString().slice(0,10);
+    if (fechaEl && !fechaEl.value) fechaEl.value = hoyLocal();
     if (window.cfSincronizarAhora) window.cfSincronizarAhora();
     resetearBadgeTarjetas();
   }
@@ -3041,7 +3052,7 @@ function toggleRecurrentesCfg() {
 
 // ── Rotación automática de períodos al entrar a Config ──
 function rotarPeriodosTarjetas() {
-  const hoy = new Date().toISOString().slice(0,10);
+  const hoy = hoyLocal();
   const tarjetas = getTarjetas();
   let huboCambio = false;
   tarjetas.forEach(t => {
@@ -3415,7 +3426,7 @@ function populateCatDropdown() {
   if (!sel) return;
   
   const fechaEl = document.getElementById('tx-fecha');
-  const fecha = fechaEl?.value || new Date().toISOString().split('T')[0];
+  const fecha = fechaEl?.value || hoyLocal();
   const mes = fecha.slice(0,7);
   const plan = getPlan(mes);
   
@@ -3485,8 +3496,8 @@ function submitTx() {
 
   // Actualizar saldo de cuenta
   if (medio) {
-    if (curTipo === 'ingreso') acreditarACuenta(medio, monto, moneda, desc);
-    else descontarDeCuenta(medio, monto, moneda, desc);
+    if (curTipo === 'ingreso') acreditarACuenta(medio, monto, moneda, desc, tx.ts);
+    else descontarDeCuenta(medio, monto, moneda, desc, tx.ts);
   }
 
   // Clear form
@@ -3545,7 +3556,7 @@ function duplicateTx(recentIdx) {
   const tipoBtn = document.querySelector(`.tipo-btn[onclick*="'${tx.tipo}'"]`);
   if (tipoBtn) { setTipo(tx.tipo, tipoBtn); }
   // Set date to today
-  document.getElementById('tx-fecha').value = new Date().toISOString().split('T')[0];
+  document.getElementById('tx-fecha').value = hoyLocal();
   // Navigate to cargar
   const cargarBtn = Array.from(document.querySelectorAll('.nb')).find(b => b.textContent.includes('Cargar'));
   if (cargarBtn) go('cargar', cargarBtn);
@@ -4127,7 +4138,7 @@ function periodosOrdenados(t) {
   return (t.periodos || []).slice().sort((a,b) => (a.cierre||a.inicio||'').localeCompare(b.cierre||b.inicio||''));
 }
 function ventanaPeriodos(t) {
-  const hoy = new Date().toISOString().slice(0,10);
+  const hoy = hoyLocal();
   const ordenados = periodosOrdenados(t);
   let idxActual = ordenados.findIndex(p => !p.cierre || p.cierre >= hoy);
   if (idxActual === -1) idxActual = ordenados.length; // todos los cargados ya cerraron: "actual" queda vacío, a completar
@@ -4601,7 +4612,7 @@ function aplicarDebitosRecurrentes(mes) {
       if (!tarjetaDelRec) return;
 
       const periodosTarjeta = (tarjetaDelRec.periodos || []).filter(p => p.inicio && p.cierre);
-      const hoyStr = new Date().toISOString().slice(0,10);
+      const hoyStr = hoyLocal();
 
       periodosTarjeta.forEach(p => {
         // Probar el día del recurrente tanto en el mes de inicio como en el de cierre del
@@ -4674,7 +4685,7 @@ function aplicarDebitosRecurrentes(mes) {
       if (!tj) return true;
       const cierre = periodoDeGasto(tj, g.fecha);
       if (!cierre) return false; // fuera de todos los períodos → eliminar
-      if (g.fecha > new Date().toISOString().slice(0,10)) return false; // fecha futura → eliminar
+      if (g.fecha > hoyLocal()) return false; // fecha futura → eliminar
       const key = g.recurrenteId + '|' + cierre;
       if (vistos.has(key)) return false; // duplicado → eliminar
       vistos.add(key);
@@ -5090,7 +5101,7 @@ function ownCargarGastoTarjeta() {
 // Agrupa todos los gastos por tarjeta + período de resumen (cierre que les corresponde)
 function agruparGastosPorPeriodo() {
   const tarjetas = getTarjetas();
-  const hoyISO = new Date().toISOString().slice(0,10);
+  const hoyISO = hoyLocal();
   // Excluir recurrentes con fecha futura — no mostrar hasta que llegue su día
   const gastosFamilia = getGastosTarjetas().filter(g =>
     !g.recurrenteId || g.fecha <= hoyISO
@@ -5303,7 +5314,7 @@ function renderGastosTarjetas() {
 
   // Gastos sin período asignado (fecha no matchea ningún período configurado)
   const todosSinFiltro = getGastosTarjetas();
-  const hoyISOr = new Date().toISOString().slice(0,10);
+  const hoyISOr = hoyLocal();
   const sinPeriodo = todosSinFiltro.filter(g => {
     if (!g.tarjetaId) return false;
     if (g.recurrenteId) return false; // recurrentes no necesitan período
@@ -5430,7 +5441,7 @@ function renderTarjetaCard(grupo, conciliaciones, colapsadoPorDefaultArg) {
   const fechaCierreLabel = new Date(grupo.cierre + 'T00:00:00').toLocaleDateString('es-AR', {day:'2-digit', month:'long', year:'numeric'});
 
   // Distinguir si el período ya cerró (resumen listo, no va a sumar más) o sigue corriendo (consumo en curso)
-  const hoyISO = new Date().toISOString().slice(0,10);
+  const hoyISO = hoyLocal();
   const yaCerro = grupo.cierre < hoyISO;
   const estadoBadge = estaConciliado ? ''
     : yaCerro
@@ -5860,9 +5871,9 @@ function toggleNuevaCuenta() {
 }
 
 // ── Registrar movimiento en historial ──
-function registrarMovimiento(cuenta, tipo, monto, moneda, desc) {
+function registrarMovimiento(cuenta, tipo, monto, moneda, desc, origenTs) {
   const movs = DB.get('ct_movimientos', []);
-  movs.unshift({ ts: Date.now(), cuenta, tipo, monto, moneda, desc });
+  movs.unshift({ ts: Date.now(), cuenta, tipo, monto, moneda, desc, origenTs: origenTs || null });
   DB.set('ct_movimientos', movs.slice(0, 300));
   renderHistorialTransf();
 }
@@ -5969,26 +5980,26 @@ function hacerTransferencia() {
 }
 
 // ── Descontar de cuenta al cargar gasto ──
-function descontarDeCuenta(medioNombre, monto, moneda, desc) {
+function descontarDeCuenta(medioNombre, monto, moneda, desc, txTs) {
   const cuentas = getCuentas();
   const ct = cuentas.find(c => c.nombre === medioNombre);
   if (!ct) return;
   if (ct.moneda === moneda) {
     ct.saldo -= monto;
     saveCuentas(cuentas);
-    registrarMovimiento(medioNombre, 'gasto', monto, moneda, desc || medioNombre);
+    registrarMovimiento(medioNombre, 'gasto', monto, moneda, desc || medioNombre, txTs);
   }
 }
 
 // ── Acreditar a cuenta al cargar ingreso ──
-function acreditarACuenta(medioNombre, monto, moneda, desc) {
+function acreditarACuenta(medioNombre, monto, moneda, desc, txTs) {
   const cuentas = getCuentas();
   const ct = cuentas.find(c => c.nombre === medioNombre);
   if (!ct) return;
   if (ct.moneda === moneda) {
     ct.saldo += monto;
     saveCuentas(cuentas);
-    registrarMovimiento(medioNombre, 'ingreso', monto, moneda, desc || medioNombre);
+    registrarMovimiento(medioNombre, 'ingreso', monto, moneda, desc || medioNombre, txTs);
   }
 }
 
@@ -6236,7 +6247,7 @@ function buildAiContext() {
     ? cuentas.map(c => c.nombre)
     : ['Efectivo','MP','BSF','BBVA'];
 
-  const hoy = new Date().toISOString().split('T')[0];
+  const hoy = hoyLocal();
 
   return `Sos un asistente de finanzas personales. Tu única tarea es parsear frases en español sobre transacciones financieras y devolver JSON estructurado. NUNCA respondas en texto libre — SOLO JSON válido.
 
@@ -6330,7 +6341,7 @@ function renderAiPreview(p) {
   document.getElementById('prev-desc').textContent  = p.desc   || '—';
   document.getElementById('prev-cat').textContent   = p.cat    || '—';
   document.getElementById('prev-medio').textContent = p.medio  || '— (sin medio)';
-  document.getElementById('prev-fecha').textContent = p.fecha  || new Date().toISOString().split('T')[0];
+  document.getElementById('prev-fecha').textContent = p.fecha  || hoyLocal();
 
   preview.classList.add('show');
   preview.style.display = 'block';
@@ -6342,9 +6353,9 @@ function aiConfirmar() {
   const p = _aiParsed;
 
   // Build tx object directly and save
-  const mes    = (p.fecha || new Date().toISOString().split('T')[0]).slice(0, 7);
+  const mes    = (p.fecha || hoyLocal()).slice(0, 7);
   const tx     = {
-    fecha:  p.fecha || new Date().toISOString().split('T')[0],
+    fecha:  p.fecha || hoyLocal(),
     monto:  parseFloat(p.monto) || 0,
     desc:   p.desc  || '',
     cat:    normalizeCat(p.cat || ''),
@@ -6365,8 +6376,8 @@ function aiConfirmar() {
 
   // Actualizar saldo de cuenta
   if (tx.medio) {
-    if (tx.tipo === 'ingreso') acreditarACuenta(tx.medio, tx.monto, tx.moneda, tx.desc);
-    else descontarDeCuenta(tx.medio, tx.monto, tx.moneda, tx.desc);
+    if (tx.tipo === 'ingreso') acreditarACuenta(tx.medio, tx.monto, tx.moneda, tx.desc, tx.ts);
+    else descontarDeCuenta(tx.medio, tx.monto, tx.moneda, tx.desc, tx.ts);
   }
 
   renderRecentTxs();
@@ -6400,7 +6411,7 @@ function aiEditar() {
   // Set fields
   setTimeout(() => {
     const fechaEl = document.getElementById('tx-fecha');
-    if (fechaEl) fechaEl.value = p.fecha || new Date().toISOString().split('T')[0];
+    if (fechaEl) fechaEl.value = p.fecha || hoyLocal();
     const montoEl = document.getElementById('tx-monto');
     if (montoEl) montoEl.value = Math.round(p.monto || 0).toLocaleString('es-AR');
     const descEl  = document.getElementById('tx-desc');
@@ -8683,7 +8694,7 @@ function toggleRotarModal() {
   opResetForm();
   opRenderLista();
   // Set today as default date
-  const hoy = new Date().toISOString().slice(0,10);
+  const hoy = hoyLocal();
   document.getElementById('op-fecha').value = hoy;
   overlay.style.display = 'block';
   document.body.style.overflow = 'hidden';
@@ -8952,7 +8963,7 @@ function opEjecutar() {
   let   pnlTotal = 0;
 
   _opLote.forEach(op => {
-    const hoy        = op.fecha || new Date().toISOString().slice(0,10);
+    const hoy        = op.fecha || hoyLocal();
     const fechaLabel = new Date(hoy + 'T12:00:00').toLocaleDateString('es-AR', {day:'2-digit',month:'2-digit',year:'numeric'});
 
     if (op.tipo === 'compra') {
@@ -9181,6 +9192,26 @@ function aplicarDeltaSaldoTx(tx, factor) {
   const delta = (tx.tipo === 'ingreso' ? 1 : -1) * tx.monto * factor;
   ct.saldo += delta;
   saveCuentas(cuentas);
+
+  // Al revertir (edición o borrado), sacar del historial de "Cuentas" el movimiento que había
+  // quedado registrado por esta misma tx — si no, queda como fantasma para siempre aunque el
+  // saldo ya esté corregido.
+  if (factor < 0 && tx.ts) {
+    const movs = DB.get('ct_movimientos', []);
+    const filtrados = movs.filter(m => m.origenTs !== tx.ts);
+    if (filtrados.length !== movs.length) {
+      DB.set('ct_movimientos', filtrados);
+      if (typeof renderHistorialTransf === 'function') renderHistorialTransf();
+    }
+  }
+  // Al aplicar (ej. la versión editada), volver a dejar un registro en el historial para no
+  // dejar un hueco donde antes había uno.
+  if (factor > 0 && tx.ts) {
+    const movs = DB.get('ct_movimientos', []);
+    movs.unshift({ ts: Date.now(), cuenta: tx.medio, tipo: tx.tipo === 'ingreso' ? 'ingreso' : 'gasto', monto: tx.monto, moneda: tx.moneda, desc: tx.desc || tx.medio, origenTs: tx.ts });
+    DB.set('ct_movimientos', movs.slice(0, 300));
+    if (typeof renderHistorialTransf === 'function') renderHistorialTransf();
+  }
 }
 
 function openEditModal(mes, idx) {
@@ -9664,7 +9695,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // que debía mostrar el form familiar, y caía de lleno en la app completa (vacía).
     if (_cfModoParam) localStorage.setItem('cf_modo_familiar', '1');
     document.getElementById('carga-familiar-overlay').style.display = 'block';
-    document.getElementById('cf-fecha').value = new Date().toISOString().slice(0,10);
+    document.getElementById('cf-fecha').value = hoyLocal();
 
     // Quien: primero query param, después localStorage (PWA)
     const quienUrl = new URLSearchParams(location.search).get('quien') || localStorage.getItem('cf_quien') || '';
@@ -9735,7 +9766,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Set today's date in cargar form
   const fechaEl = document.getElementById('tx-fecha');
-  fechaEl.value = new Date().toISOString().split('T')[0];
+  fechaEl.value = hoyLocal();
   fechaEl.addEventListener('change', populateCatDropdown);
   populateCatDropdown();
 
