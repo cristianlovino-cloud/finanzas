@@ -3287,12 +3287,16 @@ function renderPlanSections() {
 function renderSection(sec, containerId, color) {
   const el = document.getElementById(containerId);
   if (!el || !curPlan) return;
+  const puedeToggle = sec === 'fijos' || sec === 'vars';
+  const destino = sec === 'fijos' ? 'vars' : 'fijos';
+  const tituloMover = sec === 'fijos' ? 'Mover a Variables' : 'Mover a Fijos';
   el.innerHTML = curPlan[sec].map((item, i) => `
     <div class="plan-row" id="pr-${sec}-${i}">
       <input class="plan-label" type="text" value="${item.l}" placeholder="Concepto"
         oninput="curPlan['${sec}'][${i}].l=this.value">
       <input class="plan-val" type="number" value="${item.v||''}" placeholder="0" style="color:${color}"
         oninput="curPlan['${sec}'][${i}].v=parseFloat(this.value)||0;recalcPlanKPIs()">
+      ${puedeToggle ? `<button class="plan-del" title="${tituloMover}" onclick="moverCategoriaGlobal('${item.l.replace(/'/g,"\\'")}','${destino}')" style="color:var(--muted)">⇄</button>` : ''}
       <button class="plan-del" onclick="delPlanRow('${sec}',${i})">✕</button>
     </div>`).join('');
 }
@@ -6952,9 +6956,61 @@ async function calcularPromediosCategorias(mesObjetivo) {
 // Clasifica una categoría como fija o variable, reutilizando la misma heurística
 // que ya separa el plan en "fijos" y "vars": si el último PLAN_DEFAULT (o un plan
 // guardado anterior) la tenía como fija, respetamos eso; si no, va a variables.
+// ── Mapa global de categoría → fijo/variable, EDITABLE y persistente (Etapa 1) ──
+// Antes, la clasificación fijo/variable de una categoría nueva salía de si estaba o no
+// hardcodeada en PLAN_DEFAULT.fijos — así que mover una categoría implicaba corregirla mes
+// a mes para siempre. Ahora hay un mapa único: se mueve una vez y aplica para todos los
+// meses (pasados y futuros).
+function getCategoriaTipoOverride() {
+  return DB.get('categoria_tipo_override', {});
+}
+function setCategoriaTipoOverride(map) {
+  DB.set('categoria_tipo_override', map);
+}
+
 function clasificarFijaOVariable(cat) {
+  const override = getCategoriaTipoOverride();
+  if (override[cat]) return override[cat]; // 'fijos' o 'vars', decisión explícita del usuario
   const esFijaEnDefault = PLAN_DEFAULT.fijos.some(r => r.l === cat);
   return esFijaEnDefault ? 'fijos' : 'vars';
+}
+
+// Mueve una categoría entre Fijos/Variables de forma GLOBAL: actualiza el mapa (para que los
+// meses futuros que se autocompleten ya la clasifiquen bien) y también recorre todos los
+// meses YA guardados para moverla ahí también, conservando el monto de cada mes.
+function moverCategoriaGlobal(categoria, destino) {
+  const origen = destino === 'fijos' ? 'vars' : 'fijos';
+  const override = getCategoriaTipoOverride();
+  override[categoria] = destino;
+  setCategoriaTipoOverride(override);
+
+  const planes = DB.get('plans', {});
+  let mesesActualizados = 0;
+  Object.keys(planes).forEach(mes => {
+    const plan = planes[mes];
+    if (!plan || !Array.isArray(plan[origen])) return;
+    const idx = plan[origen].findIndex(r => r.l === categoria);
+    if (idx === -1) return;
+    const [item] = plan[origen].splice(idx, 1);
+    if (!plan[destino]) plan[destino] = [];
+    if (!plan[destino].some(r => r.l === categoria)) plan[destino].push(item);
+    mesesActualizados++;
+  });
+  DB.set('plans', planes);
+
+  // Si el mes que se está editando ahora mismo es uno de los tocados, refrescar curPlan en memoria
+  if (curPlan) {
+    const idx = curPlan[origen]?.findIndex(r => r.l === categoria);
+    if (idx > -1) {
+      const [item] = curPlan[origen].splice(idx, 1);
+      if (!curPlan[destino]) curPlan[destino] = [];
+      if (!curPlan[destino].some(r => r.l === categoria)) curPlan[destino].push(item);
+    }
+  }
+
+  renderPlanSections();
+  if (typeof updateOverview === 'function') updateOverview();
+  showToast(`✓ "${categoria}" ahora es ${destino === 'fijos' ? 'Fijo' : 'Variable'} en ${mesesActualizados} mes${mesesActualizados===1?'':'es'}`);
 }
 
 // Genera (y GUARDA) un plan inteligente para mesObjetivo si todavía no tiene uno propio.
