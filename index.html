@@ -6058,24 +6058,50 @@ function onMedioChange() {
 
 // ── 50/30/20: Necesidades (Gastos fijos) / Deseos (Variables) / Ahorro (Inversiones) ──
 // Mapea directo las categorías que ya existen en Presupuesto, sobre el ingreso TOTAL real del
-// mes (con aguinaldo/bonos si los hubo). Si todavía no cargaste ingresos ese mes, usa el
-// ingreso planificado como referencia provisoria.
+// período (con aguinaldo/bonos si los hubo). Dos modos: "mes" (el actual) o "acumulado"
+// (todos los meses cerrados del año seleccionado en Overview, mismo criterio que el resto
+// de la pantalla).
+let modo503020 = 'mes';
+
+function set503020Modo(modo) {
+  modo503020 = modo;
+  render503020();
+}
+
 function render503020() {
   const cont = document.getElementById('overview-503020');
   if (!cont) return;
 
-  const mes = getCurMes();
-  const plan = getPlan(mes);
-  const pt = planTotals(plan);
-  const { totals: realTotals } = txTotals(mes);
+  const now = new Date();
+  const curMesKey = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
 
-  const realFijos = plan.fijos.reduce((s, r) => s + (realTotals[r.l] || 0), 0);
-  const realVars  = plan.vars.reduce((s, r)  => s + (realTotals[r.l] || 0), 0);
-  const realInv   = pt.inv; // igual criterio que en Flujo: inversiones se toma planificado = real
+  let mesesAContar;
+  let etiqueta;
+  if (modo503020 === 'acumulado') {
+    const allMonths = MESES.map((_, i) => overviewYear + '-' + String(i + 1).padStart(2, '0'));
+    mesesAContar = allMonths.filter(mes => mes <= curMesKey && (DB.get('plans', {})[mes] || (getTxs(mes) || []).length > 0));
+    etiqueta = `Acumulado ${overviewYear}`;
+  } else {
+    mesesAContar = [getCurMes()];
+    etiqueta = mesLabel(getCurMes());
+  }
 
-  const txsMes = getTxs(mes) || [];
-  const ingresoReal = txsMes.filter(t => t.tipo === 'ingreso').reduce((s, t) => s + (parseFloat(t.monto) || 0), 0);
-  const ingresoTotal = ingresoReal > 0 ? ingresoReal : pt.ing;
+  if (mesesAContar.length === 0) { cont.style.display = 'none'; return; }
+
+  let realFijos = 0, realVars = 0, realInv = 0, ingresoTotal = 0, huboIngresoReal = false;
+  mesesAContar.forEach(mes => {
+    const plan = getPlan(mes);
+    const pt = planTotals(plan);
+    const { totals: realTotals } = txTotals(mes);
+    realFijos += plan.fijos.reduce((s, r) => s + (realTotals[r.l] || 0), 0);
+    realVars  += plan.vars.reduce((s, r)  => s + (realTotals[r.l] || 0), 0);
+    realInv   += pt.inv; // igual criterio que en Flujo: inversiones se toma planificado = real
+
+    const txsMes = getTxs(mes) || [];
+    const ingresoRealMes = txsMes.filter(t => t.tipo === 'ingreso').reduce((s, t) => s + (parseFloat(t.monto) || 0), 0);
+    if (ingresoRealMes > 0) { ingresoTotal += ingresoRealMes; huboIngresoReal = true; }
+    else ingresoTotal += pt.ing;
+  });
 
   if (ingresoTotal <= 0) { cont.style.display = 'none'; return; }
   cont.style.display = 'block';
@@ -6086,9 +6112,17 @@ function render503020() {
     { label: 'Ahorro',      sub: 'Inversiones',   pct: 20, real: realInv,   color: P.purple },
   ];
 
+  const btnStyle = (activo) => `padding:4px 12px;border-radius:16px;border:1px solid ${activo ? 'var(--green)' : 'var(--border)'};background:${activo ? 'rgba(34,211,160,.1)' : 'var(--s2)'};color:${activo ? 'var(--green)' : 'var(--muted)'};font-family:var(--fm);font-size:var(--fs-xs);cursor:pointer`;
+
   cont.innerHTML = `
     <div class="card">
-      <div class="ct">50 / 30 / 20 — ${mesLabel(mes)}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:2px">
+        <div class="ct" style="margin-bottom:0">50 / 30 / 20 — ${etiqueta}</div>
+        <div style="display:flex;gap:6px">
+          <button onclick="set503020Modo('mes')" style="${btnStyle(modo503020 === 'mes')}">Mes</button>
+          <button onclick="set503020Modo('acumulado')" style="${btnStyle(modo503020 === 'acumulado')}">Acumulado</button>
+        </div>
+      </div>
       ${items.map(it => {
         const target   = ingresoTotal * it.pct / 100;
         const pctReal  = ingresoTotal > 0 ? (it.real / ingresoTotal * 100) : 0;
@@ -6105,7 +6139,7 @@ function render503020() {
           </div>
         </div>`;
       }).join('')}
-      <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:2px">Sobre ingreso total del mes: ${fmt(ingresoTotal)}${ingresoReal <= 0 ? ' (planificado, todavía sin ingresos cargados)' : ''}</div>
+      <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:2px">Sobre ingreso total ${modo503020 === 'acumulado' ? 'del período' : 'del mes'}: ${fmt(ingresoTotal)}${!huboIngresoReal ? ' (planificado, todavía sin ingresos cargados)' : ''}</div>
     </div>`;
 }
 
