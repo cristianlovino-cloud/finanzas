@@ -1070,6 +1070,10 @@ nav::-webkit-scrollbar{display:none}
   <!-- ── ALERTS BANNER ── -->
   <div id="overview-alerts" style="margin-bottom:14px"></div>
 
+  <!-- ── 50/30/20 ── -->
+  <div id="overview-503020" style="margin-bottom:14px;display:none"></div>
+
+
   <div class="kg">
     <div class="kpi" style="--kc:var(--green)">
       <div class="kl">Ingresos <span id="ov-mes-label">Mar 2026</span></div>
@@ -6048,6 +6052,59 @@ function onMedioChange() {
   else if (ct) monedaEl.value = 'ARS';
 }
 
+// ── 50/30/20: Necesidades (Gastos fijos) / Deseos (Variables) / Ahorro (Inversiones) ──
+// Mapea directo las categorías que ya existen en Presupuesto, sobre el ingreso TOTAL real del
+// mes (con aguinaldo/bonos si los hubo). Si todavía no cargaste ingresos ese mes, usa el
+// ingreso planificado como referencia provisoria.
+function render503020() {
+  const cont = document.getElementById('overview-503020');
+  if (!cont) return;
+
+  const mes = getCurMes();
+  const plan = getPlan(mes);
+  const pt = planTotals(plan);
+  const { totals: realTotals } = txTotals(mes);
+
+  const realFijos = plan.fijos.reduce((s, r) => s + (realTotals[r.l] || 0), 0);
+  const realVars  = plan.vars.reduce((s, r)  => s + (realTotals[r.l] || 0), 0);
+  const realInv   = pt.inv; // igual criterio que en Flujo: inversiones se toma planificado = real
+
+  const txsMes = getTxs(mes) || [];
+  const ingresoReal = txsMes.filter(t => t.tipo === 'ingreso').reduce((s, t) => s + (parseFloat(t.monto) || 0), 0);
+  const ingresoTotal = ingresoReal > 0 ? ingresoReal : pt.ing;
+
+  if (ingresoTotal <= 0) { cont.style.display = 'none'; return; }
+  cont.style.display = 'block';
+
+  const items = [
+    { label: 'Necesidades', sub: 'Gastos fijos', pct: 50, real: realFijos, color: P.blue   },
+    { label: 'Deseos',      sub: 'Variables',     pct: 30, real: realVars,  color: P.orange },
+    { label: 'Ahorro',      sub: 'Inversiones',   pct: 20, real: realInv,   color: P.purple },
+  ];
+
+  cont.innerHTML = `
+    <div class="card">
+      <div class="ct">50 / 30 / 20 — ${mesLabel(mes)}</div>
+      ${items.map(it => {
+        const target   = ingresoTotal * it.pct / 100;
+        const pctReal  = ingresoTotal > 0 ? (it.real / ingresoTotal * 100) : 0;
+        const excedido = pctReal > it.pct + 1; // pequeño margen para no marcar en rojo por redondeo
+        const barPct   = target > 0 ? Math.min(100, (it.real / target) * 100) : 0;
+        return `
+        <div style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+            <span style="font-size:var(--fs-sm);font-weight:600">${it.label} <span style="color:var(--muted);font-weight:400">(${it.sub} · meta ${it.pct}%)</span></span>
+            <span style="font-size:var(--fs-sm);color:${excedido ? 'var(--red)' : 'var(--muted2)'}">${fmt(it.real)} · ${pctReal.toFixed(0)}%</span>
+          </div>
+          <div style="height:8px;background:var(--s2);border-radius:4px;overflow:hidden">
+            <div style="height:100%;width:${barPct}%;background:${excedido ? 'var(--red)' : it.color};border-radius:4px"></div>
+          </div>
+        </div>`;
+      }).join('')}
+      <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:2px">Sobre ingreso total del mes: ${fmt(ingresoTotal)}${ingresoReal <= 0 ? ' (planificado, todavía sin ingresos cargados)' : ''}</div>
+    </div>`;
+}
+
 function updateOverview() {
   const yr = overviewYear;
   const now = new Date();
@@ -6203,6 +6260,8 @@ function updateOverview() {
     });
     aplicarSaludFinanciera(salud);
   } catch(e) { /* no romper overview si falla el cálculo de salud */ }
+
+  if (typeof render503020 === 'function') { try { render503020(); } catch(e) { console.warn('render503020 error:', e); } }
 }
 
 // ══════════════════════════════════════════════════════
