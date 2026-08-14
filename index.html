@@ -6217,9 +6217,8 @@ function updateOverview() {
       const plan = getPlan(mes), pt = planTotals(plan);
       totalIng += pt.ing; totalInv += pt.inv;
       if (hasTxs) {
-        const { total: txTotal, totals: realTotals } = txTotals(mes);
-        const fijosAuto = plan.fijos.filter(r => !realTotals[r.l]).reduce((s,r) => s+r.v, 0);
-        totalGas += txTotal + fijosAuto;
+        const { total: txTotal } = txTotals(mes);
+        totalGas += txTotal;
       } else { totalGas += pt.gastos; }
     });
   } else {
@@ -6707,9 +6706,8 @@ function buildEvolChart(year='2026') {
       const hasTxs  = Array.isArray(savedTxs[mes]) && savedTxs[mes].length > 0;
       if (!hasPlan && !hasTxs) continue; // skip meses sin datos
       const plan = getPlan(mes), pt = planTotals(plan);
-      const { total: txTotal, totals: realTotals } = txTotals(mes);
-      const fijosAuto = plan.fijos.filter(r => !realTotals[r.l]).reduce((s,r) => s+r.v, 0);
-      const gastosMes = hasTxs ? txTotal + fijosAuto : pt.gastos;
+      const { total: txTotal } = txTotals(mes);
+      const gastosMes = hasTxs ? txTotal : pt.gastos;
       months.push({ label: MESES[idx], ing: Math.round(pt.ing), gas: Math.round(gastosMes) });
     }
     labels = months.map(m => m.label);
@@ -7194,9 +7192,8 @@ function buildMesAMesChart(year) {
       const hasTxs  = Array.isArray(savedTxs[mes]) && savedTxs[mes].length > 0;
       if (!hasPlan && !hasTxs) continue;
       const plan = getPlan(mes), pt = planTotals(plan);
-      const { total: txTotal, totals: realTotals } = txTotals(mes);
-      const fijosAuto = plan.fijos.filter(r => !realTotals[r.l]).reduce((s,r) => s+r.v, 0);
-      const gas  = hasTxs ? txTotal + fijosAuto : pt.gastos;
+      const { total: txTotal } = txTotals(mes);
+      const gas  = hasTxs ? txTotal : pt.gastos;
       const neto = pt.ing - gas - pt.inv;
       rows.push({ label: MESES[idx], ing: pt.ing, gas, neto, inv: pt.inv });
     }
