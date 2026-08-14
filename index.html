@@ -3384,61 +3384,15 @@ function getTxs(mes) {
   return (DB.get('txs', {})[mes] || []);
 }
 
-// txTotals(mes): gasto REAL por categoría de un mes, combinando:
-//  1) Transacciones de Flujo categorizadas directamente (débito/efectivo/transferencia).
-//  2) El detalle real de Gastos Tarjetas, cada consumo con SU propia categoría (Supermercado,
-//     Farmacia, etc.), agrupado por "mes de pago" (cierre del resumen + 1 mes) — no como una
-//     línea única "TC BSF" desconectada de lo que realmente se compró.
-//  3) Un residual: lo del pago de tarjeta que todavía no está desglosado por comercio, cae en
-//     la categoría genérica "Tarjetas de crédito" (se va achicando solo a medida que cargás
-//     el detalle real de cada resumen).
-// Las tx de Flujo con tipo 'tc', o categorizadas "Tarjetas de Créditos" (como se cargaba el
-// pago antes de tener detalle por tarjeta), NO se suman aparte — son el lado "pago" del mismo
-// gasto que ya se cuenta arriba vía el desglose o el residual; sumarlas de nuevo sería
-// contar el mismo gasto dos veces (justamente el bug que teníamos en Presupuesto vs Real).
 function txTotals(mes) {
+  const txs = getTxs(mes);
   const totals = {};
-  let total = 0;
-  const add = (cat, monto) => {
-    if (!monto) return;
-    totals[cat] = (totals[cat] || 0) + monto;
-    total += monto;
-  };
-
-  const esCategoriaPagoTarjeta = cat => /^tarjetas?\s+de\s+cr[eé]dito?s?$/i.test((cat || '').trim());
-  let pagoTcDelMes = 0;
-  getTxs(mes).forEach(tx => {
+  txs.forEach(tx => {
     if (tx.tipo === 'ingreso') return;
-    if (tx.tipo === 'tc' || esCategoriaPagoTarjeta(tx.cat)) { pagoTcDelMes += parseFloat(tx.monto) || 0; return; }
-    add(normalizeCat(tx.cat || 'Otros'), parseFloat(tx.monto) || 0);
+    const cat = normalizeCat(tx.cat || 'Otros'); // always normalize on read
+    totals[cat] = (totals[cat] || 0) + (parseFloat(tx.monto) || 0);
   });
-
-  const periodosPorTarjeta = {};
-  (typeof getTarjetas === 'function' ? getTarjetas() : []).forEach(t => {
-    periodosPorTarjeta[t.id] = (t.periodos || []).filter(p => p.inicio && p.cierre).slice().sort((a, b) => a.cierre.localeCompare(b.cierre));
-  });
-  const cierreDelPeriodo = (tarjetaId, fecha) => {
-    const periodos = periodosPorTarjeta[tarjetaId] || [];
-    const match = periodos.find(p => p.inicio <= fecha && fecha <= p.cierre);
-    return match ? match.cierre : null;
-  };
-
-  let desglosadoDelMes = 0;
-  (typeof getGastosTarjetas === 'function' ? getGastosTarjetas() : []).forEach(g => {
-    if (!g.fecha || g.moneda === 'USD') return;
-    const cierreReal = cierreDelPeriodo(g.tarjetaId, g.fecha);
-    const mesBase = cierreReal ? cierreReal.slice(0, 7) : g.fecha.slice(0, 7); // fallback si no hay período configurado
-    const mesDePago = mesSiguienteDePago(mesBase);
-    if (mesDePago !== mes) return;
-    const cat = normalizeCat((g.tipo || 'Otros').replace(/\s*\(cuota\s*\d+\/\d+\)\s*/i, '').trim() || 'Otros');
-    const monto = parseFloat(g.monto) || 0;
-    add(cat, monto);
-    desglosadoDelMes += monto;
-  });
-
-  const residual = Math.max(0, pagoTcDelMes - desglosadoDelMes);
-  if (residual > 0) add('Tarjetas de crédito', residual);
-
+  const total = Object.values(totals).reduce((s, v) => s + v, 0);
   return { totals, total };
 }
 
@@ -6217,8 +6171,9 @@ function updateOverview() {
       const plan = getPlan(mes), pt = planTotals(plan);
       totalIng += pt.ing; totalInv += pt.inv;
       if (hasTxs) {
-        const { total: txTotal } = txTotals(mes);
-        totalGas += txTotal;
+        const { total: txTotal, totals: realTotals } = txTotals(mes);
+        const fijosAuto = plan.fijos.filter(r => !realTotals[r.l]).reduce((s,r) => s+r.v, 0);
+        totalGas += txTotal + fijosAuto;
       } else { totalGas += pt.gastos; }
     });
   } else {
@@ -6706,8 +6661,9 @@ function buildEvolChart(year='2026') {
       const hasTxs  = Array.isArray(savedTxs[mes]) && savedTxs[mes].length > 0;
       if (!hasPlan && !hasTxs) continue; // skip meses sin datos
       const plan = getPlan(mes), pt = planTotals(plan);
-      const { total: txTotal } = txTotals(mes);
-      const gastosMes = hasTxs ? txTotal : pt.gastos;
+      const { total: txTotal, totals: realTotals } = txTotals(mes);
+      const fijosAuto = plan.fijos.filter(r => !realTotals[r.l]).reduce((s,r) => s+r.v, 0);
+      const gastosMes = hasTxs ? txTotal + fijosAuto : pt.gastos;
       months.push({ label: MESES[idx], ing: Math.round(pt.ing), gas: Math.round(gastosMes) });
     }
     labels = months.map(m => m.label);
@@ -7192,8 +7148,9 @@ function buildMesAMesChart(year) {
       const hasTxs  = Array.isArray(savedTxs[mes]) && savedTxs[mes].length > 0;
       if (!hasPlan && !hasTxs) continue;
       const plan = getPlan(mes), pt = planTotals(plan);
-      const { total: txTotal } = txTotals(mes);
-      const gas  = hasTxs ? txTotal : pt.gastos;
+      const { total: txTotal, totals: realTotals } = txTotals(mes);
+      const fijosAuto = plan.fijos.filter(r => !realTotals[r.l]).reduce((s,r) => s+r.v, 0);
+      const gas  = hasTxs ? txTotal + fijosAuto : pt.gastos;
       const neto = pt.ing - gas - pt.inv;
       rows.push({ label: MESES[idx], ing: pt.ing, gas, neto, inv: pt.inv });
     }
