@@ -7626,7 +7626,12 @@ function renderEvolCategorias() {
     // veías cargando el pago de tarjeta antes de tener el desglose real por comercio. Si no
     // lo hacemos así, ese pago se cuenta aparte como categoría propia Y de nuevo desglosado
     // por comercio — doble conteo del mismo gasto real.
-    const esCategoriaPagoTarjeta = cat => /^tarjetas?\s+de\s+cr[eé]dito?s?$/i.test((cat||'').trim());
+    // Reconoce tanto la categoría genérica vieja ("Tarjetas de Créditos") como las específicas
+    // por tarjeta ("TC BSF", "TC BBVA", etc.) — en Ene-Mar 2026 estas se cargaron con
+    // tipo:'gasto' en vez de tipo:'tc', así que sin este chequeo por nombre quedaban contadas
+    // como gasto suelto, ENCIMA del detalle real ya desglosado en Gastos Tarjetas ese mismo
+    // mes — doble conteo real, no solo un residual mal calculado.
+    const esCategoriaPagoTarjeta = cat => /^tarjetas?\s+de\s+cr[eé]dito?s?$/i.test((cat||'').trim()) || /^tc\s+\S/i.test((cat||'').trim());
     txsMes.forEach(tx => {
       if (tx.tipo === 'ingreso') return;
       if (tx.tipo === 'tc' || esCategoriaPagoTarjeta(tx.cat)) { pagoTcDelMes += parseFloat(tx.monto) || 0; return; } // se procesa aparte, como residual
