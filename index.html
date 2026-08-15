@@ -1411,15 +1411,18 @@ nav::-webkit-scrollbar{display:none}
     <!-- ── MANUAL MODE ── -->
     <div id="cargar-manual-mode" style="display:block">
       <!-- Tipo selector -->
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px" id="tipo-btns">
-        <button onclick="setTipo('gasto',this)" class="tipo-btn active-tipo" style="padding:12px 8px;border-radius:8px;border:1px solid var(--green);background:rgba(34,211,160,.08);color:var(--green);font-family:var(--fm);font-size:var(--fs-sm);cursor:pointer;text-align:center">
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:16px" id="tipo-btns">
+        <button onclick="setTipo('gasto',this)" class="tipo-btn active-tipo" style="padding:10px 4px;border-radius:8px;border:1px solid var(--green);background:rgba(34,211,160,.08);color:var(--green);font-family:var(--fm);font-size:.68rem;cursor:pointer;text-align:center">
           <div style="font-size:1.1rem;margin-bottom:4px">💸</div>Gasto directo
         </button>
-        <button onclick="setTipo('tc',this)" class="tipo-btn" style="padding:12px 8px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--muted);font-family:var(--fm);font-size:var(--fs-sm);cursor:pointer;text-align:center">
+        <button onclick="setTipo('tc',this)" class="tipo-btn" style="padding:10px 4px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--muted);font-family:var(--fm);font-size:.68rem;cursor:pointer;text-align:center">
           <div style="font-size:1.1rem;margin-bottom:4px">💳</div>Pago TC
         </button>
-        <button onclick="setTipo('ingreso',this)" class="tipo-btn" style="padding:12px 8px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--muted);font-family:var(--fm);font-size:var(--fs-sm);cursor:pointer;text-align:center">
+        <button onclick="setTipo('ingreso',this)" class="tipo-btn" style="padding:10px 4px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--muted);font-family:var(--fm);font-size:.68rem;cursor:pointer;text-align:center">
           <div style="font-size:1.1rem;margin-bottom:4px">💰</div>Ingreso
+        </button>
+        <button onclick="setTipo('inversion',this)" class="tipo-btn" style="padding:10px 4px;border-radius:8px;border:1px solid var(--border);background:var(--s2);color:var(--muted);font-family:var(--fm);font-size:.68rem;cursor:pointer;text-align:center">
+          <div style="font-size:1.1rem;margin-bottom:4px">📈</div>Inversión
         </button>
       </div>
 
@@ -3388,12 +3391,19 @@ function txTotals(mes) {
   const txs = getTxs(mes);
   const totals = {};
   txs.forEach(tx => {
-    if (tx.tipo === 'ingreso') return;
+    if (tx.tipo === 'ingreso' || tx.tipo === 'inversion') return; // la inversión real no es gasto
     const cat = normalizeCat(tx.cat || 'Otros'); // always normalize on read
     totals[cat] = (totals[cat] || 0) + (parseFloat(tx.monto) || 0);
   });
   const total = Object.values(totals).reduce((s, v) => s + v, 0);
   return { totals, total };
+}
+
+// Suma de inversiones REALES (tx tipo='inversion') cargadas para un mes puntual
+function txInversionesReales(mes) {
+  return getTxs(mes)
+    .filter(tx => tx.tipo === 'inversion')
+    .reduce((s, tx) => s + (parseFloat(tx.monto) || 0), 0);
 }
 
 // El pago de una tarjeta sale de la cuenta un mes DESPUÉS del cierre del resumen
@@ -3415,16 +3425,16 @@ function setTipo(tipo, btn) {
     b.style.background = 'var(--s2)';
     b.style.color = 'var(--muted)';
   });
-  const colors = {gasto:'var(--green)',tc:'var(--orange)',ingreso:'var(--blue)'};
+  const colors = {gasto:'var(--green)',tc:'var(--orange)',ingreso:'var(--blue)',inversion:'var(--purple)'};
   btn.style.borderColor = colors[tipo];
-  btn.style.background = colors[tipo].replace('var(--','rgba(').replace(')',',.08)').replace('--green','34,211,160').replace('--orange','251,146,60').replace('--blue','56,189,248');
+  btn.style.background = colors[tipo].replace('var(--','rgba(').replace(')',',.08)').replace('--green','34,211,160').replace('--orange','251,146,60').replace('--blue','56,189,248').replace('--purple','167,139,250');
   btn.style.color = colors[tipo];
 
   // Update submit button
   const submitBtn = document.getElementById('tx-submit');
-  const labels = {gasto:'＋ Registrar gasto',tc:'＋ Registrar pago TC',ingreso:'＋ Registrar ingreso'};
+  const labels = {gasto:'＋ Registrar gasto',tc:'＋ Registrar pago TC',ingreso:'＋ Registrar ingreso',inversion:'＋ Registrar inversión'};
   submitBtn.textContent = labels[tipo];
-  submitBtn.style.background = {gasto:'var(--green)',tc:'var(--orange)',ingreso:'var(--blue)'}[tipo];
+  submitBtn.style.background = {gasto:'var(--green)',tc:'var(--orange)',ingreso:'var(--blue)',inversion:'var(--purple)'}[tipo];
   // Refresh category dropdown for new tipo
   populateCatDropdown();
 }
@@ -3446,6 +3456,17 @@ function populateCatDropdown() {
     plan.ing.forEach(r => { const o=document.createElement('option'); o.value=r.l; o.text=r.l; g0.appendChild(o); });
     ['Bono','Reintegro','Venta activos','Otros ingresos'].forEach(cat => {
       if (!plan.ing.find(r=>r.l===cat)) { const o=document.createElement('option'); o.value=cat; o.text=cat; g0.appendChild(o); }
+    });
+    sel.appendChild(g0);
+    return;
+  }
+
+  if (curTipo === 'inversion') {
+    const g0 = document.createElement('optgroup');
+    g0.label = 'Inversiones';
+    plan.inv.forEach(r => { const o=document.createElement('option'); o.value=r.l; o.text=r.l; g0.appendChild(o); });
+    ['Compra de activos','FCI','Plazo fijo','Otros'].forEach(cat => {
+      if (!plan.inv.find(r=>r.l===cat)) { const o=document.createElement('option'); o.value=cat; o.text=cat; g0.appendChild(o); }
     });
     sel.appendChild(g0);
     return;
@@ -3534,8 +3555,9 @@ function renderRecentTxs() {
   if (!recent.length) { el.innerHTML = '<div style="color:var(--muted);font-size:var(--fs-sm);text-align:center;padding:20px 0">Sin registros aún</div>'; return; }
   el.innerHTML = recent.map((tx, idx) => {
     const isIng = tx.tipo === 'ingreso';
-    const color = isIng ? P.green : P.red;
-    const icon  = isIng ? '💰' : tx.tipo === 'tc' ? '💳' : '💸';
+    const isInv = tx.tipo === 'inversion';
+    const color = isIng ? P.green : isInv ? P.purple : P.red;
+    const icon  = isIng ? '💰' : isInv ? '📈' : tx.tipo === 'tc' ? '💳' : '💸';
     return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)">
       <div style="width:28px;height:28px;border-radius:7px;background:${color}15;display:flex;align-items:center;justify-content:center;font-size:var(--fs-md);flex-shrink:0">${icon}</div>
       <div style="flex:1;min-width:0">
@@ -6431,7 +6453,7 @@ function renderAiPreview(p) {
   const preview = document.getElementById('ai-preview');
   const ejemplos = document.getElementById('ai-ejemplos');
 
-  const tipoLabel = { gasto:'💸 Gasto directo', tc:'💳 Pago TC', ingreso:'💰 Ingreso' }[p.tipo] || p.tipo;
+  const tipoLabel = { gasto:'💸 Gasto directo', tc:'💳 Pago TC', ingreso:'💰 Ingreso', inversion:'📈 Inversión' }[p.tipo] || p.tipo;
   const montoFmt  = p.moneda === 'USD'
     ? 'U$S ' + (p.monto||0).toLocaleString('es-AR')
     : '$' + Math.round(p.monto||0).toLocaleString('es-AR');
