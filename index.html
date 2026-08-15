@@ -6039,9 +6039,14 @@ function updateOverviewSaldos() {
   const usdEl    = document.getElementById('ov-saldo-usd');
   const usdDetEl = document.getElementById('ov-saldo-usd-det');
 
-  if (arsEl)    arsEl.textContent    = fmt(totalARS);
+  if (arsEl)    arsEl.textContent    = fmtK(totalARS);
   if (arsDetEl) arsDetEl.textContent = nARS + ' cuenta' + (nARS!==1?'s':'');
-  if (usdEl)    usdEl.textContent    = 'U$S ' + (totalUSD % 1 === 0 ? totalUSD.toLocaleString('es-AR') : totalUSD.toFixed(2));
+  if (usdEl) {
+    const absUsd = Math.abs(totalUSD);
+    usdEl.textContent = absUsd >= 1000
+      ? 'U$S ' + (totalUSD/1000).toFixed(1) + 'k'
+      : 'U$S ' + (totalUSD % 1 === 0 ? totalUSD.toLocaleString('es-AR') : totalUSD.toFixed(2));
+  }
   if (usdDetEl) usdDetEl.textContent = nUSD + ' cuenta' + (nUSD!==1?'s':'');
 }
 
@@ -6132,14 +6137,14 @@ function render503020() {
         <div style="margin-bottom:12px">
           <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
             <span style="font-size:var(--fs-sm);font-weight:600">${it.label} <span style="color:var(--muted);font-weight:400">(${it.sub} · meta ${it.pct}%)</span></span>
-            <span style="font-size:var(--fs-sm);color:${excedido ? 'var(--red)' : 'var(--muted2)'}">${fmt(it.real)} · ${pctReal.toFixed(0)}%</span>
+            <span style="font-size:var(--fs-sm);color:${excedido ? 'var(--red)' : 'var(--muted2)'}">${fmtK(it.real)} · ${pctReal.toFixed(0)}%</span>
           </div>
           <div style="height:8px;background:var(--s2);border-radius:4px;overflow:hidden">
             <div style="height:100%;width:${barPct}%;background:${excedido ? 'var(--red)' : it.color};border-radius:4px"></div>
           </div>
         </div>`;
       }).join('')}
-      <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:2px">Sobre ingreso total ${modo503020 === 'acumulado' ? 'del período' : 'del mes'}: ${fmt(ingresoTotal)}${!huboIngresoReal ? ' (planificado, todavía sin ingresos cargados)' : ''}</div>
+      <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:2px">Sobre ingreso total ${modo503020 === 'acumulado' ? 'del período' : 'del mes'}: ${fmtK(ingresoTotal)}${!huboIngresoReal ? ' (planificado, todavía sin ingresos cargados)' : ''}</div>
     </div>`;
 }
 
