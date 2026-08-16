@@ -7657,7 +7657,7 @@ function renderEvolCategorias() {
     // mes — doble conteo real, no solo un residual mal calculado.
     const esCategoriaPagoTarjeta = cat => /^tarjetas?\s+de\s+cr[eé]dito?s?$/i.test((cat||'').trim()) || /^tc\s+\S/i.test((cat||'').trim());
     txsMes.forEach(tx => {
-      if (tx.tipo === 'ingreso') return;
+      if (tx.tipo === 'ingreso' || tx.tipo === 'inversion') return; // la inversión real no es gasto
       if (tx.tipo === 'tc' || esCategoriaPagoTarjeta(tx.cat)) { pagoTcDelMes += parseFloat(tx.monto) || 0; return; } // se procesa aparte, como residual
       const cat = normalizeCat(tx.cat || 'Otros');
       const monto = parseFloat(tx.monto) || 0;
@@ -7913,7 +7913,7 @@ function verGastosDeCategoria(catRaw, idCat, forceReload) {
   for (let mes = 1; mes <= 12; mes++) {
     const mesKey = yr + '-' + String(mes).padStart(2,'0');
     (getTxs(mesKey) || []).forEach((tx, idx) => {
-      if (tx.tipo === 'ingreso') return;
+      if (tx.tipo === 'ingreso' || tx.tipo === 'inversion') return;
       const cat = tx.tipo === 'tc' ? ('TC ' + (tx.cat||'').replace(/^TC\s*/i,'')) : normalizeCat(tx.cat || 'Otros');
       if (cat !== catRaw) return;
       encontrados.push({ fecha: tx.fecha || mesKey+'-01', desc: tx.desc || tx.medio || '', monto: parseFloat(tx.monto)||0, fuente: 'Flujo', tipo: 'tx', mes: mesKey, idx });
