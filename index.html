@@ -8505,10 +8505,11 @@ async function renderInvList() {
 
   const total = invs.reduce((s, i) => s + (i.ars||0), 0);
   const fciYBonos = invs.filter(i=>i.tipo==='FCI' || i.tipo==='Bono').reduce((s,i)=>s+(i.ars||0),0);
-  // "En USD" = posiciones cripto/stablecoin/dólar, identificadas por tipo (no por el campo moneda,
-  // que en cargas manuales suele quedar en ARS aunque el activo sea en USD).
+  // "En USD" = posiciones en Binance/BingX (cripto), identificadas por BROKER — antes se
+  // filtraba por moneda==='USD', lo que colaba CEDEARs pagados en dólares (ej. MELI en Cocos,
+  // con costo de entrada en USD) que no tienen nada que ver con las cuentas cripto.
   const usdVal = invs
-    .filter(i => i.tipo === 'Cripto' || i.tipo === 'Stablecoin' || i.tipo === 'Dólar' || i.moneda === 'USD')
+    .filter(i => i.broker === 'Binance' || i.broker === 'BingX')
     .reduce((s,i) => s + (i.ars||0)/TC, 0);
 
   document.getElementById('inv-total-kpi').textContent = fmtK(total);
