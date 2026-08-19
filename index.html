@@ -1679,7 +1679,7 @@ nav::-webkit-scrollbar{display:none}
           </div>
           <div>
             <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">MONEDA</div>
-            <select id="op-moneda" class="fi" style="font-size:var(--fs-sm);padding:8px 4px" onchange="opCalcMonto()">
+            <select id="op-moneda" class="fi" style="font-size:var(--fs-sm);padding:8px 4px" onchange="opMonedaChange()">
               <option value="ARS">ARS</option>
               <option value="USD">USD</option>
             </select>
@@ -8968,6 +8968,26 @@ function opSugerirNominalesVenta() {
   if (inv && inv.cantidad > 0) {
     document.getElementById('op-cant').value = inv.cantidad;
   }
+}
+
+// Si cambiás la Moneda a mano después de elegir el ticker, reconvertir el precio sugerido
+// (antes se quedaba con el mismo número, ahora bajo una moneda distinta — podía mostrar
+// disparates tipo "u$s 105.000.000" cuando en realidad era el precio en pesos).
+function opMonedaChange() {
+  const val = document.getElementById('op-ticker-sel')?.value;
+  const nuevaMoneda = document.getElementById('op-moneda').value;
+  if (val && val !== 'nuevo') {
+    const inv = getInv()[parseInt(val)];
+    if (inv && inv.cantidad > 0) {
+      const esUSD = nuevaMoneda === 'USD';
+      const base  = esUSD
+        ? (inv.usdValor != null ? inv.usdValor : (inv.ars || 0) / TC)
+        : (inv.ars || 0);
+      const precioUnit = esUSD ? +(base / inv.cantidad).toFixed(2) : Math.round(base / inv.cantidad);
+      if (precioUnit > 0) document.getElementById('op-precio').value = precioUnit;
+    }
+  }
+  opCalcMonto();
 }
 
 function opTickerChange() {
