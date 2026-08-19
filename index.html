@@ -8954,7 +8954,20 @@ function opTipoChange() {
   const tipo    = document.getElementById('op-tipo').value;
   const precioEl = document.getElementById('op-precio');
   precioEl.style.color = tipo === 'venta' ? P.red : P.green;
+  opSugerirNominalesVenta();
   opCalcMonto();
+}
+
+// Si el tipo es Venta y hay un ticker existente elegido, sugiere los nominales = tenencia
+// actual completa (se puede editar para vender parcial).
+function opSugerirNominalesVenta() {
+  const tipo = document.getElementById('op-tipo')?.value;
+  const val  = document.getElementById('op-ticker-sel')?.value;
+  if (tipo !== 'venta' || !val || val === 'nuevo') return;
+  const inv = getInv()[parseInt(val)];
+  if (inv && inv.cantidad > 0) {
+    document.getElementById('op-cant').value = inv.cantidad;
+  }
 }
 
 function opTickerChange() {
@@ -8972,6 +8985,7 @@ function opTickerChange() {
       if (precioUnit > 0) document.getElementById('op-precio').value = precioUnit;
     }
   }
+  opSugerirNominalesVenta();
   opCalcMonto();
 }
 
