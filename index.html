@@ -1718,6 +1718,12 @@ nav::-webkit-scrollbar{display:none}
           <button type="button" id="op-modo-precio-btn" onclick="opToggleModoMonto('precio')" class="op-modo-btn op-modo-active" style="font-size:var(--fs-xs);padding:3px 9px;border-radius:5px;border:1px solid var(--border2);background:rgba(34,211,160,.1);color:var(--green);cursor:pointer">Precio unitario</button>
           <button type="button" id="op-modo-total-btn" onclick="opToggleModoMonto('total')" class="op-modo-btn" style="font-size:var(--fs-xs);padding:3px 9px;border-radius:5px;border:1px solid var(--border);background:var(--s2);color:var(--muted);cursor:pointer">Total invertido</button>
         </div>
+        <div id="op-venta-usdt-wrap" style="display:none;margin-bottom:8px">
+          <label style="display:flex;align-items:center;gap:6px;font-size:var(--fs-xs);color:var(--muted);cursor:pointer">
+            <input type="checkbox" id="op-venta-usdt" checked>
+            Dejar el producido en USDT en el broker (destildá si lo usás para recomprar algo en el mismo lote)
+          </label>
+        </div>
         <div style="display:grid;grid-template-columns:1fr 1fr 120px;gap:8px;margin-bottom:10px">
           <div>
             <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">NOMINALES</div>
@@ -8965,6 +8971,7 @@ function opTipoChange() {
   const tipo    = document.getElementById('op-tipo').value;
   const precioEl = document.getElementById('op-precio');
   precioEl.style.color = tipo === 'venta' ? P.red : P.green;
+  document.getElementById('op-venta-usdt-wrap').style.display = tipo === 'venta' ? 'block' : 'none';
   opSugerirNominalesVenta();
   opCalcMonto();
 }
@@ -9140,7 +9147,8 @@ function opAgregar() {
   // que es lo que usan las sumas/listas existentes en el resto de la app.
   const montoOriginal = Math.round(cant * precio * 100) / 100;
   const monto = moneda === 'USD' ? Math.round(montoOriginal * TC) : montoOriginal;
-  _opLote.push({ tipo, ticker, desc, cant, precio, moneda, montoOriginal, monto, fecha, invIdx, esNuevo: tickerVal === 'nuevo', tipoInstrumento: tipoNuevo, broker });
+  const dejarEnUsdt = tipo === 'venta' && !!document.getElementById('op-venta-usdt')?.checked;
+  _opLote.push({ tipo, ticker, desc, cant, precio, moneda, montoOriginal, monto, fecha, invIdx, esNuevo: tickerVal === 'nuevo', tipoInstrumento: tipoNuevo, broker, dejarEnUsdt });
 
   opRenderLista();
   opResetForm();
@@ -9269,6 +9277,32 @@ function opEjecutar() {
         }
         inv.rend     = inv.costo > 0 ? (inv.ars - inv.costo) / inv.costo : 0;
         inv.pos      = `${inv.cantidad} acciones`;
+
+        // Si se pidió "dejar en USDT", acreditar el producido de la venta como Stablecoin en
+        // el mismo broker — así la plata no desaparece del portafolio, queda como saldo real
+        // hasta que se reinvierta en otra cosa.
+        if (op.dejarEnUsdt) {
+          let usdt = invs.find(x => x.broker === op.broker && x.tipo === 'Stablecoin' && x.ticker === 'USDT');
+          const montoUsdUsdt = op.moneda === 'USD' ? op.montoOriginal : op.monto / TC;
+          if (usdt) {
+            usdt.cantidad = (usdt.cantidad || 0) + montoUsdUsdt;
+            usdt.usdValor = (usdt.usdValor || 0) + montoUsdUsdt;
+            usdt.usdCosto = (usdt.usdCosto || 0) + montoUsdUsdt; // stablecoin: costo = valor, sin PnL propio
+            usdt.ars      = Math.round(usdt.usdValor * TC);
+            usdt.costo    = Math.round(usdt.usdCosto * TC);
+            usdt.rend     = 0;
+            usdt.pos      = `${usdt.cantidad} acciones`;
+          } else {
+            invs.push({
+              activo: 'USDT', tipo: 'Stablecoin', moneda: 'USD',
+              cantidad: montoUsdUsdt, ticker: 'USDT',
+              usdValor: montoUsdUsdt, usdCosto: montoUsdUsdt,
+              ars: Math.round(montoUsdUsdt * TC), costo: Math.round(montoUsdUsdt * TC), rend: 0,
+              nota: `Producido de venta de ${op.ticker}`, broker: op.broker || '',
+              fechaEntrada: hoy, pos: `${montoUsdUsdt} acciones`,
+            });
+          }
+        }
 
         // Registrar en inv_movimientos (sin tocar txs)
         invMovs.unshift({
