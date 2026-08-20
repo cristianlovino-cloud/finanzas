@@ -8550,12 +8550,17 @@ async function renderInvList() {
 
   const filaPosicion = inv => {
     const color   = colors[inv.tipo] || P.blue;
-    const hasVal  = inv.ars > 0;
-    const hasCosto = (inv.costo || 0) > 0;
-    const ganLoss = (hasVal && hasCosto) ? inv.ars - inv.costo : 0;
-    const rendPct = (hasVal && hasCosto) ? ((inv.ars - inv.costo) / inv.costo) : null;
+    const cerrada = (inv.tipo === 'CEDEAR' || inv.tipo === 'Cripto') && !(inv.cantidad > 0);
+    const arsReal = cerrada ? 0 : inv.ars;
+    const costoReal = cerrada ? 0 : (inv.costo || 0);
+    const hasVal  = arsReal > 0;
+    const hasCosto = costoReal > 0;
+    const ganLoss = (hasVal && hasCosto) ? arsReal - costoReal : 0;
+    const rendPct = (hasVal && hasCosto) ? ((arsReal - costoReal) / costoReal) : null;
     const rc      = rendPct === null ? P.yellow : rendPct > 0 ? P.green : rendPct < 0 ? P.red : P.yellow;
-    const rendLabel = rendPct === null
+    const rendLabel = cerrada
+      ? '<span style="font-size:var(--fs-xs);color:var(--muted)">posición cerrada</span>'
+      : rendPct === null
       ? '<span style="font-size:var(--fs-xs);color:var(--muted)">— falta costo de entrada</span>'
       : `<div style="display:flex;align-items:center;gap:5px;justify-content:flex-end;margin-top:3px">
           <span style="font-size:var(--fs-xs);font-weight:600;color:${rc}">${ganLoss>=0?'+':'-'}${fmt(Math.abs(ganLoss))}</span>
@@ -8569,14 +8574,20 @@ async function renderInvList() {
         <div class="inv-meta">${inv.nota||''}${inv.fechaEntrada?' · Entrada: '+inv.fechaEntrada:''}</div>
       </div>
       <div style="text-align:right">
-        <div class="inv-val" style="color:${hasVal?color:'var(--muted)'}">${hasVal?fmt(inv.ars):'— completar'}</div>
+        <div class="inv-val" style="color:${hasVal?color:'var(--muted)'}">${hasVal?fmt(arsReal):(cerrada?'$0':'— completar')}</div>
         ${rendLabel}
       </div>
     </div>`;
   };
 
   // Agrupar el portafolio por broker (colapsable) → ticker (consolida posiciones repetidas, ej. MELI x2)
-  const posicionesValidas = invs.filter(inv => (inv.ars || 0) > 0 || (inv.costo || 0) > 0);
+  // Las CEDEAR/Cripto en cantidad 0 (posición cerrada por una venta total) no se listan más —
+  // aunque hayan quedado con costo/ars viejos dando vueltas en el dato, ya no son una tenencia real.
+  const posicionesValidas = invs.filter(inv => {
+    const cerrada = (inv.tipo === 'CEDEAR' || inv.tipo === 'Cripto') && !(inv.cantidad > 0);
+    if (cerrada) return false;
+    return (inv.ars || 0) > 0 || (inv.costo || 0) > 0;
+  });
   const porBrokerPortafolio = {};
   posicionesValidas.forEach(inv => {
     const b = inv.broker || 'Sin especificar';
@@ -9247,6 +9258,14 @@ function opEjecutar() {
           const costoVendidoUSD = Math.round((inv.usdCosto || 0) * pct * 100) / 100;
           inv.usdValor = Math.max(0, (inv.usdValor || 0) - op.montoOriginal);
           inv.usdCosto = Math.max(0, (inv.usdCosto || 0) - costoVendidoUSD);
+        }
+        // Venta total (cantidad llega a 0): forzar todo a 0 en vez de dejar lo que resta de
+        // restar el importe de venta — ese resto casi siempre es solo la diferencia entre el
+        // último precio "en vivo" guardado y el precio real al que se vendió, no plata real
+        // que sigue en la posición.
+        if (inv.cantidad <= 0) {
+          inv.ars = 0; inv.costo = 0;
+          if (inv.moneda === 'USD') { inv.usdValor = 0; inv.usdCosto = 0; }
         }
         inv.rend     = inv.costo > 0 ? (inv.ars - inv.costo) / inv.costo : 0;
         inv.pos      = `${inv.cantidad} acciones`;
