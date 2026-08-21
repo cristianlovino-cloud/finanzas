@@ -4066,9 +4066,22 @@ function fusionarVarianteCategoria(variante, destino) {
     if (typeof renderFlujo === 'function') renderFlujo();
   }
 
+  // También actualizar el/los débito(s) recurrente(s) que generan estos gastos automáticamente
+  // cada mes — si no se toca acá, el mes que viene vuelve a crear un gasto con la categoría
+  // vieja y la variante reaparece en esta misma lista, aunque ya hayas fusionado todo lo
+  // existente. Se setea SIEMPRE 'categoria' (nunca 'nombre'), así "Claude" sigue llamándose
+  // "Claude" — solo cambia cómo se clasifica el gasto, no cómo se identifica el recurrente.
+  const recurrentes = getRecurrentes();
+  let cambiosRecurrentes = 0;
+  recurrentes.forEach(r => {
+    const categoriaEfectiva = (r.categoria || r.nombre || '').trim();
+    if (categoriaEfectiva === variante) { r.categoria = categoriaFinal; cambiosRecurrentes++; }
+  });
+  if (cambiosRecurrentes > 0) saveRecurrentes(recurrentes, { skipRender: true });
+
   if (cambios > 0 || cambiosFlujo > 0) {
     const totalCambios = cambios + cambiosFlujo;
-    showToast(`✓ ${totalCambios} gasto${totalCambios>1?'s':''} fusionado${totalCambios>1?'s':''} en "${categoriaFinal}"${cambiosFlujo>0 ? ` (${cambios} de Tarjetas + ${cambiosFlujo} de Flujo)` : ''}`);
+    showToast(`✓ ${totalCambios} gasto${totalCambios>1?'s':''} fusionado${totalCambios>1?'s':''} en "${categoriaFinal}"${cambiosFlujo>0 ? ` (${cambios} de Tarjetas + ${cambiosFlujo} de Flujo)` : ''}${cambiosRecurrentes>0 ? ' + recurrente actualizado' : ''}`);
   }
   renderNormalizadorCategorias();
 }
@@ -4667,7 +4680,7 @@ function aplicarDebitosRecurrentes(mes) {
 
         gastosTarjetas.push({
           id: 'gt_rec_' + r.id + '_' + p.cierre,
-          tarjetaId: r.tarjetaId, fecha: fechaEncontrada, tipo: r.nombre, monto: r.monto, moneda: r.moneda || 'ARS',
+          tarjetaId: r.tarjetaId, fecha: fechaEncontrada, tipo: (r.categoria || r.nombre), monto: r.monto, moneda: r.moneda || 'ARS',
           cargadoPor: 'Recurrente automático', ts: Date.now(), recurrenteId: r.id,
         });
         huboCambiosTarjetas = true;
