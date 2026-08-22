@@ -5052,6 +5052,20 @@ function ownToggleCuotaEnCurso() {
   }
 }
 
+// Busca compras (con cuotas) que ya existan para la misma tarjeta, mismo tipo base (sin el
+// sufijo "(cuota X/Y)") y misma fecha de compra — para avisar antes de crear una serie nueva
+// quizás duplicada, en vez de editar/completar la existente.
+function buscarComprasSimilares(lista, tarjetaId, tipoBase, fechaCompra) {
+  const baseLower = (tipoBase || '').trim().toLowerCase();
+  if (!baseLower || !fechaCompra) return [];
+  return lista.filter(g => {
+    if (g.tarjetaId !== tarjetaId) return false;
+    if ((g.fechaCompra || g.fecha) !== fechaCompra) return false;
+    const base = (g.tipo || '').replace(/\s*\(cuota\s*\d+\/\d+\)\s*$/i, '').trim().toLowerCase();
+    return base === baseLower;
+  });
+}
+
 function ownCargarGastoTarjeta() {
   const tarjetaId = ownTarjetaSeleccionada;
   const fecha     = document.getElementById('own-tj-fecha').value;
@@ -5077,6 +5091,17 @@ function ownCargarGastoTarjeta() {
 
   const lista = getGastosTarjetas();
   const tarjeta = getTarjetas().find(t => t.id === tarjetaId);
+
+  // Si ya existe una compra con la misma tarjeta + tipo + fecha, avisar antes de crear una
+  // serie de cuotas nueva — esto es justo lo que generó la duplicación de "Autoregalos".
+  if ((esCuotaEnCurso || enCuotas) && tarjeta) {
+    const similares = buscarComprasSimilares(lista, tarjetaId, tipo, fecha);
+    if (similares.length > 0) {
+      const detalle = [...new Set(similares.map(g => g.tipo))].join(', ');
+      const seguir = confirm(`Ya existe una compra "${tipo}" con esta misma fecha en esta tarjeta:\n${detalle}\n\n¿Seguro que querés crear una serie de cuotas NUEVA? Si es la misma compra, cancelá y editá la existente con el lápiz ✎ en vez de cargarla de nuevo.`);
+      if (!seguir) return;
+    }
+  }
 
   if (esCuotaEnCurso && tarjeta) {
     // Monto = el de UNA cuota (no el total). Generamos esta cuota + todas las que faltan,
