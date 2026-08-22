@@ -1020,6 +1020,7 @@ nav::-webkit-scrollbar{display:none}
   <button class="nb" onclick="go('flujo',this)">⇄ Flujo</button>
   <button class="nb" onclick="go('presupuesto',this)">◎ Presupuesto</button>
   <button class="nb" onclick="go('inversiones',this)">◈ Inversiones</button>
+  <button class="nb" onclick="go('analisis',this)">📊 Análisis</button>
   <button class="nb" onclick="go('tarjetas',this)" id="nb-tarjetas" style="position:relative">💳 Gastos Tarjetas<span id="badge-tarjetas" style="display:none;position:absolute;top:4px;right:4px;background:#f43f5e;color:#fff;font-size:var(--fs-xs);font-weight:700;min-width:16px;height:16px;border-radius:8px;padding:0 4px;line-height:16px;text-align:center;"></span></button>
   <button class="nb" onclick="go('config',this)">⚙ Config</button>
   <button class="nb" onclick="go('patrimonio',this)" style="display:none">⬟ Patrimonio</button>
@@ -1072,6 +1073,7 @@ nav::-webkit-scrollbar{display:none}
 
   <!-- ── 50/30/20 ── -->
   <div id="overview-503020" style="margin-bottom:14px;display:none"></div>
+  <div id="overview-analisis" style="margin-bottom:14px;display:none"></div>
 
 
   <div class="kg">
@@ -1784,8 +1786,24 @@ nav::-webkit-scrollbar{display:none}
   </div>
 </div>
 
+<!-- ════════════ ANÁLISIS ════════════ -->
+<div class="page" id="page-analisis">
+  <div class="card">
+    <div class="ct">📊 Categorías en alza — % del sueldo</div>
+    <div style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:12px">Categorías cuyo peso sobre tu ingreso viene creciendo mes a mes, no un salto puntual.</div>
+    <div id="analisis-tendencias-cont"></div>
+  </div>
+
+  <div class="card">
+    <div class="ct">📈 Ranking de inversiones por rendimiento</div>
+    <div style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:12px">Todos tus activos, de mejor a peor rendimiento — para ver dónde te está yendo bien y dónde no.</div>
+    <div id="analisis-ranking-cont"></div>
+  </div>
+</div>
+
 <!-- ════════════ PATRIMONIO ════════════ -->
 <div class="page" id="page-patrimonio">
+
 
   <div class="kg" style="grid-template-columns:repeat(3,1fr)">
     <div class="kpi" style="--kc:var(--purple)"><div class="kl">Activos totales</div><div class="kv" style="color:var(--purple)" id="pat-activos">$0</div><div class="ks">financieros</div></div>
@@ -3018,6 +3036,7 @@ function go(id, btn) {
   if (id === 'flujo')       renderFlujo();
   if (id === 'patrimonio')  updatePatrimonio();
   if (id === 'cuentas')   { renderCuentas(); updateMediosDePago(); updateOverviewSaldos(); renderHistorialTransf(); }
+  if (id === 'analisis')   renderAnalisis();
   if (id === 'config')     { rotarPeriodosTarjetas(); renderTarjetasCfg(); renderRecurrentesCfg(); renderNormalizadorCategorias(); renderRenombrarCategorias(); applyFontPreset(localStorage.getItem('cl_font_preset') || 'original'); populateTarjetaSelectBorrado(); }
   if (id === 'tarjetas')    {
     renderGastosTarjetas();
@@ -6229,6 +6248,133 @@ function render503020() {
     </div>`;
 }
 
+// ── Categorías que se comen % creciente del sueldo ──
+// Mira los últimos N meses con datos y detecta categorías cuyo % sobre el ingreso viene
+// subiendo de forma SOSTENIDA (no un salto de un solo mes) — para poder empujar un cambio de
+// hábito antes de que se vuelva un problema grande.
+function calcularTendenciasCategorias(mesesVentana = 4) {
+  const now = new Date();
+  const mesesKeys = [];
+  for (let i = mesesVentana - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    mesesKeys.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'));
+  }
+
+  const porCategoria = {};
+  mesesKeys.forEach(mes => {
+    const { totals } = txTotals(mes);
+    const txsMes = getTxs(mes) || [];
+    const ingresoReal = txsMes.filter(t => t.tipo === 'ingreso').reduce((s, t) => s + (parseFloat(t.monto) || 0), 0);
+    const ingreso = ingresoReal > 0 ? ingresoReal : planTotals(getPlan(mes)).ing;
+    if (!ingreso) return;
+    Object.entries(totals).forEach(([cat, monto]) => {
+      if (!monto) return;
+      if (!porCategoria[cat]) porCategoria[cat] = [];
+      porCategoria[cat].push({ mes, pct: (monto / ingreso) * 100, monto });
+    });
+  });
+
+  const tendencias = [];
+  Object.entries(porCategoria).forEach(([cat, serieCompleta]) => {
+    const serie = serieCompleta.filter(p => mesesKeys.includes(p.mes)); // ya viene filtrado, por claridad
+    if (serie.length < 3) return; // necesita al menos 3 meses con gasto real en esta categoría
+    const pctInicial = serie[0].pct;
+    const pctFinal = serie[serie.length - 1].pct;
+    const delta = pctFinal - pctInicial;
+    // Tendencia CONSISTENTE: la mayoría de los pasos mes-a-mes no bajan (se permite 1 excepción
+    // para no descartar por un mes puntual más bajo en una tendencia real de fondo)
+    let pasosNoBaja = 0;
+    for (let i = 1; i < serie.length; i++) if (serie[i].pct >= serie[i - 1].pct - 0.3) pasosNoBaja++;
+    const consistente = pasosNoBaja >= serie.length - 2;
+    if (delta >= 1.5 && consistente) tendencias.push({ categoria: cat, delta, serie, pctInicial, pctFinal });
+  });
+  tendencias.sort((a, b) => b.delta - a.delta);
+  return tendencias;
+}
+
+// ── Ranking de inversiones por rendimiento ──
+// Agrupa por ticker (todos los brokers/lotes juntos, mismo criterio que la lista de Inversiones)
+// y ordena de mejor a peor rendimiento, para decidir dónde conviene poner más plata.
+function calcularRankingInversiones() {
+  const invs = getInv();
+  const porTicker = {};
+  invs.forEach(inv => {
+    const key = (inv.ticker || inv.activo || '').toUpperCase();
+    if (!key) return;
+    if (!porTicker[key]) porTicker[key] = { ticker: key, tipo: inv.tipo, valor: 0, costo: 0, brokers: new Set() };
+    porTicker[key].valor += inv.ars || 0;
+    porTicker[key].costo += (inv.costo != null ? inv.costo : inv.ars) || 0;
+    if (inv.broker) porTicker[key].brokers.add(inv.broker);
+  });
+  return Object.values(porTicker)
+    .filter(t => t.costo > 0)
+    .map(t => ({ ...t, rend: (t.valor - t.costo) / t.costo, brokers: [...t.brokers].join(', ') }))
+    .sort((a, b) => b.rend - a.rend);
+}
+
+// ── Tarjeta corta en Overview, con el resumen de las tendencias (el detalle completo vive en Análisis) ──
+function renderAnalisisOverview() {
+  const cont = document.getElementById('overview-analisis');
+  if (!cont) return;
+  const tendencias = calcularTendenciasCategorias();
+  if (tendencias.length === 0) { cont.style.display = 'none'; return; }
+  cont.style.display = 'block';
+  const top = tendencias.slice(0, 3);
+  cont.innerHTML = `
+    <div class="card">
+      <div class="ct">📈 Categorías en alza</div>
+      ${top.map(t => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">
+          <span style="font-size:var(--fs-sm)">${t.categoria}</span>
+          <span style="font-size:var(--fs-sm);color:var(--red);font-weight:600">${t.pctInicial.toFixed(1)}% → ${t.pctFinal.toFixed(1)}% del sueldo</span>
+        </div>`).join('')}
+      <button onclick="go('analisis', document.querySelector('.nb[onclick*=analisis]'))" style="margin-top:8px;background:none;border:none;color:var(--blue);cursor:pointer;font-size:var(--fs-xs);text-decoration:underline;padding:0">Ver análisis completo →</button>
+    </div>`;
+}
+
+// ── Página completa de Análisis ──
+function renderAnalisis() {
+  const contT = document.getElementById('analisis-tendencias-cont');
+  const contR = document.getElementById('analisis-ranking-cont');
+  if (!contT || !contR) return;
+
+  const tendencias = calcularTendenciasCategorias();
+  if (tendencias.length === 0) {
+    contT.innerHTML = '<div style="font-size:var(--fs-sm);color:var(--muted)">Ninguna categoría muestra una tendencia sostenida al alza en los últimos meses. 👍</div>';
+  } else {
+    contT.innerHTML = tendencias.map(t => `
+      <div style="margin-bottom:14px;padding:10px;background:var(--s2);border-radius:8px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <span style="font-weight:600">${t.categoria}</span>
+          <span style="color:var(--red);font-weight:700">+${t.delta.toFixed(1)} pts</span>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;font-size:var(--fs-xs);color:var(--muted)">
+          ${t.serie.map(p => `<span>${mesLabel(p.mes)}: <b style="color:var(--muted2)">${p.pct.toFixed(1)}%</b></span>`).join('')}
+        </div>
+      </div>`).join('');
+  }
+
+  const ranking = calcularRankingInversiones();
+  if (ranking.length === 0) {
+    contR.innerHTML = '<div style="font-size:var(--fs-sm);color:var(--muted)">Todavía no hay posiciones con costo cargado para comparar.</div>';
+  } else {
+    contR.innerHTML = ranking.map((r, i) => {
+      const color = r.rend >= 0 ? 'var(--green)' : 'var(--red)';
+      return `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+        <div>
+          <span style="font-weight:700;font-family:var(--fh)">#${i+1} ${r.ticker}</span>
+          <span style="font-size:var(--fs-xs);color:var(--muted)"> · ${r.tipo}${r.brokers ? ' · ' + r.brokers : ''}</span>
+        </div>
+        <div style="text-align:right">
+          <div style="font-weight:700;color:${color}">${r.rend >= 0 ? '+' : ''}${(r.rend*100).toFixed(1)}%</div>
+          <div style="font-size:var(--fs-xs);color:var(--muted)">${fmtK(r.valor)}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+}
+
 function updateOverview() {
   const yr = overviewYear;
   const now = new Date();
@@ -6385,6 +6531,7 @@ function updateOverview() {
   } catch(e) { /* no romper overview si falla el cálculo de salud */ }
 
   if (typeof render503020 === 'function') { try { render503020(); } catch(e) { console.warn('render503020 error:', e); } }
+  if (typeof renderAnalisisOverview === 'function') { try { renderAnalisisOverview(); } catch(e) { console.warn('renderAnalisisOverview error:', e); } }
 }
 
 // ══════════════════════════════════════════════════════
