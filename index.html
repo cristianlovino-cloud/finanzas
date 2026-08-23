@@ -1428,6 +1428,10 @@ nav::-webkit-scrollbar{display:none}
         </button>
       </div>
 
+      <button onclick="irACargarConsumoTarjeta()" style="width:100%;padding:14px;border-radius:10px;border:1px solid var(--orange);background:rgba(251,146,60,.1);color:var(--orange);font-family:var(--fm);font-weight:600;font-size:var(--fs-sm);cursor:pointer;text-align:center;margin-bottom:14px;display:flex;align-items:center;justify-content:center;gap:8px">
+        🧾 Cargar consumo de un comercio con tarjeta →
+      </button>
+
       <div class="card" style="margin-bottom:14px">
         <div class="r2">
           <div class="field"><label>Fecha</label><input type="date" id="tx-fecha" class="fi"></div>
@@ -9150,6 +9154,14 @@ function opResetForm() {
   document.getElementById('op-preview').style.display    = 'none';
   opToggleModoMonto('precio');
   opTipoChange();
+}
+
+function irACargarConsumoTarjeta() {
+  go('tarjetas', document.getElementById('nb-tarjetas'));
+  setTimeout(() => {
+    const formEl = document.getElementById('own-tj-tarjeta-btns');
+    if (formEl) formEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 150);
 }
 
 function opTipoChange() {
