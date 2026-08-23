@@ -5269,7 +5269,53 @@ function marcarPeriodoConciliado(tarjetaId, cierre, conciliado) {
   // dejan de ver en su historial lo que ya está conciliado.
   const pin = DB.get('pin_carga_familiar', null);
   if (pin && window.cfPublicarConfig) window.cfPublicarConfig(pin, getTarjetas());
+  // Al conciliar (no al desmarcar), volcar el total real del período al Presupuesto del mes
+  // en que se paga — así no hay que tipear a mano lo que ya sabemos con certeza.
+  if (conciliado) {
+    try { actualizarPresupuestoTrasConciliar(tarjetaId, cierre); }
+    catch (e) { console.warn('actualizarPresupuestoTrasConciliar error:', e); }
+  }
   renderGastosTarjetas();
+}
+
+// Vuelca el total en PESOS (sin USD, que nunca se mezcla) de un período ya conciliado a la
+// línea del Presupuesto del mes en que efectivamente se paga (cierre + 1 mes, mismo criterio
+// de "mes de pago" que ya usa el resto de la app). Si la tarjeta ya tenía una línea propia
+// en Fijos o Variables, se actualiza ahí; si no existe, se crea en Variables.
+function actualizarPresupuestoTrasConciliar(tarjetaId, cierre) {
+  const tarjeta = getTarjetas().find(t => t.id === tarjetaId);
+  if (!tarjeta) return;
+  const periodo = (tarjeta.periodos || []).find(p => p.cierre === cierre);
+  if (!periodo || !periodo.inicio) return;
+
+  const totalArs = getGastosTarjetas()
+    .filter(g => g.tarjetaId === tarjetaId && g.moneda !== 'USD' && g.fecha >= periodo.inicio && g.fecha <= cierre)
+    .reduce((s, g) => s + (parseFloat(g.monto) || 0), 0);
+  if (!(totalArs > 0)) return;
+
+  const mesDePago = mesSiguienteDePago(cierre.slice(0, 7));
+  const planes = DB.get('plans', {});
+  const plan = planes[mesDePago] ? planes[mesDePago] : JSON.parse(JSON.stringify(getPlan(mesDePago)));
+  const label = tarjeta.nombre;
+
+  const fila = plan.fijos.find(r => r.l === label) || plan.vars.find(r => r.l === label);
+  if (fila) {
+    fila.v = Math.round(totalArs);
+  } else {
+    plan.vars.push({ l: label, v: Math.round(totalArs) });
+  }
+
+  planes[mesDePago] = plan;
+  DB.set('plans', planes);
+  if (window.FBsave) window.FBsave('plans', planes);
+
+  // Si el mes visible ahora mismo en Presupuesto es justo ese, refrescar en memoria también
+  if (typeof curMes !== 'undefined' && curMes === mesDePago) {
+    curPlan = plan;
+    if (typeof renderPlanSections === 'function') renderPlanSections();
+  }
+  if (typeof updateOverview === 'function') updateOverview();
+  showToast(`✓ ${label}: ${fmt(totalArs)} cargado en Presupuesto de ${mesLabel(mesDePago)}`);
 }
 
 let ordenGastosTarjeta = 'fecha'; // 'fecha' | 'monto' — monto ayuda a detectar duplicados (montos iguales quedan juntos)
