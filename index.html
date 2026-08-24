@@ -3747,21 +3747,21 @@ function renderFlujo() {
     </tr>`;
   };
 
-  document.getElementById('flujo-tbody').innerHTML = [
-    // Plan categories first
+  const filasData = [
     ...planCats.map(cat => {
       const pv = planMap[cat] || 0;
       const isFijo = fijoSet.has(cat);
       const rv = realTotals[cat] != null ? realTotals[cat] : 0; // auto = $0 real, no usar presupuesto
       const isAuto = isFijo && realTotals[cat] == null;
-      return renderRow(cat, pv, rv, isAuto, false);
+      return { cat, pv, rv, isAuto, isUnmatched: false };
     }),
-    // Unmatched tx categories (cargados sin presupuesto)
-    ...unmatchedCats.map(cat => {
-      const rv = realTotals[cat] || 0;
-      return renderRow(cat, 0, rv, false, true);
-    }),
-  ].join('') + 
+    ...unmatchedCats.map(cat => ({ cat, pv: 0, rv: realTotals[cat] || 0, isAuto: false, isUnmatched: true })),
+  ];
+  filasData.sort((a, b) => b.rv - a.rv); // de mayor a menor gasto real
+
+  document.getElementById('flujo-tbody').innerHTML = filasData
+    .map(f => renderRow(f.cat, f.pv, f.rv, f.isAuto, f.isUnmatched))
+    .join('') +
   `<tr style="border-top:2px solid var(--border2);background:var(--s2)">
     <td style="font-family:var(--fh);font-weight:700;font-size:var(--fs-md);color:var(--text)">TOTAL GASTOS</td>
     <td style="text-align:right;font-weight:700;color:var(--muted2)">${fmt(pt.gastos)}</td>
