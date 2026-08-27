@@ -1726,7 +1726,7 @@ nav::-webkit-scrollbar{display:none}
         </div>
         <div id="op-venta-usdt-wrap" style="display:none;margin-bottom:8px">
           <label style="display:flex;align-items:center;gap:6px;font-size:var(--fs-xs);color:var(--muted);cursor:pointer">
-            <input type="checkbox" id="op-venta-usdt" checked>
+            <input type="checkbox" id="op-venta-usdt">
             Dejar el producido en USDT en el broker (destildá si lo usás para recomprar algo en el mismo lote)
           </label>
         </div>
@@ -4365,7 +4365,17 @@ function calcularAlertasConsumo() {
     const cierreD = new Date(actual.cierre + 'T00:00:00');
     const diasTotales = Math.max(1, Math.round((cierreD - inicioD) / 86400000) + 1);
     const diasTranscurridos = Math.min(diasTotales, Math.max(1, Math.round((hoy - inicioD) / 86400000) + 1));
-    const proyeccion = gastoActual * (diasTotales / diasTranscurridos);
+    const proyeccionLineal = gastoActual * (diasTotales / diasTranscurridos);
+    // La proyección lineal asume gasto parejo día a día, pero con tarjeta no es así — cuotas y
+    // recurrentes caen en fechas fijas, no repartidas. Si algo grande cae temprano en el
+    // período, la lineal lo extrapola como si se repitiera todo el mes y dispara un número
+    // irreal. Se mezcla con el promedio histórico (si existe), dándole más peso a la lineal
+    // recién a medida que avanza el período — al principio del mes pesa más el promedio,
+    // que es un piso más estable.
+    const pesoLineal = Math.min(1, diasTranscurridos / diasTotales);
+    const proyeccion = !esFijo
+      ? proyeccionLineal * pesoLineal + umbral * (1 - pesoLineal)
+      : proyeccionLineal;
 
     const yaSuperado = gastoActual > umbral;
     const proyectadoSuperado = !yaSuperado && proyeccion > umbral * 1.10; // 10% de margen para no ser ruidoso
@@ -9453,6 +9463,18 @@ function opRemover(i) {
 
 function opEjecutar() {
   if (_opLote.length === 0) { showToast('No hay operaciones cargadas', P.red); return; }
+
+  // Si hay una venta con "dejar en USDT" tildado Y también una compra para el mismo broker en
+  // el mismo lote, es casi seguro que la plata de la venta se está usando para esa compra — y
+  // dejarla ADEMÁS en USDT contaría la misma plata dos veces (ej. vendiste MSFT, compraste META
+  // con eso, pero también quedó un USDT fantasma por el mismo monto).
+  const brokersConCompra = new Set(_opLote.filter(o => o.tipo === 'compra').map(o => o.broker));
+  const conflictivas = _opLote.filter(o => o.tipo === 'venta' && o.dejarEnUsdt && brokersConCompra.has(o.broker));
+  if (conflictivas.length > 0) {
+    const detalle = conflictivas.map(o => `${o.ticker} (${o.broker})`).join(', ');
+    const seguir = confirm(`Tenés una venta con "dejar en USDT" tildado en el mismo broker donde también hay una compra:\n${detalle}\n\n¿Es realmente plata que queda parada en USDT, o la estás usando para la compra? Si es para la compra, cancelá y destildá esa venta antes de ejecutar.`);
+    if (!seguir) return;
+  }
 
   const invs     = getInv();
   const invMovs  = DB.get('inv_movimientos', []);
