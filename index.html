@@ -2044,6 +2044,15 @@ nav::-webkit-scrollbar{display:none}
     </div>
 
     <div class="card" style="margin-bottom:14px">
+      <div class="ct">🩺 Salud de datos</div>
+      <p style="font-size:var(--fs-sm);color:var(--muted2);margin-bottom:12px;line-height:1.5">
+        Chequeo automático de los patrones raros que ya venimos encontrando a mano: cuotas con un número salteado, posiciones cerradas con saldo colgado, categorías sueltas sin normalizar, y períodos de tarjeta superpuestos.
+      </p>
+      <button onclick="ejecutarChequeoSaludDatos()" class="btn btn-o" style="width:100%;font-size:var(--fs-sm);margin-bottom:10px">🔍 Correr chequeo</button>
+      <div id="cfg-salud-datos-list"></div>
+    </div>
+
+    <div class="card" style="margin-bottom:14px">
       <div class="ct">💳 Tarjetas de crédito — cierre de resumen</div>
       <p style="font-size:var(--fs-sm);color:var(--muted2);margin-bottom:12px;line-height:1.5">
         Configurá el día de cierre de cada tarjeta (no el vencimiento) para agrupar automáticamente los gastos por período de resumen.
@@ -3918,7 +3927,105 @@ function agregarCategoriaConsumoSiNoExiste(nombre) {
   return limpio;
 }
 
-// ── Normalizador: encuentra valores de 'tipo' ya cargados en gastos_tarjetas que no coinciden
+// ══════════════════════════════════════════════════════
+// SALUD DE DATOS — chequeos automáticos de los patrones raros que ya encontramos a mano
+// varias veces (cuotas con hueco, posiciones cerradas con residuo, categorías sueltas,
+// períodos de tarjeta superpuestos). Corre todo bajo pedido, no en cada carga de página.
+// ══════════════════════════════════════════════════════
+
+// 1) Series de cuotas con un número salteado (ej. tenés 1/3 y 3/3, pero no 2/3)
+function chequearCuotasConHueco() {
+  const gastos = getGastosTarjetas();
+  const porCompra = {};
+  gastos.forEach(g => {
+    if (!g.compraId || !g.cuotaTotal) return;
+    if (!porCompra[g.compraId]) {
+      porCompra[g.compraId] = {
+        tipo: (g.tipo || '').replace(/\s*\(cuota\s*\d+\/\d+\)\s*$/i, '').trim(),
+        total: g.cuotaTotal, nums: new Set(),
+      };
+    }
+    if (g.cuotaNum) porCompra[g.compraId].nums.add(g.cuotaNum);
+  });
+  const problemas = [];
+  Object.entries(porCompra).forEach(([compraId, info]) => {
+    const nums = [...info.nums].sort((a, b) => a - b);
+    if (nums.length < 2) return;
+    const max = nums[nums.length - 1];
+    const faltantes = [];
+    for (let n = 1; n < max; n++) if (!info.nums.has(n)) faltantes.push(n);
+    if (faltantes.length > 0) problemas.push({ compraId, tipo: info.tipo, faltantes, presentes: nums, total: info.total });
+  });
+  return problemas;
+}
+
+// 2) Posiciones de CEDEAR/Cripto en cantidad 0 (cerradas) que quedaron con ars/costo colgado
+function chequearPosicionesCerradasConResiduo() {
+  return getInv().filter(inv =>
+    (inv.tipo === 'CEDEAR' || inv.tipo === 'Cripto') &&
+    !(inv.cantidad > 0) &&
+    ((inv.ars || 0) > 0 || (inv.costo || 0) > 0)
+  );
+}
+
+// 3) Períodos de una misma tarjeta que se superponen entre sí (mala configuración manual)
+function chequearPeriodosSuperpuestos() {
+  const problemas = [];
+  getTarjetas().forEach(t => {
+    const periodos = (t.periodos || []).filter(p => p.inicio && p.cierre).slice().sort((a, b) => a.inicio.localeCompare(b.inicio));
+    for (let i = 1; i < periodos.length; i++) {
+      if (periodos[i].inicio <= periodos[i - 1].cierre) {
+        problemas.push({ tarjeta: t.nombre, a: periodos[i - 1], b: periodos[i] });
+      }
+    }
+  });
+  return problemas;
+}
+
+function ejecutarChequeoSaludDatos() {
+  const cont = document.getElementById('cfg-salud-datos-list');
+  if (!cont) return;
+  cont.innerHTML = '<div style="font-size:var(--fs-sm);color:var(--muted);text-align:center;padding:10px">Corriendo chequeo...</div>';
+
+  setTimeout(() => {
+    const cuotasHueco   = chequearCuotasConHueco();
+    const posResiduo    = chequearPosicionesCerradasConResiduo();
+    const variantesCat  = detectarVariantesCategoria();
+    const periodosSuper = chequearPeriodosSuperpuestos();
+
+    const total = cuotasHueco.length + posResiduo.length + variantesCat.length + periodosSuper.length;
+
+    if (total === 0) {
+      cont.innerHTML = '<div style="font-size:var(--fs-sm);color:var(--green);text-align:center;padding:10px">✓ Todo prolijo, no se encontraron problemas conocidos.</div>';
+      return;
+    }
+
+    const bloque = (titulo, items, render) => items.length === 0 ? '' : `
+      <div style="margin-bottom:14px">
+        <div style="font-weight:700;color:var(--yellow);margin-bottom:6px;font-size:var(--fs-sm)">⚠ ${titulo} (${items.length})</div>
+        ${items.map(render).join('')}
+      </div>`;
+
+    cont.innerHTML =
+      bloque('Cuotas con un número salteado', cuotasHueco, p => `
+        <div style="font-size:var(--fs-xs);color:var(--muted2);padding:4px 0;border-bottom:1px solid var(--border)">
+          <b>${p.tipo}</b> — tenés cuota${p.presentes.length>1?'s':''} ${p.presentes.join(', ')} de ${p.total}, falta${p.faltantes.length>1?'n':''}: <span style="color:var(--red)">${p.faltantes.join(', ')}</span>
+        </div>`) +
+      bloque('Posiciones cerradas con saldo colgado', posResiduo, i => `
+        <div style="font-size:var(--fs-xs);color:var(--muted2);padding:4px 0;border-bottom:1px solid var(--border)">
+          <b>${i.activo}</b> (${i.broker || 'sin broker'}) — cantidad 0 pero quedó ars=${fmt(i.ars||0)}, costo=${fmt(i.costo||0)}
+        </div>`) +
+      bloque('Categorías sin normalizar', variantesCat, v => `
+        <div style="font-size:var(--fs-xs);color:var(--muted2);padding:4px 0;border-bottom:1px solid var(--border)">"${v}" — fusionala en Config → Categorías de consumo, arriba de este panel</div>`) +
+      bloque('Períodos de tarjeta superpuestos', periodosSuper, p => `
+        <div style="font-size:var(--fs-xs);color:var(--muted2);padding:4px 0;border-bottom:1px solid var(--border)">
+          <b>${p.tarjeta}</b> — ${p.a.inicio}→${p.a.cierre} se pisa con ${p.b.inicio}→${p.b.cierre}</div>`);
+
+    showToast(`Chequeo terminado: ${total} cosa${total>1?'s':''} para revisar`, P.yellow);
+  }, 50);
+}
+
+
 // exactamente con la lista maestra de categorías (variantes de texto libre de antes), y deja
 // fusionar cada variante con la categoría real elegida, aplicando el cambio a todos los gastos.
 function detectarVariantesCategoria() {
