@@ -550,9 +550,9 @@ function cfRenderCategoriaSelector() {
   if (_cfCategoriasDisponibles.includes(valorActual)) sel.value = valorActual;
 }
 
-window.cfTipoCategoriaChange = function(selectEl) {
+window.cfTipoCategoriaChange = async function(selectEl) {
   if (selectEl.value === '__nueva__') {
-    const nueva = prompt('Nombre de la categoría nueva:');
+    const nueva = await appPrompt('Nombre de la categoría nueva:');
     if (!nueva || !nueva.trim()) { selectEl.value = ''; return; }
     const limpio = nueva.trim();
     if (!_cfCategoriasDisponibles.some(c => c.toLowerCase() === limpio.toLowerCase())) {
@@ -911,6 +911,18 @@ nav::-webkit-scrollbar{display:none}
 </style>
 </head>
 <body>
+
+<!-- ════════════ MODAL GENÉRICO (reemplazo estilizado de prompt()/confirm() nativos) ════════════ -->
+<div id="app-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:99999;align-items:center;justify-content:center;padding:20px">
+  <div style="background:var(--s1);border:1px solid var(--border2);border-radius:14px;padding:20px;max-width:400px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5)">
+    <div id="app-modal-message" style="font-size:var(--fs-sm);color:var(--text);margin-bottom:14px;white-space:pre-line;line-height:1.5"></div>
+    <input id="app-modal-input" class="fi" style="width:100%;margin-bottom:16px;display:none;box-sizing:border-box">
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button id="app-modal-cancel" onclick="_appModalCancel()" class="btn btn-o" style="padding:8px 16px;font-size:var(--fs-sm)">Cancelar</button>
+      <button id="app-modal-confirm" onclick="_appModalConfirm()" class="btn btn-g" style="padding:8px 16px;font-size:var(--fs-sm)">Aceptar</button>
+    </div>
+  </div>
+</div>
 
 <!-- ════════════ MODO CARGA FAMILIAR (Lara/Emma) — overlay standalone ════════════ -->
 <div id="carga-familiar-overlay" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:9999;overflow-y:auto">
@@ -2193,14 +2205,14 @@ function restaurarBackupCompleto(event) {
   const file = event.target.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = (e) => {
+  reader.onload = async (e) => {
     try {
       const backup = JSON.parse(e.target.result);
       if (!backup._meta || backup._meta.app !== 'CL Finanzas') {
-        if (!confirm('Este archivo no parece ser un backup de CL Finanzas. ¿Restaurar igual?')) return;
+        if (!(await appConfirm('Este archivo no parece ser un backup de CL Finanzas. ¿Restaurar igual?'))) return;
       }
       const fechaBackup = backup._meta?.fecha ? new Date(backup._meta.fecha).toLocaleString('es-AR') : 'desconocida';
-      if (!confirm(`Vas a reemplazar TODOS los datos actuales de este dispositivo con el backup del ${fechaBackup}. Esta acción no se puede deshacer. ¿Confirmás?`)) return;
+      if (!(await appConfirm(`Vas a reemplazar TODOS los datos actuales de este dispositivo con el backup del ${fechaBackup}. Esta acción no se puede deshacer. ¿Confirmás?`))) return;
 
       BACKUP_KEYS.forEach(k => {
         if (backup[k] !== undefined && backup[k] !== null) DB.set(k, backup[k]);
@@ -2287,7 +2299,7 @@ function limpiarPeriodosRotos() {
   showToast('✓ Períodos y conciliaciones limpiados');
 }
 
-function deshacerImportacionSinNota() {
+async function deshacerImportacionSinNota() {
   const lista = getGastosTarjetas();
   const aBorrar = lista.filter(g => g.id && g.id.startsWith('gt_import_') && !g.nota);
   if (aBorrar.length === 0) {
@@ -2295,7 +2307,7 @@ function deshacerImportacionSinNota() {
     return;
   }
   const suma = aBorrar.reduce((s,g) => s + (g.monto||0), 0);
-  if (!confirm(`Vas a borrar ${aBorrar.length} gastos importados SIN nota (los del lote viejo), sumando ${fmt(suma)}. Esto NO toca lo que cargaste a mano ni los imports nuevos con nota. ¿Confirmás?`)) return;
+  if (!(await appConfirm(`Vas a borrar ${aBorrar.length} gastos importados SIN nota (los del lote viejo), sumando ${fmt(suma)}. Esto NO toca lo que cargaste a mano ni los imports nuevos con nota. ¿Confirmás?`))) return;
 
   const idsABorrar = new Set(aBorrar.map(g => g.id));
   const nuevaLista = lista.filter(g => !idsABorrar.has(g.id));
@@ -2360,8 +2372,8 @@ function buscarGastosDuplicados() {
     }).join('');
 }
 
-function borrarGastoDuplicado(id) {
-  if (!confirm('¿Borrar este gasto? No se puede deshacer.')) return;
+async function borrarGastoDuplicado(id) {
+  if (!(await appConfirm('¿Borrar este gasto? No se puede deshacer.'))) return;
   const lista = getGastosTarjetas().filter(g => g.id !== id);
   saveGastosTarjetas(lista);
   renderGastosTarjetas();
@@ -2410,7 +2422,7 @@ function previsualizarBorradoPorRango() {
   resultEl.innerHTML = `<span style="color:var(--yellow)">⚠ Se borrarían <b>${matches.length}</b> gastos — ARS ${fmt(sumaARS)}${sumaUSD>0 ? ' · U$S ' + sumaUSD.toFixed(2) : ''}. Revisá y tocá "Borrar" para confirmar.</span>`;
 }
 
-function ejecutarBorradoPorRango() {
+async function ejecutarBorradoPorRango() {
   const resultEl = document.getElementById('borrar-rango-resultado');
   const r = _gastosEnRangoImportados();
   if (r.error) { resultEl.innerHTML = `<span style="color:var(--red)">${r.error}</span>`; return; }
@@ -2422,7 +2434,7 @@ function ejecutarBorradoPorRango() {
   const tarjetaNombre = (getTarjetas().find(t => t.id === tarjetaId) || {}).nombre || '?';
   const sumaARS = matches.filter(g => (g.moneda||'ARS') === 'ARS').reduce((s,g) => s + (g.monto||0), 0);
   const sumaUSD = matches.filter(g => g.moneda === 'USD').reduce((s,g) => s + (g.monto||0), 0);
-  if (!confirm(`Vas a borrar ${matches.length} gastos importados de ${tarjetaNombre} entre ${r.desde} y ${r.hasta} (ARS ${fmt(sumaARS)}${sumaUSD>0 ? ' + U$S ' + sumaUSD.toFixed(2) : ''}). Esto NO se puede deshacer. ¿Confirmás?`)) return;
+  if (!(await appConfirm(`Vas a borrar ${matches.length} gastos importados de ${tarjetaNombre} entre ${r.desde} y ${r.hasta} (ARS ${fmt(sumaARS)}${sumaUSD>0 ? ' + U$S ' + sumaUSD.toFixed(2) : ''}). Esto NO se puede deshacer. ¿Confirmás?`))) return;
 
   const idsABorrar = new Set(matches.map(g => g.id));
   const lista = getGastosTarjetas().filter(g => !idsABorrar.has(g.id));
@@ -3005,6 +3017,52 @@ function getRawMonto() {
   const val = document.getElementById('tx-monto').value;
   // Remove thousands separators (dots) and normalize decimal (comma → dot)
   return parseFloat(val.replace(/\./g, '').replace(',', '.')) || 0;
+}
+
+// ── Reemplazo de prompt()/confirm() nativos con el estilo visual de la app ──
+// Los diálogos nativos del navegador (esos grises con la URL del sitio) rompen la sensación de
+// app. appPrompt/appConfirm devuelven una Promise en vez de bloquear, así que cualquier función
+// que los use tiene que ser 'async' y usar 'await'.
+let _appModalResolve = null;
+
+function appPrompt(mensaje, valorDefault) {
+  return new Promise(resolve => {
+    _appModalResolve = resolve;
+    document.getElementById('app-modal-message').textContent = mensaje;
+    const input = document.getElementById('app-modal-input');
+    input.style.display = 'block';
+    input.value = valorDefault != null ? valorDefault : '';
+    document.getElementById('app-modal-overlay').style.display = 'flex';
+    setTimeout(() => { input.focus(); input.select(); }, 60);
+  });
+}
+
+function appConfirm(mensaje) {
+  return new Promise(resolve => {
+    _appModalResolve = resolve;
+    document.getElementById('app-modal-message').textContent = mensaje;
+    document.getElementById('app-modal-input').style.display = 'none';
+    document.getElementById('app-modal-overlay').style.display = 'flex';
+  });
+}
+
+function _appModalConfirm() {
+  const input = document.getElementById('app-modal-input');
+  const esPrompt = input.style.display !== 'none';
+  const valor = esPrompt ? input.value : true;
+  document.getElementById('app-modal-overlay').style.display = 'none';
+  const resolve = _appModalResolve;
+  _appModalResolve = null;
+  if (resolve) resolve(valor);
+}
+
+function _appModalCancel() {
+  const input = document.getElementById('app-modal-input');
+  const esPrompt = input.style.display !== 'none';
+  document.getElementById('app-modal-overlay').style.display = 'none';
+  const resolve = _appModalResolve;
+  _appModalResolve = null;
+  if (resolve) resolve(esPrompt ? null : false);
 }
 
 function showToast(msg, color) {
@@ -4107,8 +4165,8 @@ function renderRenombrarCategorias() {
     </div>`).join('');
 }
 
-function renombrarCategoriaGlobal(nombreViejo) {
-  const nombreNuevo = prompt(`Nuevo nombre para "${nombreViejo}":`, nombreViejo);
+async function renombrarCategoriaGlobal(nombreViejo) {
+  const nombreNuevo = await appPrompt(`Nuevo nombre para "${nombreViejo}":`, nombreViejo);
   if (!nombreNuevo || !nombreNuevo.trim() || nombreNuevo.trim() === nombreViejo) return;
   const nuevo = nombreNuevo.trim();
 
@@ -4162,11 +4220,11 @@ function renombrarCategoriaGlobal(nombreViejo) {
   showToast(`✓ "${nombreViejo}" renombrada a "${nuevo}" (${cambios + cambiosFlujo} gastos actualizados)`);
 }
 
-function fusionarVarianteCategoria(variante, destino) {
+async function fusionarVarianteCategoria(variante, destino) {
   if (!destino) return;
   let categoriaFinal = destino;
   if (destino === '__nueva__') {
-    const nueva = prompt('Nombre de la categoría nueva:', variante);
+    const nueva = await appPrompt('Nombre de la categoría nueva:', variante);
     if (!nueva || !nueva.trim()) { renderNormalizadorCategorias(); return; }
     categoriaFinal = agregarCategoriaConsumoSiNoExiste(nueva);
   } else {
@@ -4737,10 +4795,10 @@ function contarEntradasFlujo(recurrenteId) {
 
 // Limpieza manual explícita: a diferencia de la automática, esta SÍ puede tocar meses pasados/actual,
 // por eso pide confirmación — el usuario decide si esos meses ya estaban pagados o no.
-function limpiarRecurrenteFlujoManual(recurrenteId) {
+async function limpiarRecurrenteFlujoManual(recurrenteId) {
   const cantidad = contarEntradasFlujo(recurrenteId);
   if (cantidad === 0) return;
-  const confirmado = confirm(`Esto va a borrar ${cantidad} entrada${cantidad>1?'s':''} de Flujo de TODOS los meses (incluyendo pasados) para este recurrente. Si ya cargaste el pago real de algún mes, esa entrada también se va a borrar. ¿Confirmás?`);
+  const confirmado = await appConfirm(`Esto va a borrar ${cantidad} entrada${cantidad>1?'s':''} de Flujo de TODOS los meses (incluyendo pasados) para este recurrente. Si ya cargaste el pago real de algún mes, esa entrada también se va a borrar. ¿Confirmás?`);
   if (!confirmado) return;
 
   const txsAll = DB.get('txs', {});
@@ -4767,9 +4825,9 @@ function toggleRecurrenteDetalle(id) {
   if (icon) icon.textContent = abierto ? '▶' : '▼';
 }
 // ── Manejo del select de categoría: permite elegir una existente o crear una nueva al vuelo ──
-function recurrenteCategoriaChange(id, selectEl) {
+async function recurrenteCategoriaChange(id, selectEl) {
   if (selectEl.value === '__nueva__') {
-    const nueva = prompt('Nombre de la categoría nueva:');
+    const nueva = await appPrompt('Nombre de la categoría nueva:');
     if (!nueva || !nueva.trim()) { selectEl.value = ''; return; }
     actualizarRecurrenteCfg(id, 'categoria', nueva.trim());
     renderRecurrentesCfg(); // acá sí re-renderizamos: cambió la lista de opciones disponibles
@@ -5164,9 +5222,9 @@ function renderOwnCategoriaSelector() {
   if (categorias.includes(valorActual)) sel.value = valorActual;
 }
 
-function ownTipoCategoriaChange(selectEl) {
+async function ownTipoCategoriaChange(selectEl) {
   if (selectEl.value === '__nueva__') {
-    const nueva = prompt('Nombre de la categoría nueva:');
+    const nueva = await appPrompt('Nombre de la categoría nueva:');
     if (!nueva || !nueva.trim()) { selectEl.value = ''; return; }
     const guardada = agregarCategoriaConsumoSiNoExiste(nueva);
     renderOwnCategoriaSelector();
@@ -5213,7 +5271,7 @@ function buscarComprasSimilares(lista, tarjetaId, tipoBase, fechaCompra) {
   });
 }
 
-function ownCargarGastoTarjeta() {
+async function ownCargarGastoTarjeta() {
   const tarjetaId = ownTarjetaSeleccionada;
   const fecha     = document.getElementById('own-tj-fecha').value;
   const quien     = document.getElementById('own-tj-quien')?.value || 'Cris';
@@ -5245,7 +5303,7 @@ function ownCargarGastoTarjeta() {
     const similares = buscarComprasSimilares(lista, tarjetaId, tipo, fecha);
     if (similares.length > 0) {
       const detalle = [...new Set(similares.map(g => g.tipo))].join(', ');
-      const seguir = confirm(`Ya existe una compra "${tipo}" con esta misma fecha en esta tarjeta:\n${detalle}\n\n¿Seguro que querés crear una serie de cuotas NUEVA? Si es la misma compra, cancelá y editá la existente con el lápiz ✎ en vez de cargarla de nuevo.`);
+      const seguir = await appConfirm(`Ya existe una compra "${tipo}" con esta misma fecha en esta tarjeta:\n${detalle}\n\n¿Seguro que querés crear una serie de cuotas NUEVA? Si es la misma compra, cancelá y editá la existente con el lápiz ✎ en vez de cargarla de nuevo.`);
       if (!seguir) return;
     }
   }
@@ -6111,14 +6169,14 @@ function cambiarTipoCuenta(i, nuevoTipo) {
 }
 
 // ── Reconciliar saldo (setear saldo real) ──
-function reconciliarSaldo(i) {
+async function reconciliarSaldo(i) {
   const cuentas = getCuentas();
   const ct = cuentas[i];
   const moneda = ct.moneda === 'USD' ? 'U$S' : '$';
   const saldoActual = ct.moneda === 'USD'
     ? 'U$S ' + ct.saldo.toFixed(2)
     : fmt(ct.saldo);
-  const nuevo = prompt(
+  const nuevo = await appPrompt(
     `RECONCILIAR "${ct.nombre.toUpperCase()}"\n\nSaldo guardado: ${saldoActual}\n\nIngresá el saldo REAL actual (${moneda}):`,
     ct.saldo
   );
@@ -6133,8 +6191,8 @@ function reconciliarSaldo(i) {
 }
 
 // ── Eliminar cuenta ──
-function eliminarCuenta(i) {
-  if (!confirm('¿Eliminar esta cuenta?')) return;
+async function eliminarCuenta(i) {
+  if (!(await appConfirm('¿Eliminar esta cuenta?'))) return;
   const cuentas = getCuentas();
   cuentas.splice(i, 1);
   saveCuentas(cuentas);
@@ -8347,13 +8405,13 @@ function renderListaGastosCategoria(idCat, limite) {
 }
 
 // ── Editar (categoría/monto) un gasto de tarjeta directo desde la vista de Evolución por categoría ──
-function editarGastoDesdeCategoria(id, idCat, catRaw) {
+async function editarGastoDesdeCategoria(id, idCat, catRaw) {
   const lista = getGastosTarjetas();
   const g = lista.find(x => x.id === id);
   if (!g) return;
-  const nuevoTipo = prompt('Categoría/tipo:', g.tipo || '');
+  const nuevoTipo = await appPrompt('Categoría/tipo:', g.tipo || '');
   if (nuevoTipo === null) return; // canceló
-  const nuevoMontoStr = prompt('Monto (en miles):', g.monto);
+  const nuevoMontoStr = await appPrompt('Monto (en miles):', g.monto);
   if (nuevoMontoStr === null) return;
   const nuevoMonto = parseFloat(nuevoMontoStr);
   g.tipo = nuevoTipo.trim() || g.tipo;
@@ -8369,8 +8427,8 @@ function editarGastoDesdeCategoria(id, idCat, catRaw) {
   if (gastosDiv) { gastosDiv.dataset.cargado = ''; verGastosDeCategoria(catRaw, idCat, true); }
 }
 
-function borrarGastoDesdeCategoria(id, idCat, catRaw) {
-  if (!confirm('¿Borrar este gasto? No se puede deshacer.')) return;
+async function borrarGastoDesdeCategoria(id, idCat, catRaw) {
+  if (!(await appConfirm('¿Borrar este gasto? No se puede deshacer.'))) return;
   const lista = getGastosTarjetas().filter(g => g.id !== id);
   saveGastosTarjetas(lista);
   if (typeof renderGastosTarjetas === 'function') renderGastosTarjetas();
@@ -9190,9 +9248,9 @@ function ieMonedaChange(selectEl, i) {
   renderInvEditor();
 }
 
-function ieBrokerChange(selectEl, i) {
+async function ieBrokerChange(selectEl, i) {
   if (selectEl.value === '__otro__') {
-    const nuevo = prompt('Nombre del broker/comitente:');
+    const nuevo = await appPrompt('Nombre del broker/comitente:');
     if (!nuevo || !nuevo.trim()) { selectEl.value = 'Cocos'; return; }
     const opt = document.createElement('option');
     opt.textContent = nuevo.trim();
@@ -9463,9 +9521,9 @@ function toggleInvMovGroup(gid) {
   chev.textContent = open ? '▼' : '▶';
 }
 
-function opBrokerChange(selectEl) {
+async function opBrokerChange(selectEl) {
   if (selectEl.value === '__otro__') {
-    const nuevo = prompt('Nombre del broker/comitente:');
+    const nuevo = await appPrompt('Nombre del broker/comitente:');
     if (!nuevo || !nuevo.trim()) { selectEl.value = 'Cocos'; return; }
     const opt = document.createElement('option');
     opt.value = '__otro__';
@@ -9575,7 +9633,7 @@ function opRemover(i) {
   opRenderLista();
 }
 
-function opEjecutar() {
+async function opEjecutar() {
   if (_opLote.length === 0) { showToast('No hay operaciones cargadas', P.red); return; }
 
   // Si hay una venta con "dejar en USDT" tildado Y también una compra para el mismo broker en
@@ -9586,7 +9644,7 @@ function opEjecutar() {
   const conflictivas = _opLote.filter(o => o.tipo === 'venta' && o.dejarEnUsdt && brokersConCompra.has(o.broker));
   if (conflictivas.length > 0) {
     const detalle = conflictivas.map(o => `${o.ticker} (${o.broker})`).join(', ');
-    const seguir = confirm(`Tenés una venta con "dejar en USDT" tildado en el mismo broker donde también hay una compra:\n${detalle}\n\n¿Es realmente plata que queda parada en USDT, o la estás usando para la compra? Si es para la compra, cancelá y destildá esa venta antes de ejecutar.`);
+    const seguir = await appConfirm(`Tenés una venta con "dejar en USDT" tildado en el mismo broker donde también hay una compra:\n${detalle}\n\n¿Es realmente plata que queda parada en USDT, o la estás usando para la compra? Si es para la compra, cancelá y destildá esa venta antes de ejecutar.`);
     if (!seguir) return;
   }
 
@@ -9988,8 +10046,8 @@ function saveEditTx() {
   showToast('✓ Transacción actualizada');
 }
 
-function deleteTx() {
-  if (!confirm('¿Borrar esta transacción?')) return;
+async function deleteTx() {
+  if (!(await appConfirm('¿Borrar esta transacción?'))) return;
   const mes  = document.getElementById('edit-mes').value;
   const idx  = parseInt(document.getElementById('edit-idx').value);
   const txsAll = DB.get('txs', {});
@@ -10023,8 +10081,8 @@ function forceUpdate() {
   setTimeout(() => window.location.reload(true), 300);
 }
 
-function clearAll() {
-  if (!confirm('¿Borrar todos los presupuestos y transacciones guardados?')) return;
+async function clearAll() {
+  if (!(await appConfirm('¿Borrar todos los presupuestos y transacciones guardados?'))) return;
   ['plans','txs','inversiones','tc'].forEach(k => DB.del(k));
   TC = 1250;
   location.reload();
@@ -10148,8 +10206,8 @@ function agregarFilaImport() {
   renderEditorMes();
 }
 
-function reimportarLimpio() {
-  if (!confirm('Esto borra TODAS las transacciones importadas previamente del xlsx (las marcadas como importadas) y las reemplaza con la versión más reciente. Tus transacciones cargadas manualmente NO se tocan. ¿Continuar?')) return;
+async function reimportarLimpio() {
+  if (!(await appConfirm('Esto borra TODAS las transacciones importadas previamente del xlsx (las marcadas como importadas) y las reemplaza con la versión más reciente. Tus transacciones cargadas manualmente NO se tocan. ¿Continuar?'))) return;
 
   const txsAll = DB.get('txs', {});
   let cleaned = 0, imported = 0;
