@@ -2178,7 +2178,7 @@ const DB = {
 
 // ── Backup manual completo: TODAS las claves de localStorage que usa la app, independiente de Firebase ──
 const BACKUP_KEYS = ['txs','plans','inversiones','tc','cuentas','ct_movimientos','gastos_tarjetas',
-  'tarjetas_cfg','categorias_consumo','tarjetas_conciliadas','debitos_recurrentes','inv_movimientos','cl_font_preset','grupos_categorias','recurrentes_excluidos'];
+  'tarjetas_cfg','categorias_consumo','tarjetas_conciliadas','debitos_recurrentes','inv_movimientos','cl_font_preset','grupos_categorias','recurrentes_excluidos','tc_contribs_presupuesto'];
 
 function descargarBackupCompleto() {
   try {
@@ -4298,6 +4298,21 @@ function getTarjetas() {
   return DB.get('tarjetas_cfg', TARJETAS_DEFAULT);
 }
 
+// ── Mapeo tarjeta física → categoría compartida en Presupuesto ──
+// BBVA MASTER y BBVA VISA son dos plásticos de la misma tarjeta lógica: su conciliación
+// debe sumar a la misma línea histórica "TC BBVA" (no crear una línea por plástico).
+// Igual criterio para MUNI BLACK → "TC Municipal".
+const CATEGORIA_TC_POR_TARJETA_ID = {
+  'tj_1781780035517': 'TC BBVA',       // BBVA MASTER
+  'tj_1781780291360': 'TC BBVA',       // BBVA VISA
+  'tj_1781797076928': 'TC BSF',        // BSF VISA
+  'tj_1781797109163': 'TC Municipal',  // MUNI BLACK
+  'tj_1781797091562': 'TC MP',         // MP
+};
+function categoriaPresupuestoTarjeta(tarjeta) {
+  return CATEGORIA_TC_POR_TARJETA_ID[tarjeta.id] || tarjeta.nombre;
+}
+
 function saveTarjetas(tarjetas, opts) {
   DB.set('tarjetas_cfg', tarjetas);
   if (window.FBsave) window.FBsave('tarjetas_cfg', tarjetas);
@@ -5461,40 +5476,61 @@ function marcarPeriodoConciliado(tarjetaId, cierre, conciliado) {
   // dejan de ver en su historial lo que ya está conciliado.
   const pin = DB.get('pin_carga_familiar', null);
   if (pin && window.cfPublicarConfig) window.cfPublicarConfig(pin, getTarjetas());
-  // Al conciliar (no al desmarcar), volcar el total real del período al Presupuesto del mes
-  // en que se paga — así no hay que tipear a mano lo que ya sabemos con certeza.
-  if (conciliado) {
-    try { actualizarPresupuestoTrasConciliar(tarjetaId, cierre); }
-    catch (e) { console.warn('actualizarPresupuestoTrasConciliar error:', e); }
-  }
+  // Al conciliar Y al desmarcar: recalcular la línea del Presupuesto, para que sumar o
+  // sacar un plástico (ej. BBVA MASTER) no deje pisado o huérfano el aporte del otro
+  // plástico que comparte la misma categoría (ej. BBVA VISA → misma línea "TC BBVA").
+  try { actualizarPresupuestoTrasConciliar(tarjetaId, cierre, conciliado); }
+  catch (e) { console.warn('actualizarPresupuestoTrasConciliar error:', e); }
   renderGastosTarjetas();
 }
 
-// Vuelca el total en PESOS (sin USD, que nunca se mezcla) de un período ya conciliado a la
+// Vuelca el total en PESOS (sin USD, que nunca se mezcla) de un período conciliado a la
 // línea del Presupuesto del mes en que efectivamente se paga (cierre + 1 mes, mismo criterio
-// de "mes de pago" que ya usa el resto de la app). Si la tarjeta ya tenía una línea propia
-// en Fijos o Variables, se actualiza ahí; si no existe, se crea en Variables.
-function actualizarPresupuestoTrasConciliar(tarjetaId, cierre) {
+// de "mes de pago" que ya usa el resto de la app).
+//
+// Varias tarjetas físicas pueden compartir una misma categoría de Presupuesto (ver
+// CATEGORIA_TC_POR_TARJETA_ID, ej. BBVA MASTER + BBVA VISA → "TC BBVA"). Para que conciliar
+// una no pise el aporte de la otra, cada tarjeta+período guarda su propio aporte en
+// 'tc_contribs_presupuesto' (clave tarjetaId|cierre) y la línea del plan siempre se recalcula
+// como la SUMA de los aportes vigentes para esa categoría en ese mes — nunca un valor suelto.
+function actualizarPresupuestoTrasConciliar(tarjetaId, cierre, conciliado) {
   const tarjeta = getTarjetas().find(t => t.id === tarjetaId);
   if (!tarjeta) return;
   const periodo = (tarjeta.periodos || []).find(p => p.cierre === cierre);
   if (!periodo || !periodo.inicio) return;
 
-  const totalArs = getGastosTarjetas()
-    .filter(g => g.tarjetaId === tarjetaId && g.moneda !== 'USD' && g.fecha >= periodo.inicio && g.fecha <= cierre)
-    .reduce((s, g) => s + (parseFloat(g.monto) || 0), 0);
-  if (!(totalArs > 0)) return;
-
+  const label = categoriaPresupuestoTarjeta(tarjeta);
   const mesDePago = mesSiguienteDePago(cierre.slice(0, 7));
+  const contribs = DB.get('tc_contribs_presupuesto', {});
+  const key = tarjetaId + '|' + cierre;
+
+  if (conciliado) {
+    const totalArs = getGastosTarjetas()
+      .filter(g => g.tarjetaId === tarjetaId && g.moneda !== 'USD' && g.fecha >= periodo.inicio && g.fecha <= cierre)
+      .reduce((s, g) => s + (parseFloat(g.monto) || 0), 0);
+    if (!(totalArs > 0)) return;
+    contribs[key] = { mesDePago, label, monto: Math.round(totalArs) };
+  } else {
+    if (!contribs[key]) return; // nada que sacar
+    delete contribs[key];
+  }
+  DB.set('tc_contribs_presupuesto', contribs);
+  if (window.FBsave) window.FBsave('tc_contribs_presupuesto', contribs);
+
+  // Recalcular la línea como suma de TODOS los aportes vigentes de esa categoría en ese mes
+  // (puede haber más de una tarjeta apuntando a la misma categoría)
+  const sumaCategoria = Object.values(contribs)
+    .filter(c => c.mesDePago === mesDePago && c.label === label)
+    .reduce((s, c) => s + c.monto, 0);
+
   const planes = DB.get('plans', {});
   const plan = planes[mesDePago] ? planes[mesDePago] : JSON.parse(JSON.stringify(getPlan(mesDePago)));
-  const label = tarjeta.nombre;
 
   const fila = plan.fijos.find(r => r.l === label) || plan.vars.find(r => r.l === label);
   if (fila) {
-    fila.v = Math.round(totalArs);
-  } else {
-    plan.vars.push({ l: label, v: Math.round(totalArs) });
+    fila.v = sumaCategoria;
+  } else if (sumaCategoria > 0) {
+    plan.vars.push({ l: label, v: sumaCategoria });
   }
 
   planes[mesDePago] = plan;
@@ -5507,7 +5543,89 @@ function actualizarPresupuestoTrasConciliar(tarjetaId, cierre) {
     if (typeof renderPlanSections === 'function') renderPlanSections();
   }
   if (typeof updateOverview === 'function') updateOverview();
-  showToast(`✓ ${label}: ${fmt(totalArs)} cargado en Presupuesto de ${mesLabel(mesDePago)}`);
+  showToast(`✓ ${label}: ${fmt(sumaCategoria)} en Presupuesto de ${mesLabel(mesDePago)}`);
+}
+
+// ── Migración one-time: unificar líneas de Presupuesto que hoy están separadas por
+// plástico (ej. "BBVA MASTER" y "BBVA VISA" sueltas) en su categoría compartida ("TC BBVA"),
+// sin perder el historial — se suman, no se pisan. Idempotente y guardada bajo flag propio,
+// así corre una sola vez sin importar cuántas veces se recargue la app.
+function migrarCategoriasTarjetaPresupuesto() {
+  if (DB.get('migracion_categoria_tc_v1', false)) return;
+
+  const tarjetas = getTarjetas();
+  const conciliaciones = DB.get('tarjetas_conciliadas', {});
+  const contribs = DB.get('tc_contribs_presupuesto', {});
+  let huboCambios = false;
+
+  // 1) Reconstruir el aporte de cada tarjeta+período ya conciliado, para que la suma por
+  //    categoría sea correcta desde ahora (y desmarcar conciliaciones más adelante recalcule bien).
+  Object.keys(conciliaciones).forEach(key => {
+    if (!conciliaciones[key]) return;
+    if (contribs[key]) return; // ya reconstruido
+    const [tarjetaId, cierre] = key.split('|');
+    const tarjeta = tarjetas.find(t => t.id === tarjetaId);
+    if (!tarjeta) return;
+    const periodo = (tarjeta.periodos || []).find(p => p.cierre === cierre);
+    if (!periodo || !periodo.inicio) return;
+
+    const totalArs = getGastosTarjetas()
+      .filter(g => g.tarjetaId === tarjetaId && g.moneda !== 'USD' && g.fecha >= periodo.inicio && g.fecha <= cierre)
+      .reduce((s, g) => s + (parseFloat(g.monto) || 0), 0);
+    if (!(totalArs > 0)) return;
+
+    contribs[key] = {
+      mesDePago: mesSiguienteDePago(cierre.slice(0, 7)),
+      label: categoriaPresupuestoTarjeta(tarjeta),
+      monto: Math.round(totalArs),
+    };
+    huboCambios = true;
+  });
+  if (huboCambios) {
+    DB.set('tc_contribs_presupuesto', contribs);
+    if (window.FBsave) window.FBsave('tc_contribs_presupuesto', contribs);
+  }
+
+  // 2) Para cada mes con aportes, recalcular la línea de la categoría compartida como la
+  //    suma de sus aportes, y sacar las líneas sueltas por nombre de tarjeta (si quedaron).
+  const planes = DB.get('plans', {});
+  const mesesAfectados = new Set(Object.values(contribs).map(c => c.mesDePago));
+  const nombresIndividuales = tarjetas.map(t => t.nombre);
+
+  mesesAfectados.forEach(mes => {
+    const plan = planes[mes] ? planes[mes] : JSON.parse(JSON.stringify(getPlan(mes)));
+    const labelsDelMes = new Set(
+      Object.values(contribs).filter(c => c.mesDePago === mes).map(c => c.label)
+    );
+
+    labelsDelMes.forEach(label => {
+      const suma = Object.values(contribs)
+        .filter(c => c.mesDePago === mes && c.label === label)
+        .reduce((s, c) => s + c.monto, 0);
+      const fila = plan.fijos.find(r => r.l === label) || plan.vars.find(r => r.l === label);
+      if (fila) { if (fila.v !== suma) { fila.v = suma; huboCambios = true; } }
+      else { plan.vars.push({ l: label, v: suma }); huboCambios = true; }
+    });
+
+    // Sacar líneas sueltas nombradas igual que el plástico (ej. "BBVA MASTER") si esa
+    // tarjeta mapea a una categoría compartida distinta de su propio nombre
+    nombresIndividuales.forEach(nombre => {
+      if (labelsDelMes.has(nombre)) return; // el nombre coincide con su propia categoría → no tocar
+      const antesF = plan.fijos.length, antesV = plan.vars.length;
+      plan.fijos = plan.fijos.filter(r => r.l !== nombre);
+      plan.vars  = plan.vars.filter(r => r.l !== nombre);
+      if (plan.fijos.length !== antesF || plan.vars.length !== antesV) huboCambios = true;
+    });
+
+    planes[mes] = plan;
+  });
+
+  if (huboCambios) {
+    DB.set('plans', planes);
+    if (window.FBsave) window.FBsave('plans', planes);
+    console.log('✓ Migración categorías TC: meses recalculados', [...mesesAfectados]);
+  }
+  DB.set('migracion_categoria_tc_v1', true);
 }
 
 let ordenGastosTarjeta = 'fecha'; // 'fecha' | 'monto' — monto ayuda a detectar duplicados (montos iguales quedan juntos)
@@ -10595,6 +10713,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Init alertas de consumo de tarjeta (banner arriba de todo)
   if (typeof renderAlertasConsumoBanner === 'function') renderAlertasConsumoBanner();
+
+  // Unificar categorías de tarjeta en Presupuesto (BBVA MASTER+VISA → "TC BBVA", MUNI BLACK → "TC Municipal")
+  try { migrarCategoriasTarjetaPresupuesto(); } catch (e) { console.warn('migrarCategoriasTarjetaPresupuesto error:', e); }
 
   // Init overview (KPIs primero, antes que los charts)
   updateOverview();
