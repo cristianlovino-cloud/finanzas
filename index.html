@@ -4130,15 +4130,25 @@ function renderNormalizadorCategorias() {
   }
   const categorias = getCategoriasConsumo();
   el.innerHTML = variantes.map(v => `
-    <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--s2);border-radius:8px;margin-bottom:6px">
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--s2);border-radius:8px;margin-bottom:6px;flex-wrap:wrap">
       <span style="flex:1;font-size:var(--fs-sm);font-weight:600">${v}</span>
+      <button onclick="aceptarCategoriaComoValida('${v.replace(/'/g,"\\'")}')" style="background:none;border:1px solid var(--green);border-radius:6px;color:var(--green);cursor:pointer;font-size:var(--fs-xs);padding:5px 10px;white-space:nowrap">✓ Ya está bien</button>
       <span style="color:var(--muted);font-size:var(--fs-sm)">→</span>
       <select onchange="fusionarVarianteCategoria('${v.replace(/'/g,"\\'")}', this.value)" class="fi" style="width:150px;font-size:var(--fs-sm);padding:6px 6px">
-        <option value="">— elegir —</option>
+        <option value="">fusionar con...</option>
         ${categorias.map(c => `<option value="${c}">${c}</option>`).join('')}
         <option value="__nueva__">＋ Nueva...</option>
       </select>
     </div>`).join('');
+}
+
+// La categoría ya está bien tal cual está (usada de forma consistente en Flujo/Gastos Tarjetas)
+// y solo faltaba estar en la lista oficial — a diferencia de "fusionar", esto NO toca ningún
+// gasto existente, solo agrega el nombre a la lista para que deje de aparecer como "variante suelta".
+function aceptarCategoriaComoValida(categoria) {
+  agregarCategoriaConsumoSiNoExiste(categoria);
+  renderNormalizadorCategorias();
+  showToast(`✓ "${categoria}" agregada a la lista oficial — no se tocó ningún gasto`);
 }
 
 // ── Listar TODAS las categorías reales en uso (Flujo + Gastos Tarjetas + lista oficial) para poder renombrarlas ──
