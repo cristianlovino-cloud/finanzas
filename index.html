@@ -4840,9 +4840,23 @@ function renderRecurrentesCfg() {
           <input type="number" min="1" max="31" value="${r.diaDelMes||1}" oninput="actualizarRecurrenteCfg('${r.id}','diaDelMes',this.value)" class="fi" style="width:70px;font-size:var(--fs-sm);padding:7px 8px;text-align:center">
         </div>
         ${r.moneda==='USD' ? `<div id="conv-label-${r.id}" style="font-size:var(--fs-xs);color:var(--muted);margin-top:6px">≈ ${fmt((r.monto||0) * TC)} al TC actual (${fmt(TC)}) — al insertarse, se ajusta al TC vigente ese día.</div>` : ''}
+        <button onclick="guardarRecurrenteCfg('${r.id}')" class="btn btn-p" style="width:100%;margin-top:12px;font-size:var(--fs-sm);padding:9px">💾 Guardar</button>
       </div>
     </div>`;
   }).join('');
+}
+
+// Los campos ya se persisten en cada tecla (oninput → actualizarRecurrenteCfg → saveRecurrentes),
+// pero el encabezado colapsado (nombre · categoría · día · monto) se arma en el render y no se
+// refresca solo, así que parecía que no había guardado nada. Este botón re-renderiza la lista,
+// deja el panel abierto y confirma con un toast.
+function guardarRecurrenteCfg(id) {
+  renderRecurrentesCfg();
+  const el = document.getElementById('rec-detalle-' + id);
+  const icon = document.getElementById('rec-toggle-' + id);
+  if (el) el.style.display = 'block';
+  if (icon) icon.textContent = '▼';
+  showToast('✓ Débito recurrente guardado');
 }
 
 // Cuenta cuántas entradas de Flujo (en cualquier mes) pertenecen a un recurrente dado
