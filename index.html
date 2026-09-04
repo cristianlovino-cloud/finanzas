@@ -6338,28 +6338,29 @@ function renderCuentas() {
         ['banco','BANCO'], ['billetera','BILLETERA'], ['efectivo','EFECTIVO'], ['fci','FCI / FONDO'], ['cripto','CRIPTO']
       ];
       return `
-      <div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid var(--border)">
-        <div style="width:5px;height:42px;border-radius:3px;background:${color};flex-shrink:0"></div>
-        <div style="flex:1;min-width:0">
-          <div style="font-family:var(--fh);font-weight:700;font-size:var(--fs-lg);letter-spacing:.01em;text-transform:uppercase">${ct.nombre}</div>
-          <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
-            <select onchange="cambiarTipoCuenta(${i}, this.value)" style="background:var(--s2);border:1px solid var(--border);border-radius:4px;color:var(--muted);padding:2px 4px;font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.04em;font-family:var(--fm)">
-              ${tipoOpts.map(([v,l]) => `<option value="${v}" ${ct.tipo===v?'selected':''}>${l}</option>`).join('')}
-            </select>
-            <span style="font-size:var(--fs-xs);color:var(--muted)">· ${ct.moneda}</span>
-          </div>
+      <div style="padding:13px 0;border-bottom:1px solid var(--border)">
+        <!-- Fila 1: identidad y saldo. Lo que se mira de un vistazo va solo, sin competir
+             por espacio con los controles (antes el nombre, el tipo, la moneda, el ajuste y
+             tres botones peleaban por el mismo renglón y todo terminaba truncado). -->
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:5px;height:30px;border-radius:3px;background:${color};flex-shrink:0"></div>
+          <div style="flex:1;min-width:0;font-family:var(--fh);font-weight:700;font-size:var(--fs-lg);letter-spacing:.01em;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ct.nombre}</div>
+          <div style="font-family:var(--fh);font-weight:700;font-size:1.05rem;color:${saldoColor};flex-shrink:0;white-space:nowrap">${saldoFmt}</div>
+          <button onclick="eliminarCuenta(${i})" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1rem;padding:2px 0 2px 2px;flex-shrink:0" title="Eliminar cuenta">✕</button>
         </div>
-        <div style="text-align:right;flex-shrink:0">
-          <div style="font-family:var(--fh);font-weight:700;font-size:1.05rem;color:${saldoColor}">${saldoFmt}</div>
-          <div style="display:flex;align-items:center;gap:4px;margin-top:4px;justify-content:flex-end">
-            <input type="number" placeholder="ajuste" step="0.01"
-              style="width:80px;background:var(--s2);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:3px 6px;font-size:var(--fs-sm);font-family:var(--fm)"
-              id="ajuste-${i}">
-            <button onclick="ajustarSaldo(${i})" style="background:rgba(34,211,160,.12);border:1px solid rgba(34,211,160,.25);color:var(--green);cursor:pointer;font-size:var(--fs-sm);padding:3px 7px;border-radius:4px;font-weight:700" title="Aplicar ajuste">✓</button>
-            <button onclick="reconciliarSaldo(${i})" style="background:rgba(56,189,248,.1);border:1px solid rgba(56,189,248,.25);color:var(--blue);cursor:pointer;font-size:var(--fs-sm);padding:3px 7px;border-radius:4px;font-weight:700" title="Setear saldo real (reconciliar)">⟳</button>
-          </div>
+        <!-- Fila 2: controles -->
+        <div style="display:flex;align-items:center;gap:6px;margin-top:8px;padding-left:15px">
+          <select onchange="cambiarTipoCuenta(${i}, this.value)" class="fi" style="width:auto;flex:1;min-width:0;max-width:150px;padding:4px 8px;font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.04em">
+            ${tipoOpts.map(([v,l]) => `<option value="${v}" ${ct.tipo===v?'selected':''}>${l}</option>`).join('')}
+          </select>
+          <span style="font-size:var(--fs-xs);color:var(--muted);flex-shrink:0">${ct.moneda}</span>
+          <div style="flex:1"></div>
+          <input type="number" placeholder="ajuste" step="0.01"
+            style="width:72px;flex-shrink:0;background:var(--s2);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 6px;font-size:var(--fs-sm);font-family:var(--fm);text-align:right"
+            id="ajuste-${i}">
+          <button onclick="ajustarSaldo(${i})" style="background:rgba(34,211,160,.12);border:1px solid rgba(34,211,160,.25);color:var(--green);cursor:pointer;font-size:var(--fs-sm);padding:4px 8px;border-radius:4px;font-weight:700;flex-shrink:0" title="Aplicar ajuste">✓</button>
+          <button onclick="reconciliarSaldo(${i})" style="background:rgba(56,189,248,.1);border:1px solid rgba(56,189,248,.25);color:var(--blue);cursor:pointer;font-size:var(--fs-sm);padding:4px 8px;border-radius:4px;font-weight:700;flex-shrink:0" title="Setear saldo real (reconciliar)">⟳</button>
         </div>
-        <button onclick="eliminarCuenta(${i})" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1rem;padding:4px;flex-shrink:0" title="Eliminar cuenta">✕</button>
       </div>`;
     }).join('');
   }
