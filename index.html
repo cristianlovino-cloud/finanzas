@@ -1598,8 +1598,9 @@ nav::-webkit-scrollbar{display:none}
   <!-- TRANSFERENCIA + HISTORIAL -->
   <div class="card" style="margin-bottom:14px">
     <div class="ct">Transferencia entre cuentas</div>
+    <div id="ct-favoritas" style="margin-bottom:10px"></div>
     <div class="r2" style="margin-bottom:10px">
-      <div class="field"><label>Desde</label><select id="ct-desde" class="fi"></select></div>
+      <div class="field"><label>Desde</label><select id="ct-desde" class="fi" onchange="autoDestinoTransferencia()"></select></div>
       <div class="field"><label>Hacia</label><select id="ct-hacia" class="fi"></select></div>
     </div>
     <div class="r2" style="margin-bottom:10px">
@@ -1612,6 +1613,7 @@ nav::-webkit-scrollbar{display:none}
       </div>
     </div>
     <button onclick="hacerTransferencia()" class="btn btn-g btn-full">⇄ Transferir</button>
+    <button onclick="guardarTransferenciaFavorita()" class="btn btn-o btn-full" style="margin-top:6px;font-size:var(--fs-xs)">☆ Guardar este par como favorito</button>
 
     <!-- Historial -->
     <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
@@ -2229,7 +2231,7 @@ const DB = {
 
 // ── Backup manual completo: TODAS las claves de localStorage que usa la app, independiente de Firebase ──
 const BACKUP_KEYS = ['txs','plans','inversiones','tc','cuentas','ct_movimientos','gastos_tarjetas',
-  'tarjetas_cfg','categorias_consumo','tarjetas_conciliadas','debitos_recurrentes','inv_movimientos','cl_font_preset','grupos_categorias','recurrentes_excluidos','tc_contribs_presupuesto'];
+  'tarjetas_cfg','categorias_consumo','tarjetas_conciliadas','debitos_recurrentes','inv_movimientos','cl_font_preset','grupos_categorias','recurrentes_excluidos','tc_contribs_presupuesto','transf_favoritas'];
 
 function descargarBackupCompleto() {
   try {
@@ -6350,13 +6352,13 @@ function renderCuentas() {
         </div>
         <!-- Fila 2: controles -->
         <div style="display:flex;align-items:center;gap:6px;margin-top:8px;padding-left:15px">
-          <select onchange="cambiarTipoCuenta(${i}, this.value)" class="fi" style="width:auto;flex:1;min-width:0;max-width:150px;padding:4px 8px;font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.04em">
+          <select onchange="cambiarTipoCuenta(${i}, this.value)" class="fi" style="width:128px;flex-shrink:0;padding:4px 8px;font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.04em">
             ${tipoOpts.map(([v,l]) => `<option value="${v}" ${ct.tipo===v?'selected':''}>${l}</option>`).join('')}
           </select>
           <span style="font-size:var(--fs-xs);color:var(--muted);flex-shrink:0">${ct.moneda}</span>
-          <div style="flex:1"></div>
+          <div style="flex:1;min-width:4px"></div>
           <input type="number" placeholder="ajuste" step="0.01"
-            style="width:72px;flex-shrink:0;background:var(--s2);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 6px;font-size:var(--fs-sm);font-family:var(--fm);text-align:right"
+            style="width:64px;flex-shrink:0;background:var(--s2);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:4px 6px;font-size:var(--fs-sm);font-family:var(--fm);text-align:right"
             id="ajuste-${i}">
           <button onclick="ajustarSaldo(${i})" style="background:rgba(34,211,160,.12);border:1px solid rgba(34,211,160,.25);color:var(--green);cursor:pointer;font-size:var(--fs-sm);padding:4px 8px;border-radius:4px;font-weight:700;flex-shrink:0" title="Aplicar ajuste">✓</button>
           <button onclick="reconciliarSaldo(${i})" style="background:rgba(56,189,248,.1);border:1px solid rgba(56,189,248,.25);color:var(--blue);cursor:pointer;font-size:var(--fs-sm);padding:4px 8px;border-radius:4px;font-weight:700;flex-shrink:0" title="Setear saldo real (reconciliar)">⟳</button>
@@ -6377,9 +6379,12 @@ function renderCuentas() {
   ['ct-desde','ct-hacia'].forEach(id => {
     const sel = document.getElementById(id);
     if (!sel) return;
+    const previo = sel.value;
     sel.innerHTML = '<option value="">— elegir —</option>' +
       cuentas.map((ct,i) => `<option value="${i}">${ct.nombre} (${ct.moneda})</option>`).join('');
+    if (previo !== '' && cuentas[parseInt(previo)]) sel.value = previo; // no perder lo elegido al re-render
   });
+  renderTransfFavoritas();
 }
 
 // ── Ajuste manual de saldo ──
@@ -6455,6 +6460,117 @@ async function eliminarCuenta(i) {
 }
 
 // ── Transferencia entre cuentas ──
+// ── Destino sugerido automáticamente por banco ──
+// Las transferencias reales casi siempre son entre cuentas del mismo banco (BSF Sueldo ↔ BSF
+// FCI, BBVA Sueldo ↔ BBVA FCI): mover plata entre bancos distintos es la excepción. Al elegir
+// el origen, se preselecciona la otra cuenta del mismo banco y misma moneda. Es solo una
+// sugerencia — se puede cambiar a mano.
+function prefijoBanco(nombre) {
+  return (nombre || '').trim().split(/\s+/)[0].toUpperCase();
+}
+
+function autoDestinoTransferencia() {
+  const selDesde = document.getElementById('ct-desde');
+  const selHacia = document.getElementById('ct-hacia');
+  if (!selDesde || !selHacia) return;
+  const iDesde = parseInt(selDesde.value);
+  if (isNaN(iDesde)) return;
+  if (selHacia.value !== '') return; // ya eligió destino a mano: no pisarlo
+
+  const cuentas = getCuentas();
+  const origen = cuentas[iDesde];
+  if (!origen) return;
+
+  const pref = prefijoBanco(origen.nombre);
+  const candidatos = cuentas
+    .map((c, i) => ({ c, i }))
+    .filter(({ c, i }) => i !== iDesde && c.moneda === origen.moneda && prefijoBanco(c.nombre) === pref);
+  if (candidatos.length === 0) return;
+
+  // Si hay más de una del mismo banco, priorizar la de tipo distinto al origen
+  // (de una cuenta sueldo lo natural es ir al FCI, y viceversa).
+  const preferida = candidatos.find(({ c }) => c.tipo !== origen.tipo) || candidatos[0];
+  selHacia.value = String(preferida.i);
+  selHacia.dispatchEvent(new Event('change', { bubbles: true }));
+
+  const monedaSel = document.getElementById('ct-transf-moneda');
+  if (monedaSel && monedaSel.value !== origen.moneda) {
+    monedaSel.value = origen.moneda;
+    monedaSel.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+}
+
+// ── Transferencias favoritas ──
+// Se guardan por NOMBRE de cuenta, no por índice: los índices se corren al agregar o borrar
+// cuentas y el favorito terminaría apuntando a otra cuenta distinta.
+function getTransfFavoritas() {
+  return DB.get('transf_favoritas', []);
+}
+
+function guardarTransferenciaFavorita() {
+  const iDesde = parseInt(document.getElementById('ct-desde').value);
+  const iHacia = parseInt(document.getElementById('ct-hacia').value);
+  if (isNaN(iDesde) || isNaN(iHacia)) { showToast('Elegí las dos cuentas primero', '#f43f5e'); return; }
+  if (iDesde === iHacia) { showToast('Las cuentas deben ser distintas', '#f43f5e'); return; }
+
+  const cuentas = getCuentas();
+  const desde = cuentas[iDesde]?.nombre, hacia = cuentas[iHacia]?.nombre;
+  if (!desde || !hacia) return;
+
+  const favs = getTransfFavoritas();
+  if (favs.some(f => f.desde === desde && f.hacia === hacia)) {
+    showToast('Ese par ya está en favoritos');
+    return;
+  }
+  favs.push({ desde, hacia, moneda: cuentas[iDesde].moneda });
+  DB.set('transf_favoritas', favs);
+  renderTransfFavoritas();
+  showToast(`★ Favorito guardado: ${desde} → ${hacia}`);
+}
+
+function eliminarTransfFavorita(idx, ev) {
+  if (ev) ev.stopPropagation(); // no disparar el "aplicar" del chip
+  const favs = getTransfFavoritas();
+  favs.splice(idx, 1);
+  DB.set('transf_favoritas', favs);
+  renderTransfFavoritas();
+}
+
+function aplicarTransfFavorita(idx) {
+  const fav = getTransfFavoritas()[idx];
+  if (!fav) return;
+  const cuentas = getCuentas();
+  const iDesde = cuentas.findIndex(c => c.nombre === fav.desde);
+  const iHacia = cuentas.findIndex(c => c.nombre === fav.hacia);
+  if (iDesde < 0 || iHacia < 0) { showToast('Alguna de esas cuentas ya no existe', '#f43f5e'); return; }
+
+  const selDesde = document.getElementById('ct-desde');
+  const selHacia = document.getElementById('ct-hacia');
+  selDesde.value = String(iDesde); selDesde.dispatchEvent(new Event('change', { bubbles: true }));
+  selHacia.value = String(iHacia); selHacia.dispatchEvent(new Event('change', { bubbles: true }));
+
+  const monedaSel = document.getElementById('ct-transf-moneda');
+  if (monedaSel && fav.moneda) { monedaSel.value = fav.moneda; monedaSel.dispatchEvent(new Event('change', { bubbles: true })); }
+
+  document.getElementById('ct-transf-monto')?.focus();
+}
+
+function renderTransfFavoritas() {
+  const el = document.getElementById('ct-favoritas');
+  if (!el) return;
+  const favs = getTransfFavoritas();
+  if (favs.length === 0) { el.innerHTML = ''; return; }
+  el.innerHTML = `
+    <div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:5px">FAVORITOS</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">
+      ${favs.map((f, i) => `
+        <div onclick="aplicarTransfFavorita(${i})" style="display:flex;align-items:center;gap:6px;background:var(--s3);border:1px solid var(--border2);border-radius:14px;padding:5px 10px;cursor:pointer;font-size:var(--fs-xs)">
+          <span style="color:var(--text)">${f.desde} → ${f.hacia}</span>
+          <span onclick="eliminarTransfFavorita(${i}, event)" style="color:var(--muted);font-size:var(--fs-xs);padding:0 2px">✕</span>
+        </div>`).join('')}
+    </div>`;
+}
+
 // ── Toggle form nueva cuenta ──
 function toggleNuevaCuenta() {
   const form = document.getElementById('add-cuenta-form');
