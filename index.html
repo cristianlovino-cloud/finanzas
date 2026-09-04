@@ -826,6 +826,15 @@ nav::-webkit-scrollbar{display:none}
 }
 .csel-item-sel{color:var(--green)}
 .csel-item-disabled{color:var(--muted);cursor:default;opacity:.6}
+.csel-search{
+  position:sticky;top:0;z-index:1;background:var(--s3);padding:8px;border-bottom:1px solid var(--border2);
+}
+.csel-search input{
+  width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);border-radius:6px;
+  color:var(--text);font-family:var(--fh);font-size:var(--fs-sm);padding:7px 9px;outline:none;
+}
+.csel-search input:focus{border-color:var(--green)}
+.csel-empty{padding:12px 14px;font-family:var(--fh);font-size:var(--fs-sm);color:var(--muted)}
 [data-theme="light"] .csel-trigger,[data-theme="light"] .csel-menu{color:var(--text)}
 .r2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .btn{padding:11px 18px;border-radius:7px;font-family:var(--fm);font-size:var(--fs-md);font-weight:600;border:none;cursor:pointer;transition:all .2s;line-height:1.2}
@@ -1614,6 +1623,7 @@ nav::-webkit-scrollbar{display:none}
             <option value="transferencia">Transferencias</option>
             <option value="gasto">Gastos</option>
             <option value="ingreso">Ingresos</option>
+            <option value="ajuste">Ajustes</option>
           </select>
           <select id="ct-transf-mes-fil" class="fi" style="width:auto;padding:4px 8px;font-size:var(--fs-xs)" onchange="renderHistorialTransf()">
             <option value="">Todos los meses</option>
@@ -2253,7 +2263,50 @@ function restaurarBackupCompleto(event) {
         if (!(await appConfirm('Este archivo no parece ser un backup de CL Finanzas. ¿Restaurar igual?'))) return;
       }
       const fechaBackup = backup._meta?.fecha ? new Date(backup._meta.fecha).toLocaleString('es-AR') : 'desconocida';
-      if (!(await appConfirm(`Vas a reemplazar TODOS los datos actuales de este dispositivo con el backup del ${fechaBackup}. Esta acción no se puede deshacer. ¿Confirmás?`))) return;
+
+      // Contar qué hay ahora que el backup NO tiene, para avisar en concreto qué se pierde
+      // (un "esto no se puede deshacer" genérico no alcanza para dimensionar el riesgo).
+      let avisoPerdida = '';
+      try {
+        const txsAhora = DB.get('txs', {}), txsBk = backup.txs || {};
+        let txsExtra = 0, mesesExtra = [];
+        Object.entries(txsAhora).forEach(([mes, arr]) => {
+          const enBk = (txsBk[mes] || []).length;
+          if ((arr || []).length > enBk) { txsExtra += arr.length - enBk; mesesExtra.push(mes); }
+        });
+        const invAhora = (DB.get('inv_movimientos', []) || []).length;
+        const invBk    = (backup.inv_movimientos || []).length;
+        const invExtra = Math.max(0, invAhora - invBk);
+        const partes = [];
+        if (txsExtra > 0) partes.push(`${txsExtra} movimiento${txsExtra>1?'s':''} de Flujo (${mesesExtra.join(', ')})`);
+        if (invExtra > 0) partes.push(`${invExtra} movimiento${invExtra>1?'s':''} de Inversiones`);
+        if (partes.length) avisoPerdida = `\n\n⚠ Tenés datos más nuevos que este backup: ${partes.join(' y ')}. Se van a borrar.`;
+      } catch (err) { console.error('conteo pérdida error:', err); }
+
+      if (!(await appConfirm(`Vas a reemplazar TODOS los datos actuales de este dispositivo con el backup del ${fechaBackup}.${avisoPerdida}\n\n¿Confirmás?`))) return;
+
+      // ── RED DE SEGURIDAD ──
+      // Antes de pisar nada, se baja un backup automático del estado actual. Restaurar un
+      // backup viejo borra todo lo cargado después (y lo empuja a Firestore, así que la nube
+      // tampoco sirve de rescate). Sin esta copia previa, ese dato no se recupera de ningún lado.
+      try {
+        const previo = { _meta: { app: 'CL Finanzas', fecha: new Date().toISOString(), version: 1, motivo: 'auto-guardado antes de restaurar' } };
+        BACKUP_KEYS.forEach(k => { previo[k] = DB.get(k, null); });
+        const blobPrev = new Blob([JSON.stringify(previo, null, 2)], { type: 'application/json' });
+        const urlPrev  = URL.createObjectURL(blobPrev);
+        const aPrev    = document.createElement('a');
+        aPrev.href = urlPrev;
+        aPrev.download = `cl-finanzas-ANTES-de-restaurar-${hoyLocal()}.json`;
+        document.body.appendChild(aPrev);
+        aPrev.click();
+        document.body.removeChild(aPrev);
+        URL.revokeObjectURL(urlPrev);
+        showToast('💾 Guardé una copia de tus datos actuales en Descargas');
+        await new Promise(r => setTimeout(r, 1500)); // que alcance a bajar antes de sobrescribir
+      } catch (err) {
+        console.error('backup previo error:', err);
+        if (!(await appConfirm('⚠ No pude guardar la copia de seguridad previa. Si seguís, los datos actuales se pierden sin respaldo. ¿Restaurar igual?'))) return;
+      }
 
       BACKUP_KEYS.forEach(k => {
         if (backup[k] !== undefined && backup[k] !== null) DB.set(k, backup[k]);
@@ -6333,8 +6386,17 @@ function ajustarSaldo(i) {
   const ajuste = parseFloat(document.getElementById('ajuste-'+i).value);
   if (isNaN(ajuste)) return;
   const cuentas = getCuentas();
+  const saldoAnterior = cuentas[i].saldo;
   cuentas[i].saldo += ajuste;
   saveCuentas(cuentas);
+  // Los ajustes se registran igual que cualquier otro movimiento: sin esto el saldo cambia
+  // sin dejar rastro y el historial de la cuenta miente por omisión (no se puede reconstruir
+  // de dónde salió el número). Tipo 'ajuste' para que los totales de Flujo/Overview no lo
+  // cuenten como gasto ni ingreso real — es una corrección de registro, no plata que se movió.
+  registrarMovimiento(
+    cuentas[i].nombre, 'ajuste', ajuste, cuentas[i].moneda,
+    `Ajuste manual: ${fmt(saldoAnterior)} → ${fmt(cuentas[i].saldo)}`
+  );
   document.getElementById('ajuste-'+i).value = '';
   const signo = ajuste >= 0 ? '+' : '';
   showToast('✓ Ajuste ' + cuentas[i].nombre + ': ' + signo + fmt(ajuste) + ' → nuevo saldo: ' + fmt(cuentas[i].saldo));
@@ -6367,8 +6429,18 @@ async function reconciliarSaldo(i) {
   const nuevoNum = parseFloat(String(nuevo).replace(',','.'));
   if (isNaN(nuevoNum)) { showToast('Valor inválido'); return; }
   const diff = nuevoNum - ct.saldo;
+  const saldoAnterior = ct.saldo;
   ct.saldo = nuevoNum;
   saveCuentas(cuentas);
+  // Igual que el ajuste: la reconciliación queda asentada con el antes y el después,
+  // así siempre se puede rastrear por qué el saldo dejó de coincidir con los movimientos.
+  if (diff !== 0) {
+    const f = (v) => ct.moneda === 'USD' ? 'U$S ' + v.toFixed(2) : fmt(v);
+    registrarMovimiento(
+      ct.nombre, 'ajuste', diff, ct.moneda,
+      `Reconciliado con saldo real: ${f(saldoAnterior)} → ${f(nuevoNum)}`
+    );
+  }
   const signo = diff >= 0 ? '+' : '';
   showToast(`✓ ${ct.nombre} reconciliado. Diferencia: ${signo}${fmt(diff)}`);
 }
@@ -6450,6 +6522,8 @@ function renderHistorialTransf() {
       badge = `<span style="font-size:var(--fs-xs);font-weight:700;color:var(--red);background:rgba(244,63,94,.1);border:1px solid rgba(244,63,94,.2);padding:1px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.04em">↑ GASTO</span>`;
     } else if (m.tipo === 'ingreso') {
       badge = `<span style="font-size:var(--fs-xs);font-weight:700;color:var(--green);background:rgba(34,211,160,.12);border:1px solid rgba(34,211,160,.2);padding:1px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.04em">↓ INGRESO</span>`;
+    } else if (m.tipo === 'ajuste') {
+      badge = `<span style="font-size:var(--fs-xs);font-weight:700;color:var(--yellow);background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.25);padding:1px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.04em">⚖ AJUSTE</span>`;
     } else {
       badge = `<span style="font-size:var(--fs-xs);font-weight:700;color:var(--muted2);background:var(--s3);border:1px solid var(--border);padding:1px 6px;border-radius:3px;text-transform:uppercase">${m.tipo||'MOV'}</span>`;
     }
@@ -10819,19 +10893,69 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function buildMenuContent(sel, menu) {
+  // Umbral a partir del cual el menú muestra buscador. Por debajo, escanear con el ojo es
+  // más rápido que tipear; por encima (categorías, cuentas) filtrar gana.
+  const UMBRAL_BUSCADOR = 8;
+
+  function contarOpciones(sel) {
+    return sel.querySelectorAll('option').length;
+  }
+
+  function buildMenuContent(sel, menu, filtro) {
+    const q = (filtro || '').trim().toLowerCase();
     menu.innerHTML = '';
+
+    const conBuscador = contarOpciones(sel) > UMBRAL_BUSCADOR;
+    if (conBuscador) {
+      const box = document.createElement('div');
+      box.className = 'csel-search';
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.placeholder = 'Buscar...';
+      inp.value = filtro || '';
+      inp.onclick = (e) => e.stopPropagation();
+      inp.oninput = () => {
+        const pos = inp.selectionStart;
+        buildMenuContent(sel, menu, inp.value);
+        const nuevo = menu.querySelector('.csel-search input');
+        if (nuevo) { nuevo.focus(); nuevo.setSelectionRange(pos, pos); }
+      };
+      box.appendChild(inp);
+      menu.appendChild(box);
+    }
+
+    let visibles = 0;
     Array.from(sel.children).forEach(child => {
       if (child.tagName === 'OPTGROUP') {
+        const hijos = Array.from(child.children).filter(o => coincide(o, q));
+        if (hijos.length === 0) return;
         const label = document.createElement('div');
         label.className = 'csel-item-group';
         label.textContent = child.label;
         menu.appendChild(label);
-        Array.from(child.children).forEach(opt => menu.appendChild(buildItem(sel, opt)));
+        hijos.forEach(opt => { menu.appendChild(buildItem(sel, opt)); visibles++; });
       } else if (child.tagName === 'OPTION') {
+        if (!coincide(child, q)) return;
         menu.appendChild(buildItem(sel, child));
+        visibles++;
       }
     });
+
+    if (visibles === 0) {
+      const vacio = document.createElement('div');
+      vacio.className = 'csel-empty';
+      vacio.textContent = 'Sin resultados';
+      menu.appendChild(vacio);
+    }
+  }
+
+  // Sin acentos y sin distinguir mayúsculas: buscar "educacion" tiene que encontrar "Educación"
+  function normalizar(s) {
+    return (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  }
+  function coincide(opt, q) {
+    if (!q) return true;
+    return normalizar(opt.text).includes(normalizar(q));
   }
 
   function buildItem(sel, opt) {
@@ -10889,6 +11013,12 @@ document.addEventListener('DOMContentLoaded', () => {
       buildMenuContent(sel, menu);
       menu.classList.add('csel-open');
       trigger.classList.add('csel-open');
+      // Foco automático en el buscador solo en pantallas grandes: en el celu abriría el
+      // teclado de una y taparía media lista.
+      if (window.innerWidth > 780) {
+        const inp = menu.querySelector('.csel-search input');
+        if (inp) inp.focus();
+      }
       const r = wrap.getBoundingClientRect();
       // Abrir hacia arriba si abajo no entra
       menu.classList.toggle('csel-menu-up', (window.innerHeight - r.bottom) < 220 && r.top > (window.innerHeight - r.bottom));
