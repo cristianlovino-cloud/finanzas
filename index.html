@@ -804,15 +804,19 @@ nav::-webkit-scrollbar{display:none}
 }
 .csel-trigger.csel-disabled{opacity:.5;cursor:default}
 .csel-menu{
-  display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:500;
+  display:none;position:absolute;left:0;top:calc(100% + 4px);z-index:500;
+  /* Ancho propio según contenido: no hereda el del trigger, que puede ser muy angosto
+     (ej. el selector "↗" de mover categoría, de 60px, cortaba "Alimentación"). */
+  min-width:100%;width:max-content;max-width:min(280px,80vw);
   background:var(--s3);border:1px solid var(--border2);border-radius:10px;
   max-height:280px;overflow-y:auto;box-shadow:0 12px 28px rgba(0,0,0,.55);
 }
+.csel-menu.csel-menu-right{left:auto;right:0}
 .csel-menu.csel-menu-up{top:auto;bottom:calc(100% + 4px)}
 .csel-menu.csel-open{display:block}
 .csel-item{
   padding:11px 14px;font-family:var(--fh);font-size:var(--fs-md);color:var(--text);
-  cursor:pointer;border-bottom:1px solid var(--border);
+  cursor:pointer;border-bottom:1px solid var(--border);white-space:nowrap;
 }
 .csel-item:last-child{border-bottom:none}
 .csel-item:active,.csel-item:hover{background:var(--s2)}
@@ -10886,7 +10890,12 @@ document.addEventListener('DOMContentLoaded', () => {
       menu.classList.add('csel-open');
       trigger.classList.add('csel-open');
       const r = wrap.getBoundingClientRect();
+      // Abrir hacia arriba si abajo no entra
       menu.classList.toggle('csel-menu-up', (window.innerHeight - r.bottom) < 220 && r.top > (window.innerHeight - r.bottom));
+      // Alinear a la derecha si al abrir a la izquierda el menú se saldría de pantalla
+      // (pasa con triggers angostos pegados al borde derecho).
+      menu.classList.remove('csel-menu-right');
+      if (r.left + menu.offsetWidth > window.innerWidth - 8) menu.classList.add('csel-menu-right');
     };
 
     // El value de un <select> no es un atributo del DOM (no dispara MutationObserver de
