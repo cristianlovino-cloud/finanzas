@@ -5221,12 +5221,21 @@ function generarSecuenciaCierres(tarjeta, fechaCompra, cantidad) {
       if (idx < periodos.length) {
         cierres.push(periodos[idx].cierre);
       } else {
-        // Más cuotas que períodos definidos: estimar ~30 días por cuota adicional
-        // desde el último período real conocido (no una fecha inventada como texto).
+        // Más cuotas que períodos definidos: estimar avanzando MES A MES desde el último
+        // período real, conservando su día de cierre. Sumar 30 días fijos desfasaba las
+        // fechas (una tarjeta que cierra el 12 caía 11, 10, 9... y las cuotas terminaban
+        // fuera del período que les correspondía).
         const pasosDeMas = idx - periodos.length + 1;
-        const base = new Date(periodos[periodos.length - 1].cierre + 'T00:00:00');
-        base.setDate(base.getDate() + 30 * pasosDeMas);
-        cierres.push(base.toISOString().slice(0,10));
+        const ultimo = periodos[periodos.length - 1].cierre;
+        const [y, m, d] = ultimo.split('-').map(Number);
+        const base = new Date(y, m - 1 + pasosDeMas, d);
+        // Si el día no existe en ese mes (ej. 31 en noviembre), Date se pasa al mes
+        // siguiente: retroceder al último día del mes buscado.
+        if (base.getDate() !== d) base.setDate(0);
+        const yy = base.getFullYear();
+        const mm = String(base.getMonth() + 1).padStart(2, '0');
+        const dd = String(base.getDate()).padStart(2, '0');
+        cierres.push(`${yy}-${mm}-${dd}`);
       }
     }
     return cierres;
