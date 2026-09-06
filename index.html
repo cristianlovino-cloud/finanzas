@@ -626,38 +626,48 @@ window.cfGuardarGasto = async function() {
   const tarjeta = _cfTarjetasDisponibles.find(t => t.id === tarjetaId);
 
   try {
-    if (esCuotaEnCurso && tarjeta && typeof generarSecuenciaCierres === 'function') {
+    if (esCuotaEnCurso && tarjeta && typeof generarSecuenciaCierresEstricta === 'function') {
       // Monto = el de UNA cuota. Generamos esta cuota + las que faltan hasta cecTotal.
       const compraId = 'compra_' + Date.now();
       const cuotasFaltantes = cecTotal - cecActual + 1;
-      const cierres = generarSecuenciaCierres(tarjeta, fecha, cuotasFaltantes);
+      const { cierres } = generarSecuenciaCierresEstricta(tarjeta, fecha, cuotasFaltantes);
+      const ancla = cierres[0];
       for (let i = 0; i < cierres.length; i++) {
         const numeroCuota = cecActual + i;
         await addDoc(CF_COL_GASTOS, {
           id: 'gt_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2,5),
-          tarjetaId, fecha: cierres[i], cierreDelPeriodo: cierres[i], tipo: `${tipo} (cuota ${numeroCuota}/${cecTotal})`, monto,
+          // fecha = fecha de compra real (ya no se pisa con el cierre); el período al que
+          // pertenece se resuelve al mostrar, contra los períodos configurados en ese momento.
+          tarjetaId, fecha, cierreDelPeriodo: cierres[i] || null,
+          cuotaV2: true, anclaCierre: ancla || null, anclaNum: cecActual,
+          tipo: `${tipo} (cuota ${numeroCuota}/${cecTotal})`, monto,
           cargadoPor: quien, ts: Date.now(), compraId, cuotaNum: numeroCuota, cuotaTotal: cecTotal,
           esCuotaEnCurso: true,
         });
       }
+      const sinPeriodo = cierres.filter(c => !c).length;
       const item = document.createElement('div');
       item.style.cssText = 'padding:8px 10px;background:var(--s2);border-radius:8px;margin-bottom:6px;font-size:var(--fs-sm);display:flex;justify-content:space-between';
-      item.innerHTML = `<span>${tipo} (cuota ${cecActual}/${cecTotal} + ${cuotasFaltantes-1} restantes)</span><span style="color:var(--green);font-weight:700">${fmt(monto)} c/u</span>`;
+      item.innerHTML = `<span>${tipo} (cuota ${cecActual}/${cecTotal} + ${cuotasFaltantes-1} restantes)${sinPeriodo ? ` · ${sinPeriodo} esperando período` : ''}</span><span style="color:var(--green);font-weight:700">${fmt(monto)} c/u</span>`;
       document.getElementById('cf-recientes').prepend(item);
-    } else if (enCuotas && tarjeta && typeof generarSecuenciaCierres === 'function') {
+    } else if (enCuotas && tarjeta && typeof generarSecuenciaCierresEstricta === 'function') {
       const compraId = 'compra_' + Date.now();
       const montos = repartirEnCuotas(monto, cantCuotas);
-      const cierres = generarSecuenciaCierres(tarjeta, fecha, cantCuotas);
+      const { cierres } = generarSecuenciaCierresEstricta(tarjeta, fecha, cantCuotas);
+      const ancla = cierres[0];
       for (let i = 0; i < cierres.length; i++) {
         await addDoc(CF_COL_GASTOS, {
           id: 'gt_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2,5),
-          tarjetaId, fecha: cierres[i], cierreDelPeriodo: cierres[i], tipo: `${tipo} (cuota ${i+1}/${cantCuotas})`, monto: montos[i],
+          tarjetaId, fecha, cierreDelPeriodo: cierres[i] || null,
+          cuotaV2: true, anclaCierre: ancla || null, anclaNum: 1,
+          tipo: `${tipo} (cuota ${i+1}/${cantCuotas})`, monto: montos[i],
           cargadoPor: quien, ts: Date.now(), compraId, cuotaNum: i+1, cuotaTotal: cantCuotas,
         });
       }
+      const sinPeriodo = cierres.filter(c => !c).length;
       const item = document.createElement('div');
       item.style.cssText = 'padding:8px 10px;background:var(--s2);border-radius:8px;margin-bottom:6px;font-size:var(--fs-sm);display:flex;justify-content:space-between';
-      item.innerHTML = `<span>${tipo} (${cantCuotas} cuotas)</span><span style="color:var(--green);font-weight:700">${fmt(monto)} total</span>`;
+      item.innerHTML = `<span>${tipo} (${cantCuotas} cuotas)${sinPeriodo ? ` · ${sinPeriodo} esperando período` : ''}</span><span style="color:var(--green);font-weight:700">${fmt(monto)} total</span>`;
       document.getElementById('cf-recientes').prepend(item);
     } else {
       const _cierreSimple = (tarjeta && typeof periodoDeGasto === 'function')
@@ -4143,8 +4153,77 @@ function chequearPeriodosSuperpuestos() {
   return problemas;
 }
 
-function ejecutarChequeoSaludDatos() {
-  const cont = document.getElementById('cfg-salud-datos-list');
+// ── Detecta cuotas que se saltearon uno o más períodos ──
+// Entre dos cuotas consecutivas de la misma compra debería pasar aproximadamente un mes. Un
+// salto de 2+ meses significa que la cuota quedó fuera del resumen donde le tocaba (pasa
+// cuando la compra tiene más cuotas que períodos configurados, o cuando se movió a mano).
+// Se detecta por diferencia de meses, no de días: los cierres por jueves varían de fecha.
+function chequearCuotasDesviadas() {
+  const gastos = getGastosTarjetas();
+  const tarjetas = getTarjetas();
+  const nombreTj = {}; tarjetas.forEach(t => nombreTj[t.id] = t.nombre);
+
+  const series = {};
+  gastos.forEach(g => {
+    const m = /\(cuota (\d+)\/(\d+)\)/.exec(g.tipo || '');
+    if (!m || !g.fecha) return;
+    const base = /^(gt_\d+)/.exec(String(g.id || ''));
+    const key = g.compraId || ((base ? base[1] : g.id) + '|' + (g.tipo || '').slice(0, m.index).trim() + '|' + g.tarjetaId);
+    (series[key] = series[key] || []).push({ num: +m[1], total: +m[2], g });
+  });
+
+  const salida = [];
+  Object.values(series).forEach(items => {
+    items.sort((a, b) => a.num - b.num);
+    for (let i = 0; i < items.length - 1; i++) {
+      const a = items[i], b = items[i+1];
+      if (b.num !== a.num + 1) continue;
+      const meses = (+b.g.fecha.slice(0,4) - +a.g.fecha.slice(0,4)) * 12 + (+b.g.fecha.slice(5,7) - +a.g.fecha.slice(5,7));
+      if (meses < 2) continue;
+      salida.push({
+        tarjeta: nombreTj[b.g.tarjetaId] || '?',
+        tipo: (b.g.tipo || '').replace(/\s*\(cuota.*/, ''),
+        cuota: `${b.num}/${b.total}`,
+        anterior: a.g.fecha,
+        actual: b.g.fecha,
+        meses,
+      });
+    }
+  });
+  return salida;
+}
+
+// ── Detecta compras cargadas dos veces ──
+// Mismo concepto, mismo monto de cuota y misma cantidad total de cuotas, en series distintas:
+// pasa cuando se recarga una compra porque la primera vez salió incompleta y la anterior
+// queda dando vueltas, duplicando cuotas en los resúmenes.
+function chequearComprasDuplicadas() {
+  const gastos = getGastosTarjetas();
+  const series = {};
+  gastos.forEach(g => {
+    const m = /\(cuota (\d+)\/(\d+)\)/.exec(g.tipo || '');
+    if (!m) return;
+    const base = /^(gt_\d+)/.exec(String(g.id || ''));
+    const key = g.compraId || ((base ? base[1] : g.id) + '|' + (g.tipo || '').slice(0, m.index).trim() + '|' + g.tarjetaId);
+    if (!series[key]) series[key] = { concepto: (g.tipo || '').slice(0, m.index).trim(), total: +m[2], monto: g.monto, ts: g.ts, cant: 0 };
+    series[key].cant++;
+  });
+
+  const porFirma = {};
+  Object.entries(series).forEach(([key, s]) => {
+    const firma = `${s.concepto}|${s.total}|${s.monto}`;
+    (porFirma[firma] = porFirma[firma] || []).push({ key, ...s });
+  });
+
+  return Object.values(porFirma)
+    .filter(grupo => grupo.length > 1)
+    .map(grupo => {
+      grupo.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+      return { concepto: grupo[0].concepto, total: grupo[0].total, monto: grupo[0].monto, series: grupo };
+    });
+}
+
+function ejecutarChequeoSaludDatos() {  const cont = document.getElementById('cfg-salud-datos-list');
   if (!cont) return;
   cont.innerHTML = '<div style="font-size:var(--fs-sm);color:var(--muted);text-align:center;padding:10px">Corriendo chequeo...</div>';
 
@@ -4153,8 +4232,11 @@ function ejecutarChequeoSaludDatos() {
     const posResiduo    = chequearPosicionesCerradasConResiduo();
     const variantesCat  = detectarVariantesCategoria();
     const periodosSuper = chequearPeriodosSuperpuestos();
+    const desviadas     = chequearCuotasDesviadas();
+    const duplicadas    = chequearComprasDuplicadas();
 
-    const total = cuotasHueco.length + posResiduo.length + variantesCat.length + periodosSuper.length;
+    const total = cuotasHueco.length + posResiduo.length + variantesCat.length + periodosSuper.length
+                + desviadas.length + duplicadas.length;
 
     if (total === 0) {
       cont.innerHTML = '<div style="font-size:var(--fs-sm);color:var(--green);text-align:center;padding:10px">✓ Todo prolijo, no se encontraron problemas conocidos.</div>';
@@ -4168,6 +4250,16 @@ function ejecutarChequeoSaludDatos() {
       </div>`;
 
     cont.innerHTML =
+      bloque('Cuotas que se saltearon un período', desviadas, c => `
+        <div style="font-size:var(--fs-xs);color:var(--muted2);padding:4px 0;border-bottom:1px solid var(--border)">
+          <b>${c.tipo}</b> (${c.tarjeta}) — cuota ${c.cuota} está en <span style="color:var(--red)">${c.actual}</span>,
+          pero la anterior fue ${c.anterior}: ${c.meses} meses de diferencia
+        </div>`) +
+      bloque('Compras cargadas dos veces', duplicadas, d => `
+        <div style="font-size:var(--fs-xs);color:var(--muted2);padding:4px 0;border-bottom:1px solid var(--border)">
+          <b>${d.concepto}</b> — ${fmt(d.monto)} en ${d.total} cuotas, cargada ${d.series.length} veces
+          (${d.series.map(s => `${s.cant} cuota${s.cant>1?'s':''}`).join(' y ')}). Borrá la incompleta.
+        </div>`) +
       bloque('Cuotas con un número salteado', cuotasHueco, p => `
         <div style="font-size:var(--fs-xs);color:var(--muted2);padding:4px 0;border-bottom:1px solid var(--border)">
           <b>${p.tipo}</b> — tenés cuota${p.presentes.length>1?'s':''} ${p.presentes.join(', ')} de ${p.total}, falta${p.faltantes.length>1?'n':''}: <span style="color:var(--red)">${p.faltantes.join(', ')}</span>
@@ -5203,7 +5295,39 @@ function generarSecuenciaCierresHaciaAtras(tarjeta, fechaCompra, cantidad) {
   return { cierres: cierres.reverse(), estimados: marcarEstimado.reverse() }; // orden cronológico ascendente
 }
 
+// ── Secuencia de cierres SOLO con períodos realmente configurados ──
+// A diferencia de generarSecuenciaCierres, esta no inventa fechas cuando se acaban los
+// períodos: devuelve null en esos lugares. Las cuotas sin período quedan "esperando" y se
+// acomodan solas cuando se configura el período, en vez de congelarse en una fecha estimada
+// que después aparece en el mes equivocado.
+function generarSecuenciaCierresEstricta(tarjeta, fechaCompra, cantidad) {
+  const periodos = periodosOrdenados(tarjeta).filter(p => p.inicio && p.cierre);
+  if (periodos.length === 0) return { cierres: new Array(cantidad).fill(null), idxInicio: -1 };
+
+  let idxInicio = periodos.findIndex(p => fechaCompra >= p.inicio && fechaCompra <= p.cierre);
+  if (idxInicio === -1) idxInicio = periodos.findIndex(p => p.cierre >= fechaCompra);
+  if (idxInicio === -1) return { cierres: new Array(cantidad).fill(null), idxInicio: -1 };
+
+  const cierres = [];
+  for (let i = 0; i < cantidad; i++) {
+    const idx = idxInicio + i;
+    cierres.push(idx < periodos.length ? periodos[idx].cierre : null);
+  }
+  return { cierres, idxInicio };
+}
+
+// ── Resuelve a qué período pertenece una cuota, al momento de mostrarla ──
+// Solo para cuotas nuevas (cuotaV2). Se ancla en el cierre de la primera cuota cargada y
+// avanza tantos períodos como diga el número de cuota. Si ese período todavía no existe,
+// devuelve null y la cuota queda a la espera.
+function resolverCierreCuota(tarjeta, g) {
+  if (!g.anclaCierre || !g.cuotaNum) return null;
+  const periodos = periodosOrdenados(tarjeta).filter(p => p.inicio && p.cierre);
+  const idxAncla = periodos.findIndex(p => p.cierre === g.anclaCierre);
+  if (idxAncla === -1) return null;
+  const idx = idxAncla + (g.cuotaNum - (g.anclaNum || 1));
 function generarSecuenciaCierres(tarjeta, fechaCompra, cantidad) {
+
   // Usar períodos manuales si están configurados
   const periodos = (tarjeta.periodos || []).filter(p => p.inicio && p.cierre).sort((a,b) => a.cierre.localeCompare(b.cierre));
   if (periodos.length > 0) {
@@ -5546,6 +5670,7 @@ function agruparGastosPorPeriodo() {
   );
   const grupos = {}; // key: tarjetaId + '|' + cierreISO -> { tarjeta, cierre, gastos: [] }
   const huerfanos = []; // gastos cuyo tarjetaId ya no coincide con ninguna tarjeta configurada
+  const esperando = []; // cuotas nuevas cuyo período todavía no está configurado
 
   gastosFamilia.forEach(g => {
     const tarjeta = tarjetas.find(t => t.id === g.tarjetaId);
@@ -5554,8 +5679,14 @@ function agruparGastosPorPeriodo() {
     let cierre;
     const esCuota = !!(g.compraId || g.esCuotaEnCurso);
 
-    if (esCuota) {
-      // Cuotas: g.fecha YA ES el cierre del período — va directo sin buscar por rango
+    if (g.cuotaV2) {
+      // Cuotas nuevas: el período se resuelve ACÁ, por posición sobre los períodos que
+      // existan ahora. Nunca se congela una fecha estimada al cargar, así que configurar un
+      // período nuevo acomoda solas a las cuotas que lo estaban esperando.
+      cierre = resolverCierreCuota(tarjeta, g);
+      if (!cierre) { esperando.push({ g, tarjeta }); return; }
+    } else if (esCuota) {
+      // Cuotas viejas: g.fecha YA ES el cierre del período — se respeta tal cual está
       cierre = g.fecha;
     } else if (g.recurrenteId) {
       // Recurrentes: también van directo por g.fecha (ya filtrados los futuros arriba)
@@ -5573,6 +5704,17 @@ function agruparGastosPorPeriodo() {
   });
 
   const resultado = Object.values(grupos).sort((a,b) => b.cierre.localeCompare(a.cierre));
+  if (esperando.length > 0) {
+    // Bloque visible al final: cuotas ya cargadas que todavía no tienen período configurado.
+    // Aparecen a la vista (no se pierden ni caen en un mes inventado) y entran solas al
+    // resumen correspondiente en cuanto se configura ese período.
+    resultado.push({
+      tarjeta: { id: '__esperando__', nombre: '⏳ Cuotas esperando período' },
+      cierre: '0000-00-00', // siempre al final
+      gastos: esperando.map(e => e.g),
+      esEsperando: true,
+    });
+  }
   if (huerfanos.length > 0) {
     // Tarjeta "fantasma" para que el usuario vea y pueda reasignar, en vez de perder el gasto en silencio
     resultado.unshift({
