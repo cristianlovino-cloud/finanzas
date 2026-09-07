@@ -5326,6 +5326,9 @@ function resolverCierreCuota(tarjeta, g) {
   const idxAncla = periodos.findIndex(p => p.cierre === g.anclaCierre);
   if (idxAncla === -1) return null;
   const idx = idxAncla + (g.cuotaNum - (g.anclaNum || 1));
+  return (idx >= 0 && idx < periodos.length) ? periodos[idx].cierre : null;
+}
+
 function generarSecuenciaCierres(tarjeta, fechaCompra, cantidad) {
 
   // Usar períodos manuales si están configurados
