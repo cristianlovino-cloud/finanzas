@@ -425,7 +425,7 @@ window.cfValidarPin = async function() {
     if (quienActual) localStorage.setItem('cf_quien', quienActual);
     const sel = document.getElementById('cf-tarjeta');
     sel.innerHTML = _cfTarjetasDisponibles.length > 0
-      ? _cfTarjetasDisponibles.map(t => `<option value="${t.id}">${t.nombre}</option>`).join('')
+      ? _cfTarjetasDisponibles.map(t => `<option value="${t.id}">${typeof etiquetaTarjetaConSaldo === 'function' ? etiquetaTarjetaConSaldo(t) : t.nombre}</option>`).join('')
       : '<option value="">— sin tarjetas configuradas —</option>';
 
     _cfCategoriasDisponibles = (data.categorias || []).slice().sort((a,b) => a.localeCompare(b, 'es'));
@@ -6898,6 +6898,42 @@ function acreditarACuenta(medioNombre, monto, moneda, desc, txTs) {
   }
 }
 
+// ── Resumen del período en curso de una tarjeta, para mostrar en los selectores ──
+// Suma TODO lo cargado en el período actual, sin importar quién lo cargó (Cris, Lara, Emma):
+// la tarjeta es una sola y lo que interesa al elegirla es cuánto lleva acumulado el resumen.
+// ARS y USD se devuelven por separado — nunca se suman entre sí.
+function resumenPeriodoTarjeta(tarjetaId) {
+  if (typeof getGastosTarjetas !== 'function' || typeof getTarjetas !== 'function') return null;
+  const tarjeta = getTarjetas().find(t => t.id === tarjetaId);
+  if (!tarjeta) return null;
+  const actual = ventanaPeriodos(tarjeta).actual;
+  if (!actual || !actual.inicio || !actual.cierre) return null;
+
+  let ars = 0, usd = 0;
+  getGastosTarjetas().forEach(g => {
+    if (g.tarjetaId !== tarjetaId) return;
+    // Las cuotas nuevas resuelven su período por posición; el resto, por su fecha
+    const cierre = g.cuotaV2 ? resolverCierreCuota(tarjeta, g)
+                 : (g.compraId || g.esCuotaEnCurso) ? g.fecha
+                 : (g.fecha >= actual.inicio && g.fecha <= actual.cierre ? actual.cierre : null);
+    if (cierre !== actual.cierre) return;
+    const monto = parseFloat(g.monto) || 0;
+    if (g.moneda === 'USD') usd += monto; else ars += monto;
+  });
+  return { ars, usd, cierre: actual.cierre };
+}
+
+// Etiqueta para el <option> de una tarjeta: nombre + lo que lleva el período en curso
+function etiquetaTarjetaConSaldo(t) {
+  let r = null;
+  try { r = resumenPeriodoTarjeta(t.id); } catch (e) { /* modo familiar sin datos locales */ }
+  if (!r || (!r.ars && !r.usd)) return t.nombre;
+  const partes = [];
+  if (r.ars) partes.push(fmt(r.ars));
+  if (r.usd) partes.push('U$S ' + (r.usd % 1 === 0 ? r.usd.toLocaleString('es-AR') : r.usd.toFixed(2)));
+  return `${t.nombre} — ${partes.join(' · ')}`;
+}
+
 // ── Actualizar selector de medios de pago desde cuentas ──
 function updateMediosDePago() {
   const sel = document.getElementById('tx-medio');
@@ -6906,7 +6942,14 @@ function updateMediosDePago() {
   const cuentas = getCuentas();
   const opts = ['<option value="">— elegir —</option>'];
   (cuentas.length
-    ? cuentas.map(ct => `<option value="${ct.nombre}">${ct.nombre}${ct.moneda==='USD'?' (U$S)':''}</option>`)
+    // El value sigue siendo solo el nombre (es la clave con la que se descuenta el gasto);
+    // el saldo va únicamente en el texto visible.
+    ? cuentas.map(ct => {
+        const saldo = ct.moneda === 'USD'
+          ? 'U$S ' + (ct.saldo % 1 === 0 ? ct.saldo.toLocaleString('es-AR') : ct.saldo.toFixed(2))
+          : fmt(ct.saldo);
+        return `<option value="${ct.nombre}">${ct.nombre} — ${saldo}</option>`;
+      })
     : ['Efectivo','Mercado Pago','Débito BSF','Débito BBVA','Transferencia'].map(m=>`<option value="${m}">${m}</option>`)
   ).forEach(o => opts.push(o));
   sel.innerHTML = opts.join('');
@@ -11002,7 +11045,7 @@ document.addEventListener('DOMContentLoaded', () => {
         _cfTarjetasDisponibles = data.tarjetas || [];
         const sel = document.getElementById('cf-tarjeta');
         sel.innerHTML = _cfTarjetasDisponibles.length > 0
-          ? _cfTarjetasDisponibles.map(t => `<option value="${t.id}">${t.nombre}</option>`).join('')
+          ? _cfTarjetasDisponibles.map(t => `<option value="${t.id}">${typeof etiquetaTarjetaConSaldo === 'function' ? etiquetaTarjetaConSaldo(t) : t.nombre}</option>`).join('')
           : '<option value="">— sin tarjetas configuradas —</option>';
         _cfCategoriasDisponibles = (data.categorias || []).slice().sort((a,b) => a.localeCompare(b,'es'));
         cfRenderCategoriaSelector();
