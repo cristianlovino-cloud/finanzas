@@ -712,6 +712,7 @@ window.cfGuardarGasto = async function() {
 </script>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 /* ── ROTAR modal ── */
 .rotar-tab-active { border-bottom-color: var(--yellow) !important; color: var(--yellow) !important; }
@@ -1940,6 +1941,23 @@ nav::-webkit-scrollbar{display:none}
       <button onclick="copiarLinkCargaFamiliar('Lara')" class="btn btn-g" style="width:100%;margin-bottom:6px">🔗 Link para Lara</button>
       <button onclick="copiarLinkCargaFamiliar('Emma')" class="btn btn-g" style="width:100%;margin-bottom:6px">🔗 Link para Emma</button>
       <button onclick="window.cfSincronizarAhora && window.cfSincronizarAhora()" class="btn btn-o" style="width:100%">🔄 Sincronizar ahora</button>
+    </div>
+  </div>
+
+  <!-- CONCILIAR CON RESUMEN DEL BANCO -->
+  <div class="card" style="margin-bottom:14px">
+    <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="toggleConcilBanco()">
+      <div class="ct" style="margin-bottom:0">📄 Conciliar con el detalle del banco</div>
+      <span id="concil-chevron" style="color:var(--muted);font-size:var(--fs-md)">▶</span>
+    </div>
+    <div id="concil-body" style="display:none;margin-top:12px">
+      <p style="font-size:var(--fs-sm);color:var(--muted2);margin-bottom:10px;line-height:1.5">
+        Subí el "Detalle de Cuenta Crédito" que bajás del home banking. La app lo cruza con lo cargado y te muestra qué coincide, qué falta y qué difiere, con un botón para resolver cada cosa.
+      </p>
+      <div class="field" style="margin-bottom:8px"><label>Tarjeta</label><select id="concil-tarjeta" class="fi"></select></div>
+      <input type="file" id="concil-file" accept=".xlsx,.xls" onchange="concilLeerArchivo(this)" style="display:none">
+      <button onclick="document.getElementById('concil-file').click()" class="btn btn-g btn-full">📂 Elegir archivo del banco</button>
+      <div id="concil-resultado" style="margin-top:12px"></div>
     </div>
   </div>
 
@@ -6942,6 +6960,350 @@ function etiquetaTarjetaConSaldo(t) {
   if (r.ars) partes.push(fmt(r.ars));
   if (r.usd) partes.push('U$S ' + (r.usd % 1 === 0 ? r.usd.toLocaleString('es-AR') : r.usd.toFixed(2)));
   return `${t.nombre} — ${partes.join(' · ')}`;
+}
+
+
+// ══════════════════════════════════════════════════════════════════════
+// CONCILIACIÓN CON EL DETALLE DEL BANCO
+// Cruza el xlsx del home banking contra lo cargado en la app y clasifica cada
+// diferencia por CAUSA, porque cada una se resuelve distinto: un consumo que falta se
+// carga, un recurrente que cambió de monto se actualiza, una cuota corrida se mueve.
+// Pensado para correrse a mitad de período (cada 15 días): lo ya cargado empareja y no
+// se vuelve a ofrecer, así que pasarlo dos veces no duplica nada.
+// ══════════════════════════════════════════════════════════════════════
+let _concilDatos = null; // resultado del último cruce, para que los botones operen sobre él
+
+function toggleConcilBanco() {
+  const body = document.getElementById('concil-body');
+  const chev = document.getElementById('concil-chevron');
+  if (!body) return;
+  const abierto = body.style.display !== 'none';
+  body.style.display = abierto ? 'none' : 'block';
+  if (chev) chev.textContent = abierto ? '▶' : '▼';
+  if (!abierto) concilPoblarTarjetas();
+}
+
+function concilPoblarTarjetas() {
+  const sel = document.getElementById('concil-tarjeta');
+  if (!sel) return;
+  const prev = sel.value;
+  sel.innerHTML = getTarjetas().map(t => `<option value="${t.id}">${t.nombre}</option>`).join('');
+  if (prev) sel.value = prev;
+}
+
+// ── Parseo del "Detalle de Cuenta Crédito" ──
+// El archivo trae un encabezado con saldos y fechas de cierre, y después la grilla de
+// movimientos. Se busca la fila de títulos en vez de asumir un número fijo de filas,
+// porque el encabezado cambia de largo entre bancos y entre versiones del mismo archivo.
+function concilParsearFilas(sheet) {
+  const filas = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: null });
+  let idxCab = -1;
+  for (let i = 0; i < Math.min(filas.length, 60); i++) {
+    const f = (filas[i] || []).map(c => String(c || '').toLowerCase().trim());
+    if (f.some(c => c === 'fecha') && f.some(c => c.includes('descrip'))) { idxCab = i; break; }
+  }
+  if (idxCab === -1) return { movs: [], meta: {} };
+
+  const cab = (filas[idxCab] || []).map(c => String(c || '').toLowerCase().trim());
+  const cFecha = cab.findIndex(c => c === 'fecha');
+  const cDesc  = cab.findIndex(c => c.includes('descrip'));
+  const cArs   = cab.findIndex(c => c.includes('$'));
+  const cUsd   = cab.findIndex(c => c.includes('usd') || c.includes('u$s'));
+
+  // Fechas de cierre del encabezado: sirven para avisar si el archivo no corresponde
+  // al período que se está conciliando.
+  const meta = {};
+  for (let i = 0; i < idxCab; i++) {
+    const txt = (filas[i] || []).map(c => String(c || '')).join(' ');
+    const m = /Pr[oó]ximo cierre:\s*(\d{2})\/(\d{2})\/(\d{4})/i.exec(txt);
+    if (m) meta.proximoCierre = `${m[3]}-${m[2]}-${m[1]}`;
+    const m2 = /Fecha de cierre:\s*(\d{2})\/(\d{2})\/(\d{4})/i.exec(txt);
+    if (m2) meta.cierre = `${m2[3]}-${m2[2]}-${m2[1]}`;
+  }
+
+  const num = (v) => {
+    if (v === null || v === undefined) return 0;
+    let s = String(v).replace(/\$|USD|U\$S|\s/gi, '').trim();
+    // El archivo puede venir con coma o punto decimal según configuración regional
+    if (/,\d{1,2}$/.test(s)) s = s.replace(/\./g, '').replace(',', '.');
+    else s = s.replace(/,/g, '');
+    const n = parseFloat(s);
+    return isNaN(n) ? 0 : n;
+  };
+
+  const movs = [];
+  for (let i = idxCab + 1; i < filas.length; i++) {
+    const f = filas[i] || [];
+    const fRaw = String(f[cFecha] || '').trim();
+    const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(fRaw);
+    if (!m) continue;
+    const ars = cArs >= 0 ? num(f[cArs]) : 0;
+    const usd = cUsd >= 0 ? num(f[cUsd]) : 0;
+    if (ars === 0 && usd === 0) continue;
+    movs.push({
+      fecha: `${m[3]}-${m[2]}-${m[1]}`,
+      desc: String(f[cDesc] || '').trim(),
+      ars, usd,
+      cuota: concilNumeroCuota(String(f[cDesc] || '')),
+    });
+  }
+  return { movs, meta };
+}
+
+// "ZARA 01/03" → {n:1, total:3}. El banco pone el número de cuota al final de la
+// descripción; es la única forma de emparejar una cuota, porque su fecha en el banco es la
+// de la compra original y en la app es la del cierre que la factura.
+function concilNumeroCuota(desc) {
+  const m = /(\d{1,2})\s*\/\s*(\d{1,2})\s*\)?\s*$/.exec((desc || '').trim());
+  if (!m) return null;
+  const n = +m[1], total = +m[2];
+  if (total < 2 || n > total) return null;
+  return { n, total };
+}
+
+function concilNormalizar(s) {
+  return (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+async function concilLeerArchivo(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  input.value = ''; // permite volver a elegir el mismo archivo
+  const cont = document.getElementById('concil-resultado');
+  cont.innerHTML = '<div style="color:var(--muted);font-size:var(--fs-sm)">Leyendo archivo…</div>';
+  try {
+    if (typeof XLSX === 'undefined') { cont.innerHTML = '<div style="color:var(--red);font-size:var(--fs-sm)">No se pudo cargar el lector de Excel. Revisá tu conexión y recargá.</div>'; return; }
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array' });
+    const { movs, meta } = concilParsearFilas(wb.Sheets[wb.SheetNames[0]]);
+    if (movs.length === 0) { cont.innerHTML = '<div style="color:var(--red);font-size:var(--fs-sm)">No encontré movimientos en ese archivo. ¿Es el "Detalle de Cuenta Crédito"?</div>'; return; }
+    concilCruzar(movs, meta);
+  } catch (e) {
+    console.error('concilLeerArchivo error:', e);
+    cont.innerHTML = `<div style="color:var(--red);font-size:var(--fs-sm)">Error leyendo el archivo: ${e.message}</div>`;
+  }
+}
+
+function concilCruzar(movs, meta) {
+  const tarjetaId = document.getElementById('concil-tarjeta').value;
+  const tarjeta = getTarjetas().find(t => t.id === tarjetaId);
+  const cont = document.getElementById('concil-resultado');
+  if (!tarjeta) { cont.innerHTML = '<div style="color:var(--red)">Elegí una tarjeta.</div>'; return; }
+
+  const actual = ventanaPeriodos(tarjeta).actual;
+  if (!actual || !actual.inicio || !actual.cierre) { cont.innerHTML = '<div style="color:var(--red);font-size:var(--fs-sm)">Esa tarjeta no tiene un período en curso configurado.</div>'; return; }
+
+  // Los pagos (importes negativos) no son consumos: cancelan el resumen anterior y no
+  // forman parte de lo que se está conciliando.
+  const banco = movs.filter(m => m.ars > 0 || m.usd > 0)
+    .map((m, i) => ({ ...m, idx: i, k: m.ars / 1000, usdK: m.usd, usado: false }));
+
+  const app = getGastosTarjetas()
+    .filter(g => {
+      if (g.tarjetaId !== tarjetaId) return false;
+      const cierre = g.cuotaV2 ? resolverCierreCuota(tarjeta, g)
+                   : (g.compraId || g.esCuotaEnCurso) ? g.fecha
+                   : (g.fecha >= actual.inicio && g.fecha <= actual.cierre ? actual.cierre : null);
+      return cierre === actual.cierre;
+    })
+    .map(g => ({ g, m: parseFloat(g.monto) || 0, esUsd: g.moneda === 'USD', cuota: concilNumeroCuota(g.tipo), usado: false }));
+
+  const dias = (a, b) => Math.abs((new Date(a) - new Date(b)) / 86400000);
+  const coinciden = [], desfasadas = [], montoDistinto = [];
+
+  const montoBanco = (b, esUsd) => esUsd ? b.usdK : b.k;
+
+  // Pase 1 — consumos sueltos: mismo importe y fecha cercana
+  app.forEach(a => {
+    if (a.usado || a.cuota) return;
+    const c = banco.filter(b => !b.usado && !b.cuota && Math.abs(montoBanco(b, a.esUsd) - a.m) <= 0.6 && dias(b.fecha, a.g.fecha) <= 5);
+    if (!c.length) return;
+    c.sort((x, y) => Math.abs(montoBanco(x, a.esUsd) - a.m) - Math.abs(montoBanco(y, a.esUsd) - a.m));
+    a.usado = c[0].usado = true; coinciden.push({ a, b: c[0] });
+  });
+
+  // Pase 1b — mismo importe, sin exigir cercanía de fechas. Dentro de un mismo resumen
+  // el importe exacto ya identifica al movimiento, y en la app muchos gastos quedan
+  // fechados al cierre del período en lugar del día de la compra.
+  app.forEach(a => {
+    if (a.usado || a.cuota) return;
+    // Tolerancia de 1 unidad: la app guarda los pesos en miles redondeados, así que el
+    // redondeo por sí solo ya puede separar al importe real hasta medio punto.
+    const c = banco.filter(b => !b.usado && !b.cuota && Math.abs(montoBanco(b, a.esUsd) - a.m) <= 1.0);
+    if (!c.length) return;
+    c.sort((x, y) => Math.abs(montoBanco(x, a.esUsd) - a.m) - Math.abs(montoBanco(y, a.esUsd) - a.m));
+    a.usado = c[0].usado = true; coinciden.push({ a, b: c[0] });
+  });
+
+  // Pase 2 — cuotas con el mismo número: "ZARA 01/03" contra "(cuota 1/3)"
+  app.forEach(a => {
+    if (a.usado || !a.cuota) return;
+    const c = banco.filter(b => !b.usado && b.cuota && b.cuota.n === a.cuota.n && b.cuota.total === a.cuota.total && Math.abs(montoBanco(b, a.esUsd) - a.m) <= 1.5);
+    if (!c.length) return;
+    a.usado = c[0].usado = true; coinciden.push({ a, b: c[0] });
+  });
+
+  // Pase 3 — cuotas corridas: misma compra pero el banco ya va por otro número.
+  // Señal de que la cuota quedó asignada a un período que no le corresponde.
+  app.forEach(a => {
+    if (a.usado || !a.cuota) return;
+    const c = banco.filter(b => !b.usado && b.cuota && b.cuota.total === a.cuota.total && Math.abs(montoBanco(b, a.esUsd) - a.m) <= 1.5);
+    if (!c.length) return;
+    a.usado = c[0].usado = true; desfasadas.push({ a, b: c[0] });
+  });
+
+  // Pase 4 — mismo consumo con otro importe: típico de recurrentes que aumentaron
+  app.forEach(a => {
+    if (a.usado) return;
+    const c = banco.filter(b => {
+      if (b.usado || montoBanco(b, a.esUsd) <= 0) return false;
+      if (!!a.cuota !== !!b.cuota) return false;                    // una cuota nunca es un gasto suelto
+      if (a.cuota && b.cuota.total !== a.cuota.total) return false; // ni una cuota de otra compra
+      if (!a.cuota && dias(b.fecha, a.g.fecha) > 8) return false;
+      return Math.abs(montoBanco(b, a.esUsd) - a.m) / Math.max(montoBanco(b, a.esUsd), 0.001) <= 0.25;
+    });
+    if (!c.length) return;
+    c.sort((x, y) => Math.abs(montoBanco(x, a.esUsd) - a.m) - Math.abs(montoBanco(y, a.esUsd) - a.m));
+    a.usado = c[0].usado = true; montoDistinto.push({ a, b: c[0] });
+  });
+
+  const faltan = banco.filter(b => !b.usado);
+  const sobran = app.filter(a => !a.usado);
+
+  const totalBancoArs = banco.reduce((s, b) => s + b.k, 0);
+  const totalAppArs   = app.reduce((s, a) => s + (a.esUsd ? 0 : a.m), 0);
+
+  _concilDatos = { tarjeta, actual, coinciden, desfasadas, montoDistinto, faltan, sobran, meta, totalBancoArs, totalAppArs };
+  concilRenderResultado();
+}
+
+function concilRenderResultado() {
+  const d = _concilDatos;
+  const cont = document.getElementById('concil-resultado');
+  if (!d) return;
+  const gap = d.totalBancoArs - d.totalAppArs;
+  const pct = d.totalBancoArs ? (gap / d.totalBancoArs * 100) : 0;
+
+  // Aviso si el archivo parece de otro período: conciliar contra el resumen equivocado
+  // es la forma más fácil de "arreglar" un total rompiendo otro.
+  let avisoPeriodo = '';
+  if (d.meta.proximoCierre && d.meta.proximoCierre !== d.actual.cierre) {
+    avisoPeriodo = `<div style="background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.3);border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:var(--fs-xs);color:var(--yellow)">
+      ⚠ El archivo dice que el próximo cierre es ${d.meta.proximoCierre}, pero el período en curso de ${d.tarjeta.nombre} cierra ${d.actual.cierre}. Revisá que sea la tarjeta correcta.</div>`;
+  }
+
+  const bloque = (titulo, color, items, render) => items.length === 0 ? '' : `
+    <div style="margin-top:12px">
+      <div style="font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.06em;color:${color};margin-bottom:6px">${titulo} (${items.length})</div>
+      ${items.map(render).join('')}
+    </div>`;
+
+  cont.innerHTML = `
+    ${avisoPeriodo}
+    <div style="display:flex;gap:8px;margin-bottom:4px">
+      <div style="flex:1;background:var(--s2);border-radius:8px;padding:8px 10px">
+        <div style="font-size:var(--fs-xs);color:var(--muted)">BANCO</div>
+        <div style="font-family:var(--fh);font-weight:700">${fmt(d.totalBancoArs)}</div>
+      </div>
+      <div style="flex:1;background:var(--s2);border-radius:8px;padding:8px 10px">
+        <div style="font-size:var(--fs-xs);color:var(--muted)">APP</div>
+        <div style="font-family:var(--fh);font-weight:700">${fmt(d.totalAppArs)}</div>
+      </div>
+      <div style="flex:1;background:var(--s2);border-radius:8px;padding:8px 10px">
+        <div style="font-size:var(--fs-xs);color:var(--muted)">GAP</div>
+        <div style="font-family:var(--fh);font-weight:700;color:${Math.abs(pct) < 0.5 ? 'var(--green)' : 'var(--red)'}">${fmt(gap)} <span style="font-size:var(--fs-xs)">(${pct.toFixed(1)}%)</span></div>
+      </div>
+    </div>
+
+    ${d.coinciden.length ? `<div style="font-size:var(--fs-xs);color:var(--green);margin-top:10px">✓ ${d.coinciden.length} movimientos coinciden</div>` : ''}
+
+    ${bloque('➕ En el banco, no cargado', 'var(--blue)', d.faltan, (b, i) => `
+      <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${b.desc}</div>
+          <div style="font-size:var(--fs-xs);color:var(--muted)">${b.fecha}</div>
+        </div>
+        <div style="font-family:var(--fm);font-size:var(--fs-sm);flex-shrink:0">${b.usdK ? 'U$S ' + b.usdK.toFixed(2) : fmt(b.k)}</div>
+        <button onclick="concilCargarFaltante(${d.faltan.indexOf(b)})" style="background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.3);color:var(--blue);border-radius:5px;padding:4px 9px;font-size:var(--fs-xs);font-weight:700;cursor:pointer;flex-shrink:0">Cargar</button>
+      </div>`)}
+
+    ${bloque('⚠ Monto distinto', 'var(--yellow)', d.montoDistinto, (p, i) => `
+      <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.a.g.tipo}</div>
+          <div style="font-size:var(--fs-xs);color:var(--muted)">${p.b.desc} · ${p.b.fecha}</div>
+        </div>
+        <div style="font-family:var(--fm);font-size:var(--fs-sm);flex-shrink:0;text-align:right">
+          <span style="color:var(--muted)">${p.a.esUsd ? 'U$S ' + p.a.m.toFixed(2) : fmt(p.a.m)}</span><br>
+          <span style="color:var(--yellow)">${p.a.esUsd ? 'U$S ' + p.b.usdK.toFixed(2) : fmt(p.b.k)}</span>
+        </div>
+        <button onclick="concilUsarMontoBanco(${i})" style="background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.3);color:var(--yellow);border-radius:5px;padding:4px 9px;font-size:var(--fs-xs);font-weight:700;cursor:pointer;flex-shrink:0">Usar</button>
+      </div>`)}
+
+    ${bloque('↔ Cuota en otro período', 'var(--orange)', d.desfasadas, (p) => `
+      <div style="padding:7px 0;border-bottom:1px solid var(--border);font-size:var(--fs-xs);color:var(--muted2)">
+        <b style="color:var(--text)">${p.a.g.tipo}</b> — el banco la factura como cuota ${p.b.cuota.n}/${p.b.cuota.total} (${p.b.desc}).
+        Movela desde el listado de la tarjeta.
+      </div>`)}
+
+    ${bloque('❓ En la app, no en el banco', 'var(--muted)', d.sobran, (a) => `
+      <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.g.tipo}</div>
+          <div style="font-size:var(--fs-xs);color:var(--muted)">${a.g.fecha} · ${a.g.cargadoPor || ''}</div>
+        </div>
+        <div style="font-family:var(--fm);font-size:var(--fs-sm);flex-shrink:0">${a.esUsd ? 'U$S ' + a.m.toFixed(2) : fmt(a.m)}</div>
+      </div>`)}
+
+    ${d.faltan.length === 0 && d.montoDistinto.length === 0 && d.sobran.length === 0 && d.desfasadas.length === 0
+      ? '<div style="margin-top:12px;color:var(--green);font-size:var(--fs-sm)">✓ Todo cuadra con el resumen del banco.</div>' : ''}
+  `;
+}
+
+// Carga un consumo del banco que no estaba en la app. Queda a nombre de quien concilia;
+// si fue de Lara o Emma hay que reasignarlo después desde el listado.
+async function concilCargarFaltante(i) {
+  const d = _concilDatos;
+  const b = d && d.faltan[i];
+  if (!b) return;
+  const esUsd = b.usdK > 0 && b.ars === 0;
+  const gastos = getGastosTarjetas();
+  gastos.push({
+    id: 'gt_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5),
+    tarjetaId: d.tarjeta.id,
+    fecha: b.cuota ? d.actual.cierre : b.fecha, // una cuota se factura en el cierre, no en la fecha de compra
+    tipo: b.desc,
+    monto: esUsd ? b.usdK : Math.round(b.k),
+    moneda: esUsd ? 'USD' : 'ARS',
+    cargadoPor: 'Cris',
+    ts: Date.now(),
+    notas: 'Importado del detalle del banco',
+  });
+  saveGastosTarjetas(gastos);
+  d.faltan.splice(i, 1);
+  d.totalAppArs += esUsd ? 0 : Math.round(b.k);
+  concilRenderResultado();
+  renderGastosTarjetas();
+  showToast(`✓ Cargado: ${b.desc}`);
+}
+
+// Reemplaza el monto de la app por el del banco (el banco es la fuente de verdad).
+async function concilUsarMontoBanco(i) {
+  const d = _concilDatos;
+  const p = d && d.montoDistinto[i];
+  if (!p) return;
+  const gastos = getGastosTarjetas();
+  const g = gastos.find(x => x.id === p.a.g.id);
+  if (!g) return;
+  const nuevo = p.a.esUsd ? p.b.usdK : Math.round(p.b.k);
+  const anterior = parseFloat(g.monto) || 0;
+  g.monto = nuevo;
+  saveGastosTarjetas(gastos);
+  d.totalAppArs += p.a.esUsd ? 0 : (nuevo - anterior);
+  d.montoDistinto.splice(i, 1);
+  concilRenderResultado();
+  renderGastosTarjetas();
+  showToast(`✓ ${g.tipo}: ${fmt(anterior)} → ${fmt(nuevo)}`);
 }
 
 // ── Actualizar selector de medios de pago desde cuentas ──
