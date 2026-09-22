@@ -755,6 +755,14 @@ window.cfGuardarGasto = async function() {
    tiene ancho mínimo intrínseco (~20 caracteres) que no se achica y estira el layout
    más allá de la pantalla. Esta regla lo evita en toda la app de una vez. */
 input,select,textarea{min-width:0}
+/* Barra de acciones del Presupuesto: con el texto completo los tres controles suman más
+   que el ancho de un celular. Se compactan en vez de envolver, para que "Guardar" no
+   quede solo ocupando un renglón entero. */
+@media(max-width:560px){
+  .plan-acciones{gap:6px}
+  .plan-acciones button{padding:7px 10px !important;font-size:var(--fs-xs) !important}
+  .plan-acciones .csel-trigger,.plan-acciones select{font-size:var(--fs-xs) !important;padding:5px 24px 5px 8px !important}
+}
 body{background:var(--bg);color:var(--text);font-family:var(--fp);font-size:13px;font-weight:500;line-height:1.5;min-height:100vh;overflow-x:hidden;-webkit-tap-highlight-color:transparent;transition:--accent .8s ease}
 /* Los elementos que usan accent heredan la transición */
 .nb.active,.mes-badge,.kv.pos,.logo em,.btn-g,.kpi::after{transition:color .8s ease,background .8s ease,border-color .8s ease,box-shadow .8s ease}
@@ -1266,7 +1274,7 @@ nav::-webkit-scrollbar{display:none}
       <div style="font-family:var(--fh);font-size:1rem;font-weight:700">Planificación mensual</div>
       <div style="font-size:var(--fs-xs);color:var(--muted)">Cargá una vez al inicio del mes.</div>
     </div>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <div class="plan-acciones" style="display:flex;gap:8px;align-items:center">
       <select id="plan-sel-top" onchange="setGlobalMes(this.value)" class="fi" style="width:auto;padding:5px 10px;font-size:var(--fs-sm)">
         <!-- populated dynamically -->
       </select>
