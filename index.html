@@ -751,7 +751,13 @@ window.cfGuardarGasto = async function() {
 [data-theme="light"] .plan-label { color:var(--text); }
 [data-theme="light"] .plan-val { color:var(--text); background:var(--s2); }
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--text);font-family:var(--fp);font-size:13px;font-weight:500;line-height:1.5;min-height:100vh;overflow-x:hidden;-webkit-tap-highlight-color:transparent;transition:--accent .8s ease}
+html{overflow-x:hidden;max-width:100%}
+/* Todo campo dentro de un contenedor flex debe poder encogerse: por defecto un input
+   tiene ancho mínimo intrínseco (~20 caracteres) que no se achica y estira el layout
+   más allá de la pantalla. Esta regla lo evita en toda la app de una vez. */
+input,select,textarea{min-width:0}
+header,nav{width:100%}
+body{background:var(--bg);color:var(--text);font-family:var(--fp);font-size:13px;font-weight:500;line-height:1.5;min-height:100vh;overflow-x:hidden;max-width:100%;-webkit-tap-highlight-color:transparent;transition:--accent .8s ease}
 /* Los elementos que usan accent heredan la transición */
 .nb.active,.mes-badge,.kv.pos,.logo em,.btn-g,.kpi::after{transition:color .8s ease,background .8s ease,border-color .8s ease,box-shadow .8s ease}
 body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 60% 40% at 80% 10%,rgba(34,211,160,.04) 0%,transparent 60%),radial-gradient(ellipse 40% 30% at 10% 80%,rgba(56,189,248,.03) 0%,transparent 60%);pointer-events:none;z-index:0}
@@ -884,9 +890,9 @@ nav::-webkit-scrollbar{display:none}
 .plan-del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:var(--fs-lg);padding:2px 4px;transition:color .15s}
 .plan-del:hover{color:var(--red)}
 .add-row{display:flex;gap:8px;margin-top:10px}
-.add-row input{flex:1;background:var(--s2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--fh);font-size:var(--fs-sm);padding:7px 10px;outline:none}
+.add-row input{flex:1;min-width:0;background:var(--s2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--fh);font-size:var(--fs-sm);padding:7px 10px;outline:none}
 .add-row input:focus{border-color:var(--green)}
-.add-row .add-val{width:90px;text-align:right}
+.add-row .add-val{width:90px;flex:0 0 90px;text-align:right}
 .add-btn{padding:7px 12px;border-radius:6px;font-family:var(--fm);font-size:var(--fs-md);font-weight:600;border:none;cursor:pointer;transition:all .2s}
 
 /* ── PRESUP VS REAL BARS ── */
