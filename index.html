@@ -7559,6 +7559,19 @@ function diagnosticarAncho() {
     return s + (txt ? ` — "${txt}"` : '');
   };
 
+  // Medición directa de los contenedores estructurales: si el header o el nav son más
+  // angostos que la ventana, la barra superior se ve "cortada" aunque no haya desborde.
+  const medir = (sel) => {
+    const el = document.querySelector(sel);
+    if (!el) return `${sel}: (no existe)`;
+    const r = el.getBoundingClientRect();
+    const cs = getComputedStyle(el);
+    const alerta = Math.abs(r.width - anchoVentana) > 2 ? ' ⚠' : ' ✓';
+    return `${sel}: ancho ${Math.round(r.width)} · izq ${Math.round(r.left)} · scrollW ${el.scrollWidth}${alerta}`;
+  };
+  const estructura = ['header', 'nav', '.page:not([style*="display:none"])', 'body']
+    .map(medir).join('<br>');
+
   const lista = sinAncestros.slice(0, 12);
   out.innerHTML = `
     <div style="background:var(--s2);border-radius:8px;padding:10px;margin-bottom:10px;font-family:var(--fm);font-size:var(--fs-sm)">
@@ -7566,6 +7579,9 @@ function diagnosticarAncho() {
       <div>documento: <b>${anchoDoc}px</b></div>
       <div style="color:${desborde > 1 ? 'var(--red)' : 'var(--green)'}">desborde: <b>${desborde}px</b>${desborde > 1 ? '' : ' ✓ sin desborde'}</div>
       <div style="color:var(--muted);margin-top:4px">zoom: ${(window.visualViewport ? window.visualViewport.scale : 1).toFixed(2)}× · DPR ${window.devicePixelRatio}</div>
+    </div>
+    <div style="background:var(--s2);border-radius:8px;padding:10px;margin-bottom:10px;font-family:var(--fm);font-size:var(--fs-xs);line-height:1.7;word-break:break-all">
+      <div style="color:var(--muted);margin-bottom:4px">CONTENEDORES</div>${estructura}
     </div>
     ${lista.length === 0
       ? '<div style="color:var(--green);font-size:var(--fs-sm)">✓ Ningún elemento se sale del ancho en esta pestaña.</div>'
