@@ -1659,6 +1659,15 @@ nav::-webkit-scrollbar{display:none}
     </div>
   </div>
 
+  <!-- EVOLUCIÓN DE FCI -->
+  <div class="card" style="margin-bottom:14px">
+    <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="toggleEvolFci()">
+      <div class="ct" style="margin-bottom:0">📈 Evolución de FCI (cierre mensual)</div>
+      <span id="evol-fci-chevron" style="color:var(--muted);font-size:var(--fs-md)">▶</span>
+    </div>
+    <div id="evol-fci-body" style="display:none;margin-top:12px"></div>
+  </div>
+
   <!-- TRANSFERENCIA + HISTORIAL -->
   <div class="card" style="margin-bottom:14px">
     <div class="ct">Transferencia entre cuentas</div>
@@ -2326,7 +2335,7 @@ const DB = {
 
 // ── Backup manual completo: TODAS las claves de localStorage que usa la app, independiente de Firebase ──
 const BACKUP_KEYS = ['txs','plans','inversiones','tc','cuentas','ct_movimientos','gastos_tarjetas',
-  'tarjetas_cfg','categorias_consumo','tarjetas_conciliadas','debitos_recurrentes','inv_movimientos','cl_font_preset','grupos_categorias','recurrentes_excluidos','tc_contribs_presupuesto','transf_favoritas','reasignaciones'];
+  'tarjetas_cfg','categorias_consumo','tarjetas_conciliadas','debitos_recurrentes','inv_movimientos','cl_font_preset','grupos_categorias','recurrentes_excluidos','tc_contribs_presupuesto','transf_favoritas','reasignaciones','snapshots_fci'];
 
 function descargarBackupCompleto() {
   try {
@@ -7605,6 +7614,111 @@ function diagnosticarAncho() {
   `;
 }
 
+
+// ══════════════════════════════════════════════════════════════════════
+// SNAPSHOT MENSUAL DE FCI
+// El saldo de una cuenta es un valor vivo que se pisa con cada movimiento: sabemos cuánto
+// hay hoy, pero no cuánto había al cierre de agosto. Para ver evolución real de los fondos
+// hace falta guardar una foto por mes.
+//
+// Solo cuentas tipo 'fci': las transaccionales (sueldo, billeteras, efectivo) tienen saldos
+// bajos y volátiles por optimización de fondos, y su cierre no dice nada útil.
+//
+// Cómo funciona: cada vez que se abre la app se guarda/actualiza la foto DEL MES EN CURSO.
+// Cuando el mes cambia, la última foto tomada queda como cierre de ese mes, sin necesidad
+// de que la app esté abierta justo el día 30. Se registra también la fecha real de captura
+// para saber qué tan cerca del cierre quedó.
+// ══════════════════════════════════════════════════════════════════════
+function getSnapshotsFci() {
+  return DB.get('snapshots_fci', []);
+}
+
+function capturarSnapshotFci() {
+  const cuentas = getCuentas().filter(c => c.tipo === 'fci');
+  if (cuentas.length === 0) return;
+
+  const hoy = hoyLocal();
+  const mes = hoy.slice(0, 7);
+  const items = cuentas.map(c => ({ nombre: c.nombre, moneda: c.moneda, saldo: c.saldo || 0 }));
+  const totalArs = items.filter(i => i.moneda !== 'USD').reduce((s, i) => s + i.saldo, 0);
+  const totalUsd = items.filter(i => i.moneda === 'USD').reduce((s, i) => s + i.saldo, 0);
+
+  const snaps = getSnapshotsFci();
+  const idx = snaps.findIndex(s => s.mes === mes);
+  const foto = { mes, capturadoEl: hoy, items, totalArs, totalUsd };
+
+  if (idx >= 0) {
+    // Mismo mes: se refresca la foto. Solo se guarda si algo cambió, para no escribir
+    // en cada apertura sin motivo.
+    const prev = snaps[idx];
+    if (prev.totalArs === totalArs && prev.totalUsd === totalUsd && prev.capturadoEl === hoy) return;
+    snaps[idx] = foto;
+  } else {
+    snaps.push(foto);
+  }
+  snaps.sort((a, b) => a.mes.localeCompare(b.mes));
+  DB.set('snapshots_fci', snaps);
+  if (window.FBsave) window.FBsave('snapshots_fci', snaps);
+}
+
+function renderEvolucionFci() {
+  const cont = document.getElementById('evol-fci-body');
+  if (!cont) return;
+  const snaps = getSnapshotsFci();
+
+  if (snaps.length === 0) {
+    cont.innerHTML = '<div style="color:var(--muted);font-size:var(--fs-sm)">Todavía no hay fotos guardadas. Se toma una automáticamente cada vez que abrís la app.</div>';
+    return;
+  }
+
+  const fmtM = (v, moneda) => moneda === 'USD'
+    ? 'U$S ' + (v % 1 === 0 ? v.toLocaleString('es-AR') : v.toFixed(2))
+    : fmt(v);
+
+  const filas = snaps.slice().reverse().map((s, i, arr) => {
+    const prev = arr[i + 1]; // el mes anterior (la lista viene invertida)
+    const difArs = prev ? s.totalArs - prev.totalArs : null;
+    const difUsd = prev ? s.totalUsd - prev.totalUsd : null;
+    const pintar = (d) => d === null ? '' :
+      `<span style="color:${d >= 0 ? 'var(--green)' : 'var(--red)'};font-size:var(--fs-xs)"> ${d >= 0 ? '+' : ''}${fmt(d)}</span>`;
+    return `
+      <div style="padding:9px 0;border-bottom:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+          <div style="font-family:var(--fh);font-weight:700;font-size:var(--fs-sm);text-transform:uppercase">${mesLabel(s.mes)}</div>
+          <div style="font-family:var(--fm);font-size:var(--fs-sm);text-align:right">
+            ${fmt(s.totalArs)}${pintar(difArs)}
+            ${s.totalUsd ? `<br><span style="color:var(--yellow)">${fmtM(s.totalUsd,'USD')}</span>${difUsd ? `<span style="color:${difUsd>=0?'var(--green)':'var(--red)'};font-size:var(--fs-xs)"> ${difUsd>=0?'+':''}${difUsd.toFixed(2)}</span>` : ''}` : ''}
+          </div>
+        </div>
+        <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:3px">
+          ${s.items.filter(x => x.saldo).map(x => `${x.nombre}: ${fmtM(x.saldo, x.moneda)}`).join(' · ') || 'sin saldo'}
+          ${s.capturadoEl !== ultimoDiaDelMes(s.mes) ? ` · foto del ${s.capturadoEl}` : ''}
+        </div>
+      </div>`;
+  }).join('');
+
+  cont.innerHTML = filas + `
+    <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:10px;line-height:1.5">
+      La foto del mes en curso se actualiza sola cada vez que abrís la app; al cambiar de mes,
+      la última tomada queda como cierre. Solo incluye cuentas de tipo FCI.
+    </div>`;
+}
+
+function ultimoDiaDelMes(mes) {
+  const [y, m] = mes.split('-').map(Number);
+  return `${y}-${String(m).padStart(2,'0')}-${String(new Date(y, m, 0).getDate()).padStart(2,'0')}`;
+}
+
+function toggleEvolFci() {
+  const body = document.getElementById('evol-fci-body');
+  const chev = document.getElementById('evol-fci-chevron');
+  if (!body) return;
+  const abierto = body.style.display !== 'none';
+  body.style.display = abierto ? 'none' : 'block';
+  if (chev) chev.textContent = abierto ? '▶' : '▼';
+  if (!abierto) renderEvolucionFci();
+}
+
 // ── Actualizar selector de medios de pago desde cuentas ──
 function updateMediosDePago() {
   const sel = document.getElementById('tx-medio');
@@ -11857,6 +11971,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Unificar categorías de tarjeta en Presupuesto (BBVA MASTER+VISA → "TC BBVA", MUNI BLACK → "TC Municipal")
   try { migrarCategoriasTarjetaPresupuesto(); } catch (e) { console.warn('migrarCategoriasTarjetaPresupuesto error:', e); }
+
+  // Foto mensual de los FCI: se toma/actualiza en cada arranque para poder ver evolución
+  try { capturarSnapshotFci(); } catch (e) { console.warn('capturarSnapshotFci error:', e); }
 
   // Init overview (KPIs primero, antes que los charts)
   updateOverview();
