@@ -7513,88 +7513,89 @@ async function borrarReasignacion(id) {
 function diagnosticarAncho() {
   const out = document.getElementById('diag-resultado');
   const anchoVentana = document.documentElement.clientWidth;
-  const anchoDoc = Math.max(document.documentElement.scrollWidth, document.body.scrollWidth);
-  const desborde = anchoDoc - anchoVentana;
 
-  const culpables = [];
-  document.querySelectorAll('body *').forEach(el => {
-    // Solo lo visible: un elemento oculto no puede estar estirando la página
-    if (!el.offsetParent && el.tagName !== 'BODY') return;
-    const r = el.getBoundingClientRect();
-    if (r.width === 0 && r.height === 0) return;
-    // El elemento se sale por derecha o por izquierda del viewport
-    const excedeDerecha = Math.round(r.right - anchoVentana);
-    const excedeIzquierda = Math.round(-r.left);
-    const exceso = Math.max(excedeDerecha, excedeIzquierda);
-    if (exceso <= 1) return;
-    // position:fixed no forma parte del flujo y no estira el documento
-    if (getComputedStyle(el).position === 'fixed') return;
-    // Si algún ancestro scrollea en horizontal (el nav de pestañas, una tabla ancha),
-    // que un hijo quede fuera de vista es scroll normal, no desborde de la página.
-    let p = el.parentElement, dentroDeScroll = false;
-    while (p && p !== document.body) {
-      const ox = getComputedStyle(p).overflowX;
-      if (ox === 'auto' || ox === 'scroll') { dentroDeScroll = true; break; }
-      p = p.parentElement;
-    }
-    if (dentroDeScroll) return;
-    culpables.push({ el, exceso, ancho: Math.round(r.width), izq: Math.round(r.left) });
+  // Recorre TODAS las pestañas, no solo la visible: como las ocultas tienen display:none,
+  // medir desde Config solo medía Config. Se activa cada una un instante, se mide y se
+  // restaura el estado original, sin que el usuario vea el cambio.
+  const pages = Array.from(document.querySelectorAll('.page'));
+  const activaOriginal = pages.find(p => p.classList.contains('active'));
+  const informes = [];
+
+  pages.forEach(page => {
+    const eraActiva = page.classList.contains('active');
+    if (!eraActiva) page.classList.add('active');
+
+    const culpables = [];
+    page.querySelectorAll('*').forEach(el => {
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 && r.height === 0) return;
+      const cs = getComputedStyle(el);
+      if (cs.position === 'fixed' || cs.display === 'none') return;
+      // Dentro de un contenedor que scrollea en horizontal, salirse es normal
+      let anc = el.parentElement, enScroll = false;
+      while (anc && anc !== document.body) {
+        const ox = getComputedStyle(anc).overflowX;
+        if (ox === 'auto' || ox === 'scroll') { enScroll = true; break; }
+        anc = anc.parentElement;
+      }
+      if (enScroll) return;
+      const exceso = Math.round(Math.max(r.right - anchoVentana, -r.left));
+      if (exceso <= 1) return;
+      culpables.push({ el, exceso, ancho: Math.round(r.width), izq: Math.round(r.left) });
+    });
+
+    culpables.sort((a, b) => b.exceso - a.exceso);
+    // Quedarse con el más profundo de cada cadena: los padres solo heredan el problema
+    const propios = culpables.filter(c =>
+      !culpables.some(o => o !== c && c.el.contains(o.el) && Math.abs(o.exceso - c.exceso) <= 2));
+
+    // Ancho real que ocupa el contenido de la pestaña (para detectar bloques angostos)
+    const hijos = Array.from(page.children).filter(c => c.getBoundingClientRect().width > 0);
+    const anchos = hijos.map(c => Math.round(c.getBoundingClientRect().width));
+    const minA = anchos.length ? Math.min(...anchos) : 0;
+    const maxA = anchos.length ? Math.max(...anchos) : 0;
+
+    informes.push({
+      nombre: (page.id || '').replace('page-', '') || '?',
+      propios, minA, maxA, desparejo: (maxA - minA) > 2,
+    });
+
+    if (!eraActiva) page.classList.remove('active');
   });
 
-  // El que importa es el más "profundo" que desborda: los padres solo lo heredan.
-  // Se ordena por exceso y se muestran los peores, sin sus ancestros cuando ya está el hijo.
-  culpables.sort((a, b) => b.exceso - a.exceso);
-  const sinAncestros = culpables.filter(c =>
-    !culpables.some(o => o !== c && c.el.contains(o.el) && Math.abs(o.exceso - c.exceso) <= 2)
-  );
+  if (activaOriginal) activaOriginal.classList.add('active');
 
   const describir = (el) => {
-    let s = el.tagName.toLowerCase();
-    if (el.id) s += '#' + el.id;
+    let s2 = el.tagName.toLowerCase();
+    if (el.id) s2 += '#' + el.id;
     if (el.className && typeof el.className === 'string') {
-      const c = el.className.trim().split(/\s+/).slice(0, 3).join('.');
-      if (c) s += '.' + c;
+      const c = el.className.trim().split(/\s+/).slice(0, 2).join('.');
+      if (c) s2 += '.' + c;
     }
-    const txt = (el.textContent || '').trim().slice(0, 28);
-    return s + (txt ? ` — "${txt}"` : '');
+    const txt = (el.textContent || '').trim().slice(0, 24);
+    return s2 + (txt ? ` — "${txt}"` : '');
   };
 
-  // Medición directa de los contenedores estructurales: si el header o el nav son más
-  // angostos que la ventana, la barra superior se ve "cortada" aunque no haya desborde.
-  const medir = (sel) => {
-    const el = document.querySelector(sel);
-    if (!el) return `${sel}: (no existe)`;
-    const r = el.getBoundingClientRect();
-    const cs = getComputedStyle(el);
-    const alerta = Math.abs(r.width - anchoVentana) > 2 ? ' ⚠' : ' ✓';
-    return `${sel}: ancho ${Math.round(r.width)} · izq ${Math.round(r.left)} · scrollW ${el.scrollWidth}${alerta}`;
-  };
-  const estructura = ['header', 'nav', '.page:not([style*="display:none"])', 'body']
-    .map(medir).join('<br>');
+  const conProblema = informes.filter(i => i.propios.length > 0 || i.desparejo);
 
-  const lista = sinAncestros.slice(0, 12);
   out.innerHTML = `
     <div style="background:var(--s2);border-radius:8px;padding:10px;margin-bottom:10px;font-family:var(--fm);font-size:var(--fs-sm)">
       <div>ventana: <b>${anchoVentana}px</b></div>
-      <div>documento: <b>${anchoDoc}px</b></div>
-      <div style="color:${desborde > 1 ? 'var(--red)' : 'var(--green)'}">desborde: <b>${desborde}px</b>${desborde > 1 ? '' : ' ✓ sin desborde'}</div>
-      <div style="color:var(--muted);margin-top:4px">zoom: ${(window.visualViewport ? window.visualViewport.scale : 1).toFixed(2)}× · DPR ${window.devicePixelRatio}</div>
+      <div style="color:var(--muted);margin-top:4px">${informes.length} pestañas medidas · zoom ${(window.visualViewport ? window.visualViewport.scale : 1).toFixed(2)}×</div>
     </div>
-    <div style="background:var(--s2);border-radius:8px;padding:10px;margin-bottom:10px;font-family:var(--fm);font-size:var(--fs-xs);line-height:1.7;word-break:break-all">
-      <div style="color:var(--muted);margin-bottom:4px">CONTENEDORES</div>${estructura}
-    </div>
-    ${lista.length === 0
-      ? '<div style="color:var(--green);font-size:var(--fs-sm)">✓ Ningún elemento se sale del ancho en esta pestaña.</div>'
-      : `<div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:6px">${sinAncestros.length} elemento(s) desbordan. Los peores:</div>` +
-        lista.map(c => `
-          <div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:var(--fs-xs);font-family:var(--fm);word-break:break-all">
-            <span style="color:var(--red);font-weight:700">+${c.exceso}px</span>
-            <span style="color:var(--muted)"> (ancho ${c.ancho}, izq ${c.izq})</span><br>
-            <span style="color:var(--text)">${describir(c.el)}</span>
+    ${conProblema.length === 0
+      ? '<div style="color:var(--green);font-size:var(--fs-sm)">✓ Ninguna pestaña tiene bloques desbordados ni desparejos.</div>'
+      : conProblema.map(i => `
+          <div style="margin-bottom:12px">
+            <div style="font-family:var(--fh);font-weight:700;font-size:var(--fs-sm);text-transform:uppercase;color:var(--red)">${i.nombre}</div>
+            <div style="font-size:var(--fs-xs);color:var(--muted);font-family:var(--fm)">bloques: de ${i.minA}px a ${i.maxA}px${i.desparejo ? ' ⚠ desparejos' : ''}</div>
+            ${i.propios.slice(0, 5).map(c => `
+              <div style="padding:5px 0;border-bottom:1px solid var(--border);font-size:var(--fs-xs);font-family:var(--fm);word-break:break-all">
+                <span style="color:var(--red);font-weight:700">+${c.exceso}px</span>
+                <span style="color:var(--muted)"> (ancho ${c.ancho}, izq ${c.izq})</span><br>${describir(c.el)}
+              </div>`).join('')}
           </div>`).join('')}
-    <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:10px">
-      Mide la pestaña que está abierta. Para revisar otra, andá a esa pestaña, volvé acá y corré de nuevo.
-    </div>`;
+  `;
 }
 
 // ── Actualizar selector de medios de pago desde cuentas ──
