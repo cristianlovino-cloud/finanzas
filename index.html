@@ -10207,6 +10207,21 @@ function renderAnalisisCartera() {
   // EVALUAR EN SERIO: alto riesgo + rinde mal + posición GRANDE → no es venta automática, pesa la tesis y el promedio de entrada
   // VIGILAR      : alto riesgo + rinde bien + excede tolerancia global → candidato a tomar ganancia parcial
   // OK / MANTENER: el resto
+  // ── Contexto por ticker ──
+  // Las alertas evalúan cada LOTE por separado (es lo correcto: dice en qué broker entraste
+  // caro). Pero un lote chico en pérdida puede pertenecer a un activo que en conjunto gana,
+  // y "ROTAR META -11%" es engañoso si META en total rinde +16% y ese lote es el 1,5%.
+  // Acá se calcula el agregado por ticker para mostrarlo junto a la alerta.
+  const porTickerCtx = {};
+  conRiesgo.forEach(i => {
+    const t = (i.ticker || i.activo || '').toUpperCase();
+    if (!t) return;
+    if (!porTickerCtx[t]) porTickerCtx[t] = { valor: 0, costo: 0, lotes: 0 };
+    porTickerCtx[t].valor += parseFloat(i.ars) || 0;
+    porTickerCtx[t].costo += parseFloat(i.costo) || 0;
+    porTickerCtx[t].lotes++;
+  });
+
   const conAccion = conRiesgo.map(i => {
     const rend     = rendimientoReal(i); // derivado: el campo guardado se desactualiza
     const pct      = i.ars / total;
@@ -10233,7 +10248,21 @@ function renderAnalisisCartera() {
       accion = 'MANTENER'; color = 'var(--muted)';
       motivo = `Riesgo ${i.riesgo}, rindiendo ${(rend*100).toFixed(0)}%.`;
     }
-    return { ...i, accion, motivo, color, pct, esGrande, precioProm, precioAct };
+    // Contexto: ¿este lote representa al activo, o es una porción menor de algo que va bien?
+    const t = (i.ticker || i.activo || '').toUpperCase();
+    const ctx = porTickerCtx[t];
+    let contexto = null;
+    if (ctx && ctx.lotes > 1 && ctx.costo > 0) {
+      const rendTicker = (ctx.valor - ctx.costo) / ctx.costo;
+      const pesoLote = ctx.valor > 0 ? (parseFloat(i.ars) || 0) / ctx.valor : 0;
+      // Solo vale aclararlo cuando el lote y el conjunto cuentan historias distintas
+      const discrepa = (rend < 0 && rendTicker >= 0) || Math.abs(rendTicker - rend) > 0.10;
+      if (discrepa) {
+        contexto = `${t} en total: ${rendTicker >= 0 ? '+' : ''}${(rendTicker*100).toFixed(0)}% ` +
+                   `(${ctx.lotes} lotes) · este lote es el ${(pesoLote*100).toFixed(0)}% de la posición`;
+      }
+    }
+    return { ...i, accion, motivo, color, pct, esGrande, precioProm, precioAct, contexto };
   }).sort((a,b) => {
     const orden = { 'EVALUAR EN SERIO':0, ROTAR:1, VIGILAR:2, 'OK por ahora':3, MANTENER:4 };
     return orden[a.accion] - orden[b.accion] || (rendimientoReal(a) - rendimientoReal(b));
@@ -10249,6 +10278,7 @@ function renderAnalisisCartera() {
         <div style="min-width:0">
           <div style="font-weight:600;font-size:var(--fs-md)">${i.activo} <span style="font-size:var(--fs-xs);color:var(--muted);font-weight:400">${badgeRiesgo[i.riesgo]} · ${(i.pct*100).toFixed(1)}% cartera${i.esGrande ? ' · posición grande' : ''}</span></div>
           <div style="font-size:var(--fs-xs);color:var(--muted2);margin-top:2px">${i.motivo}</div>
+          ${i.contexto ? `<div style="font-size:var(--fs-xs);color:var(--blue);margin-top:3px;background:rgba(56,189,248,.08);border-left:2px solid var(--blue);padding:3px 7px;border-radius:0 4px 4px 0">↔ ${i.contexto}</div>` : ''}
           ${i.precioProm != null ? `<div style="font-size:var(--fs-xs);color:var(--muted);margin-top:3px">Promedio entrada: ${fmt(i.precioProm)} · Precio actual: ${fmt(i.precioAct)}${antiguedadPrecio(i)}</div>` : ''}
         </div>
         <div style="text-align:right;flex-shrink:0">
