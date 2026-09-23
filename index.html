@@ -7629,6 +7629,28 @@ function diagnosticarAncho() {
 // de que la app esté abierta justo el día 30. Se registra también la fecha real de captura
 // para saber qué tan cerca del cierre quedó.
 // ══════════════════════════════════════════════════════════════════════
+// ── Rendimiento siempre derivado, nunca leído del campo guardado ──
+// `rend` se persiste para compatibilidad, pero como dato guardado se desincroniza en
+// cuanto cambia el precio. Todo lo que muestre o evalúe rendimiento usa esta función,
+// que lo calcula en el momento a partir del valor actual y el costo.
+// Antigüedad de la cotización: una alerta basada en un precio de hace dos semanas puede
+// estar recomendando rotar algo que ya se dio vuelta. Mejor tenerlo a la vista.
+function antiguedadPrecio(inv) {
+  const ts = inv && inv.precioTs;
+  if (!ts) return '';
+  const dias = Math.floor((Date.now() - ts) / 86400000);
+  if (dias < 2) return '';
+  const color = dias >= 7 ? 'var(--red)' : 'var(--yellow)';
+  return ` · <span style="color:${color}">precio de hace ${dias} días</span>`;
+}
+
+function rendimientoReal(inv) {
+  const costo = parseFloat(inv && inv.costo) || 0;
+  const ars = parseFloat(inv && inv.ars) || 0;
+  if (costo <= 0) return 0;
+  return (ars - costo) / costo;
+}
+
 function getSnapshotsFci() {
   return DB.get('snapshots_fci', []);
 }
@@ -10186,7 +10208,7 @@ function renderAnalisisCartera() {
   // VIGILAR      : alto riesgo + rinde bien + excede tolerancia global → candidato a tomar ganancia parcial
   // OK / MANTENER: el resto
   const conAccion = conRiesgo.map(i => {
-    const rend     = i.rend || 0;
+    const rend     = rendimientoReal(i); // derivado: el campo guardado se desactualiza
     const pct      = i.ars / total;
     const esGrande = pct >= UMBRAL_GRANDE;
     const cantidad = i.cantidad || 0;
@@ -10214,7 +10236,7 @@ function renderAnalisisCartera() {
     return { ...i, accion, motivo, color, pct, esGrande, precioProm, precioAct };
   }).sort((a,b) => {
     const orden = { 'EVALUAR EN SERIO':0, ROTAR:1, VIGILAR:2, 'OK por ahora':3, MANTENER:4 };
-    return orden[a.accion] - orden[b.accion] || (a.rend - b.rend);
+    return orden[a.accion] - orden[b.accion] || (rendimientoReal(a) - rendimientoReal(b));
   });
 
   const badgeRiesgo = { alto:'🔴 Alto', medio:'🟡 Medio', bajo:'🟢 Bajo' };
@@ -10227,11 +10249,11 @@ function renderAnalisisCartera() {
         <div style="min-width:0">
           <div style="font-weight:600;font-size:var(--fs-md)">${i.activo} <span style="font-size:var(--fs-xs);color:var(--muted);font-weight:400">${badgeRiesgo[i.riesgo]} · ${(i.pct*100).toFixed(1)}% cartera${i.esGrande ? ' · posición grande' : ''}</span></div>
           <div style="font-size:var(--fs-xs);color:var(--muted2);margin-top:2px">${i.motivo}</div>
-          ${i.precioProm != null ? `<div style="font-size:var(--fs-xs);color:var(--muted);margin-top:3px">Promedio entrada: ${fmt(i.precioProm)} · Precio actual: ${fmt(i.precioAct)}</div>` : ''}
+          ${i.precioProm != null ? `<div style="font-size:var(--fs-xs);color:var(--muted);margin-top:3px">Promedio entrada: ${fmt(i.precioProm)} · Precio actual: ${fmt(i.precioAct)}${antiguedadPrecio(i)}</div>` : ''}
         </div>
         <div style="text-align:right;flex-shrink:0">
           <div style="font-size:var(--fs-sm);font-weight:700;color:${i.color}">${i.accion}</div>
-          <div style="font-size:var(--fs-xs);color:${(i.rend||0)>=0?P.green:P.red}">${(i.rend||0)>=0?'+':''}${((i.rend||0)*100).toFixed(1)}%</div>
+          <div style="font-size:var(--fs-xs);color:${rendimientoReal(i)>=0?P.green:P.red}">${rendimientoReal(i)>=0?'+':''}${(rendimientoReal(i)*100).toFixed(1)}%</div>
         </div>
       </div>`).join('')}
     </div>`;
@@ -10292,6 +10314,7 @@ async function renderInvList() {
         inv.ars = live;
         inv.precioTs = Date.now();
         inv.precioFuente = 'auto';
+        inv.rend = rendimientoReal(inv); // sin esto el rendimiento queda anclado al precio viejo
         updatedPrices = true;
       }
     }
