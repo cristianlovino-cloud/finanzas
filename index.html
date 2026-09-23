@@ -821,6 +821,10 @@ nav::-webkit-scrollbar{display:none}
 
 /* ── GRID ── */
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+/* Los items de una grilla usan min-width:auto, o sea que NO se achican por debajo del
+   ancho mínimo de su contenido: la tarjeta se estira más allá del track y desborda.
+   Con min-width:0 se respeta el ancho de la columna y el contenido se acomoda adentro. */
+.g2>*,.kg>*,.kg2>*,.kg3>*,.g-op>*,.g-inv>*,.g-comp3>*{min-width:0}
 .span2{grid-column:1/-1}
 
 /* ── FORMS ── */
