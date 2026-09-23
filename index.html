@@ -2079,6 +2079,16 @@ nav::-webkit-scrollbar{display:none}
 <div class="page" id="page-config">
   <div style="max-width:600px">
 
+    <!-- DIAGNÓSTICO DE ANCHO (temporal, para depurar el responsive) -->
+    <div class="card" style="margin-bottom:14px;border:1px solid var(--blue)">
+      <div class="ct">🔎 Diagnóstico de ancho</div>
+      <p style="font-size:var(--fs-sm);color:var(--muted2);margin-bottom:10px;line-height:1.5">
+        Mide si algo se sale del ancho de la pantalla en la pestaña que tengas abierta y te dice qué elemento es.
+      </p>
+      <button onclick="diagnosticarAncho()" class="btn btn-g btn-full">Medir esta pestaña</button>
+      <div id="diag-resultado" style="margin-top:12px"></div>
+    </div>
+
     <div class="card" style="margin-bottom:14px;border:1px solid var(--green)">
       <div class="ct">💾 Backup manual (recomendado)</div>
       <p style="font-size:var(--fs-sm);color:var(--muted2);margin-bottom:12px;line-height:1.5">
@@ -7491,6 +7501,75 @@ async function borrarReasignacion(id) {
   renderReasignar();
   renderFlujo();
   showToast('✓ Reasignación deshecha');
+}
+
+
+// ══════════════════════════════════════════════════════════════════════
+// DIAGNÓSTICO DE ANCHO (temporal, para depurar el layout responsive)
+// Recorre el DOM y reporta qué elementos se salen del ancho de la pantalla. Sin esto
+// hay que adivinar cuál desborda a partir de una captura, y cada intento fallido
+// mueve el problema de lugar en vez de resolverlo.
+// ══════════════════════════════════════════════════════════════════════
+function diagnosticarAncho() {
+  const out = document.getElementById('diag-resultado');
+  const anchoVentana = document.documentElement.clientWidth;
+  const anchoDoc = Math.max(document.documentElement.scrollWidth, document.body.scrollWidth);
+  const desborde = anchoDoc - anchoVentana;
+
+  const culpables = [];
+  document.querySelectorAll('body *').forEach(el => {
+    // Solo lo visible: un elemento oculto no puede estar estirando la página
+    if (!el.offsetParent && el.tagName !== 'BODY') return;
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 && r.height === 0) return;
+    // El elemento se sale por derecha o por izquierda del viewport
+    const excedeDerecha = Math.round(r.right - anchoVentana);
+    const excedeIzquierda = Math.round(-r.left);
+    const exceso = Math.max(excedeDerecha, excedeIzquierda);
+    if (exceso <= 1) return;
+    // position:fixed no forma parte del flujo y no estira el documento
+    if (getComputedStyle(el).position === 'fixed') return;
+    culpables.push({ el, exceso, ancho: Math.round(r.width), izq: Math.round(r.left) });
+  });
+
+  // El que importa es el más "profundo" que desborda: los padres solo lo heredan.
+  // Se ordena por exceso y se muestran los peores, sin sus ancestros cuando ya está el hijo.
+  culpables.sort((a, b) => b.exceso - a.exceso);
+  const sinAncestros = culpables.filter(c =>
+    !culpables.some(o => o !== c && c.el.contains(o.el) && Math.abs(o.exceso - c.exceso) <= 2)
+  );
+
+  const describir = (el) => {
+    let s = el.tagName.toLowerCase();
+    if (el.id) s += '#' + el.id;
+    if (el.className && typeof el.className === 'string') {
+      const c = el.className.trim().split(/\s+/).slice(0, 3).join('.');
+      if (c) s += '.' + c;
+    }
+    const txt = (el.textContent || '').trim().slice(0, 28);
+    return s + (txt ? ` — "${txt}"` : '');
+  };
+
+  const lista = sinAncestros.slice(0, 12);
+  out.innerHTML = `
+    <div style="background:var(--s2);border-radius:8px;padding:10px;margin-bottom:10px;font-family:var(--fm);font-size:var(--fs-sm)">
+      <div>ventana: <b>${anchoVentana}px</b></div>
+      <div>documento: <b>${anchoDoc}px</b></div>
+      <div style="color:${desborde > 1 ? 'var(--red)' : 'var(--green)'}">desborde: <b>${desborde}px</b>${desborde > 1 ? '' : ' ✓ sin desborde'}</div>
+      <div style="color:var(--muted);margin-top:4px">zoom: ${(window.visualViewport ? window.visualViewport.scale : 1).toFixed(2)}× · DPR ${window.devicePixelRatio}</div>
+    </div>
+    ${lista.length === 0
+      ? '<div style="color:var(--green);font-size:var(--fs-sm)">✓ Ningún elemento se sale del ancho en esta pestaña.</div>'
+      : `<div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:6px">${sinAncestros.length} elemento(s) desbordan. Los peores:</div>` +
+        lista.map(c => `
+          <div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:var(--fs-xs);font-family:var(--fm);word-break:break-all">
+            <span style="color:var(--red);font-weight:700">+${c.exceso}px</span>
+            <span style="color:var(--muted)"> (ancho ${c.ancho}, izq ${c.izq})</span><br>
+            <span style="color:var(--text)">${describir(c.el)}</span>
+          </div>`).join('')}
+    <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:10px">
+      Mide la pestaña que está abierta. Para revisar otra, andá a esa pestaña, volvé acá y corré de nuevo.
+    </div>`;
 }
 
 // ── Actualizar selector de medios de pago desde cuentas ──
