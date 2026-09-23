@@ -7529,6 +7529,15 @@ function diagnosticarAncho() {
     if (exceso <= 1) return;
     // position:fixed no forma parte del flujo y no estira el documento
     if (getComputedStyle(el).position === 'fixed') return;
+    // Si algún ancestro scrollea en horizontal (el nav de pestañas, una tabla ancha),
+    // que un hijo quede fuera de vista es scroll normal, no desborde de la página.
+    let p = el.parentElement, dentroDeScroll = false;
+    while (p && p !== document.body) {
+      const ox = getComputedStyle(p).overflowX;
+      if (ox === 'auto' || ox === 'scroll') { dentroDeScroll = true; break; }
+      p = p.parentElement;
+    }
+    if (dentroDeScroll) return;
     culpables.push({ el, exceso, ancho: Math.round(r.width), izq: Math.round(r.left) });
   });
 
