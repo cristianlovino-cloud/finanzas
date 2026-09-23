@@ -804,7 +804,10 @@ nav::-webkit-scrollbar{display:none}
 .g-comp3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;align-items:center}
 @media(max-width:560px){
   .g-op,.g-inv{grid-template-columns:1fr 1fr}
-  .g-comp3{grid-template-columns:1fr;gap:8px}
+  /* Apiladas en una columna, las alineaciones pensadas para 3 columnas (izquierda,
+     centro, derecha) quedan escalonadas. En vertical van todas a la izquierda. */
+  .g-comp3{grid-template-columns:1fr;gap:10px}
+  .g-comp3>*{text-align:left !important}
 }
 @media(max-width:560px){.tipo-grid{grid-template-columns:1fr 1fr}}
 .kpi{background:var(--s1);border:1px solid var(--border);border-radius:var(--r);padding:16px 18px;position:relative;overflow:hidden;transition:border-color .2s}
