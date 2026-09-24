@@ -5198,30 +5198,42 @@ function aplicarDebitosRecurrentes(mes) {
       const hoyStr = hoyLocal();
 
       periodosTarjeta.forEach(p => {
-        // Probar el día del recurrente tanto en el mes de inicio como en el de cierre del
-        // período (puede cruzar de un mes calendario a otro).
-        const mesesCandidatos = [p.inicio.slice(0,7), p.cierre.slice(0,7)];
-        let fechaEncontrada = null;
-        for (const mesCandidato of mesesCandidatos) {
-          const diaSeguro = Math.min(r.diaDelMes || 1, new Date(parseInt(mesCandidato.slice(0,4)), parseInt(mesCandidato.slice(5,7)), 0).getDate());
-          const fechaProbable = mesCandidato + '-' + String(diaSeguro).padStart(2,'0');
-          if (fechaProbable >= p.inicio && fechaProbable <= p.cierre) { fechaEncontrada = fechaProbable; break; }
+        // Probar el día del recurrente en TODOS los meses calendario que toca el período.
+        // Antes se probaban solo el mes de inicio y el de cierre, así que un período largo
+        // (ej. 28/08 → 01/10, que fija el banco) se saltaba septiembre entero y los
+        // recurrentes de ese mes no se insertaban nunca.
+        const mesesCandidatos = [];
+        let cursor = p.inicio.slice(0, 7);
+        const mesFin = p.cierre.slice(0, 7);
+        while (cursor <= mesFin && mesesCandidatos.length < 6) { // tope por si un período viniera mal cargado
+          mesesCandidatos.push(cursor);
+          let [cy, cm] = cursor.split('-').map(Number);
+          cm++; if (cm > 12) { cm = 1; cy++; }
+          cursor = cy + '-' + String(cm).padStart(2, '0');
         }
-        if (!fechaEncontrada) return; // el día del recurrente no cae en este período específico
-        if (fechaEncontrada > hoyStr) return; // todavía no llegó la fecha
-        if (excluidos.has(r.id + '|' + p.cierre)) return; // lo borraste a mano — no se recrea
 
-        const yaExisteEnTarjetas = gastosTarjetas.some(g =>
-          g.recurrenteId === r.id && periodoDeGasto(tarjetaDelRec, g.fecha) === p.cierre
-        );
-        if (yaExisteEnTarjetas) return;
+        // Un período de más de un mes puede contener DOS vencimientos del mismo recurrente
+        // (ej. día 30 dentro de 28/08 → 01/10 cae el 30/08 y el 30/09), y el banco los
+        // cobra los dos. Por eso se insertan todas las ocurrencias, no solo la primera.
+        mesesCandidatos.forEach(mesCandidato => {
+          const diaSeguro = Math.min(r.diaDelMes || 1, new Date(parseInt(mesCandidato.slice(0,4)), parseInt(mesCandidato.slice(5,7)), 0).getDate());
+          const fecha = mesCandidato + '-' + String(diaSeguro).padStart(2,'0');
+          if (fecha < p.inicio || fecha > p.cierre) return; // no cae en este período
+          if (fecha > hoyStr) return;                        // todavía no llegó la fecha
+          if (excluidos.has(r.id + '|' + p.cierre)) return;  // lo borraste a mano — no se recrea
 
-        gastosTarjetas.push({
-          id: 'gt_rec_' + r.id + '_' + p.cierre,
-          tarjetaId: r.tarjetaId, fecha: fechaEncontrada, tipo: (r.categoria || r.nombre), monto: r.monto, moneda: r.moneda || 'ARS',
-          cargadoPor: 'Recurrente automático', ts: Date.now(), recurrenteId: r.id,
+          // Deduplicación por fecha exacta: identifica cada vencimiento, no el período
+          // entero, que es lo que impedía insertar la segunda ocurrencia.
+          const yaExiste = gastosTarjetas.some(g => g.recurrenteId === r.id && g.fecha === fecha);
+          if (yaExiste) return;
+
+          gastosTarjetas.push({
+            id: 'gt_rec_' + r.id + '_' + fecha,
+            tarjetaId: r.tarjetaId, fecha, tipo: (r.categoria || r.nombre), monto: r.monto, moneda: r.moneda || 'ARS',
+            cargadoPor: 'Recurrente automático', ts: Date.now(), recurrenteId: r.id,
+          });
+          huboCambiosTarjetas = true;
         });
-        huboCambiosTarjetas = true;
       });
       return;
     }
