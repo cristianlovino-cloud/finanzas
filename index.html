@@ -7057,6 +7057,16 @@ function etiquetaTarjetaConSaldo(t) {
 // ══════════════════════════════════════════════════════════════════════
 let _concilDatos = null; // resultado del último cruce, para que los botones operen sobre él
 
+// A quién se le imputan los gastos que se cargan desde el resumen. El detalle del banco no
+// dice quién hizo cada consumo, así que por defecto iban todos al titular; con esto se elige
+// antes de cargar, en bloque o fila por fila.
+let _concilQuienDefault = 'Cris';
+
+function concilSetQuienDefault(quien) {
+  _concilQuienDefault = quien;
+  concilRenderResultado(); // refresca los selectores de cada fila
+}
+
 function toggleConcilBanco() {
   const body = document.getElementById('concil-body');
   const chev = document.getElementById('concil-chevron');
@@ -7301,6 +7311,14 @@ function concilRenderResultado() {
 
     ${d.coinciden.length ? `<div style="font-size:var(--fs-xs);color:var(--green);margin-top:10px">✓ ${d.coinciden.length} movimientos coinciden</div>` : ''}
 
+    ${d.faltan.length ? `
+      <div style="display:flex;align-items:center;gap:8px;margin-top:12px;padding:8px 10px;background:var(--s2);border-radius:8px">
+        <span style="font-size:var(--fs-xs);color:var(--muted)">Cargar todo como</span>
+        <select onchange="concilSetQuienDefault(this.value)" class="fi" style="width:auto;flex:0 0 auto;padding:4px 8px;font-size:var(--fs-xs)">
+          ${['Cris','Lara','Emma'].map(q => `<option value="${q}" ${q === _concilQuienDefault ? 'selected' : ''}>${q}</option>`).join('')}
+        </select>
+        <span style="font-size:var(--fs-xs);color:var(--muted)">— podés cambiarlo fila por fila</span>
+      </div>` : ''}
     ${bloque('➕ En el banco, no cargado', 'var(--blue)', d.faltan, (b, i) => `
       <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)">
         <div style="flex:1;min-width:0">
@@ -7308,6 +7326,9 @@ function concilRenderResultado() {
           <div style="font-size:var(--fs-xs);color:var(--muted)">${b.fecha}</div>
         </div>
         <div style="font-family:var(--fm);font-size:var(--fs-sm);flex-shrink:0">${b.usdK ? 'U$S ' + b.usdK.toFixed(2) : fmt(b.k)}</div>
+        <select id="concil-quien-${d.faltan.indexOf(b)}" class="fi" style="width:74px;flex-shrink:0;padding:3px 6px;font-size:var(--fs-xs)">
+          ${['Cris','Lara','Emma'].map(q => `<option value="${q}" ${q === _concilQuienDefault ? 'selected' : ''}>${q}</option>`).join('')}
+        </select>
         <button onclick="concilCargarFaltante(${d.faltan.indexOf(b)})" style="background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.3);color:var(--blue);border-radius:5px;padding:4px 9px;font-size:var(--fs-xs);font-weight:700;cursor:pointer;flex-shrink:0">Cargar</button>
       </div>`)}
 
@@ -7351,6 +7372,8 @@ async function concilCargarFaltante(i) {
   const b = d && d.faltan[i];
   if (!b) return;
   const esUsd = b.usdK > 0 && b.ars === 0;
+  // Se lee ANTES de tocar el DOM: al re-renderizar, el selector de esta fila deja de existir
+  const quien = (document.getElementById('concil-quien-' + i) || {}).value || _concilQuienDefault;
   const gastos = getGastosTarjetas();
   gastos.push({
     id: 'gt_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5),
@@ -7359,7 +7382,7 @@ async function concilCargarFaltante(i) {
     tipo: b.desc,
     monto: esUsd ? b.usdK : Math.round(b.k),
     moneda: esUsd ? 'USD' : 'ARS',
-    cargadoPor: 'Cris',
+    cargadoPor: quien,
     ts: Date.now(),
     notas: 'Importado del detalle del banco',
   });
@@ -7368,7 +7391,7 @@ async function concilCargarFaltante(i) {
   d.totalAppArs += esUsd ? 0 : Math.round(b.k);
   concilRenderResultado();
   renderGastosTarjetas();
-  showToast(`✓ Cargado: ${b.desc}`);
+  showToast(`✓ ${b.desc} → ${quien}`);
 }
 
 // Reemplaza el monto de la app por el del banco (el banco es la fuente de verdad).
