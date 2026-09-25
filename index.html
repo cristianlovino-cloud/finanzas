@@ -835,6 +835,22 @@ nav::-webkit-scrollbar{display:none}
 .field label{display:block;font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px}
 .fi{width:100%;background:var(--s2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-family:var(--fh);font-size:var(--fs-md);padding:9px 12px;outline:none;transition:border-color .2s;-webkit-appearance:none}
 .fi:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(34,211,160,.06)}
+/* -webkit-appearance:none en .fi estaba anulando el control nativo también en los campos
+   de fecha y hora, y en Chrome de Android eso desactiva el ícono que abre el calendario:
+   el campo se veía bien pero no abría el selector. Se les devuelve la apariencia nativa
+   y se fuerza el indicador visible. */
+input[type="date"].fi,input[type="time"].fi,input[type="month"].fi{
+  -webkit-appearance:none;appearance:none;position:relative;
+}
+input[type="date"].fi::-webkit-calendar-picker-indicator,
+input[type="time"].fi::-webkit-calendar-picker-indicator,
+input[type="month"].fi::-webkit-calendar-picker-indicator{
+  opacity:1;cursor:pointer;
+  /* área de toque amplia: en el celular el ícono solo es muy chico para acertarle */
+  position:absolute;top:0;right:0;width:100%;height:100%;
+  padding:0;margin:0;background:transparent;color:transparent;
+}
+[data-theme="dark"] input[type="date"].fi::-webkit-calendar-picker-indicator{filter:invert(1)}
 .fi select option{background:var(--s2)}
 
 /* ── Dropdown propio (reemplaza el picker nativo del <select>, que el navegador renderiza
@@ -4823,6 +4839,35 @@ function actualizarAlertaConsumo(tarjetaId, campo, valor) {
   if (typeof renderAlertasConsumoBanner === 'function') renderAlertasConsumoBanner();
 }
 
+// Suma de los recurrentes configurados que todavía NO vencieron dentro del período.
+// Son plata que ya sabemos que va a entrar al resumen, así que la proyección los cuenta
+// desde el principio en vez de irlos descubriendo a medida que caen.
+function recurrentesPendientesEnPeriodo(tarjeta, periodo, gastos) {
+  if (typeof getRecurrentes !== 'function') return 0;
+  const hoyStr = hoyLocal();
+  let total = 0;
+  getRecurrentes().forEach(r => {
+    if (r.tarjetaId !== tarjeta.id) return;
+    if ((r.moneda || 'ARS') === 'USD') return; // el umbral se mide en pesos
+    // Mismos meses candidatos que usa la inserción de recurrentes
+    let cursor = periodo.inicio.slice(0, 7);
+    const mesFin = periodo.cierre.slice(0, 7);
+    let guarda = 0;
+    while (cursor <= mesFin && guarda++ < 6) {
+      const y = +cursor.slice(0,4), m = +cursor.slice(5,7);
+      const dia = Math.min(r.diaDelMes || 1, new Date(y, m, 0).getDate());
+      const fecha = cursor + '-' + String(dia).padStart(2,'0');
+      if (fecha >= periodo.inicio && fecha <= periodo.cierre && fecha > hoyStr) {
+        // Solo si no está ya cargado (si ya está, lo cuenta fijosDelPeriodo)
+        if (!gastos.some(g => g.recurrenteId === r.id && g.fecha === fecha)) total += (r.monto || 0);
+      }
+      let nm = m + 1, ny = y; if (nm > 12) { nm = 1; ny++; }
+      cursor = ny + '-' + String(nm).padStart(2, '0');
+    }
+  });
+  return total;
+}
+
 function calcularAlertasConsumo() {
   const tarjetas = getTarjetas().filter(t => t.alertaConsumo && t.alertaConsumo.activa);
   if (tarjetas.length === 0) return [];
@@ -4856,20 +4901,45 @@ function calcularAlertasConsumo() {
     const cierreD = new Date(actual.cierre + 'T00:00:00');
     const diasTotales = Math.max(1, Math.round((cierreD - inicioD) / 86400000) + 1);
     const diasTranscurridos = Math.min(diasTotales, Math.max(1, Math.round((hoy - inicioD) / 86400000) + 1));
-    const proyeccionLineal = gastoActual * (diasTotales / diasTranscurridos);
+
+    // ── Proyección en dos partes ──
+    // Los recurrentes y las cuotas son montos CONOCIDOS y que ocurren una sola vez en el
+    // período: extrapolarlos como si se repitieran día a día es lo que inflaba la cifra
+    // (un débito del día 1 se multiplicaba por todo el mes). Se suman enteros, una vez.
+    // Solo el consumo variable —el que sí depende del ritmo diario— se proyecta.
+    const esConocido = (g) => !!(g.recurrenteId || g.compraId || g.esCuotaEnCurso ||
+                                 g.cargadoPor === 'Recurrente automático');
+    const gastosPeriodo = gastos.filter(g =>
+      g.tarjetaId === t.id && g.moneda !== 'USD' && g.fecha >= actual.inicio && g.fecha <= actual.cierre);
+
+    // Fijos del período COMPLETO, incluyendo los que todavía no vencieron: ya sabemos que
+    // van a caer, así que la proyección no tiene por qué esperarlos.
+    const fijosDelPeriodo = gastosPeriodo.filter(esConocido).reduce((s, g) => s + (g.monto || 0), 0);
+    const fijosPorVenir = (typeof recurrentesPendientesEnPeriodo === 'function')
+      ? recurrentesPendientesEnPeriodo(t, actual, gastos) : 0;
+
+    const variableActual = gastosPeriodo.filter(g => !esConocido(g)).reduce((s, g) => s + (g.monto || 0), 0);
+    const variableProyectado = variableActual * (diasTotales / diasTranscurridos);
+
+    const proyeccionLineal = fijosDelPeriodo + fijosPorVenir + variableProyectado;
     // La proyección lineal asume gasto parejo día a día, pero con tarjeta no es así — cuotas y
     // recurrentes caen en fechas fijas, no repartidas. Si algo grande cae temprano en el
     // período, la lineal lo extrapola como si se repitiera todo el mes y dispara un número
     // irreal. Se mezcla con el promedio histórico (si existe), dándole más peso a la lineal
     // recién a medida que avanza el período — al principio del mes pesa más el promedio,
     // que es un piso más estable.
+    // El amortiguado se aplica SIEMPRE, también con tope fijo. Antes el tope fijo usaba la
+    // proyección lineal cruda, y a los 2 días de empezar un período multiplicaba por 14
+    // lo poco gastado: unos recurrentes del día 1 proyectaban un consumo irreal para el mes.
     const pesoLineal = Math.min(1, diasTranscurridos / diasTotales);
-    const proyeccion = !esFijo
-      ? proyeccionLineal * pesoLineal + umbral * (1 - pesoLineal)
-      : proyeccionLineal;
+    const proyeccion = proyeccionLineal * pesoLineal + umbral * (1 - pesoLineal);
 
     const yaSuperado = gastoActual > umbral;
-    const proyectadoSuperado = !yaSuperado && proyeccion > umbral * 1.10; // 10% de margen para no ser ruidoso
+    // Con menos de un cuarto del período transcurrido cualquier proyección es ruido: dos
+    // gastos grandes tempranos no dicen nada sobre cómo va a cerrar el mes. Hasta ahí,
+    // solo se avisa si el tope YA se superó de verdad.
+    const periodoMaduro = (diasTranscurridos / diasTotales) >= 0.25;
+    const proyectadoSuperado = !yaSuperado && periodoMaduro && proyeccion > umbral * 1.10;
 
     if (!yaSuperado && !proyectadoSuperado) return;
 
