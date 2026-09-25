@@ -5855,6 +5855,7 @@ async function ownCargarGastoTarjeta() {
 function agruparGastosPorPeriodo() {
   const tarjetas = getTarjetas();
   const hoyISO = hoyLocal();
+  const conciliados = DB.get('tarjetas_conciliadas', {}); // no reubicar dentro de un período ya cerrado
   // Excluir recurrentes con fecha futura — no mostrar hasta que llegue su día
   const gastosFamilia = getGastosTarjetas().filter(g =>
     !g.recurrenteId || g.fecha <= hoyISO
@@ -5877,8 +5878,20 @@ function agruparGastosPorPeriodo() {
       cierre = resolverCierreCuota(tarjeta, g);
       if (!cierre) { esperando.push({ g, tarjeta }); return; }
     } else if (esCuota) {
-      // Cuotas viejas: g.fecha YA ES el cierre del período — se respeta tal cual está
+      // Cuotas viejas: g.fecha ES el cierre del período... cuando la fecha fue calculada
+      // con períodos bien configurados. Las generadas cuando faltaban períodos llevan una
+      // fecha ESTIMADA que no coincide con ningún cierre real (BSF cierra el 22/10 y la
+      // estimación puso 17/10 y 19/10), y como cada fecha distinta abría su propia tarjeta,
+      // aparecían varios "resúmenes en curso" de la misma tarjeta y el mismo mes.
+      // Si la fecha coincide con un cierre real, se usa tal cual (caso normal, sin cambios).
+      // Si no, se la ubica en el período que la contiene, salvo que ese período ya esté
+      // conciliado: ahí se la deja donde está para no alterar un total ya cerrado.
       cierre = g.fecha;
+      const periodosT = periodosOrdenados(tarjeta).filter(p => p.inicio && p.cierre);
+      if (!periodosT.some(p => p.cierre === g.fecha)) {
+        const contiene = periodosT.find(p => g.fecha >= p.inicio && g.fecha <= p.cierre);
+        if (contiene && !conciliados[tarjeta.id + '|' + contiene.cierre]) cierre = contiene.cierre;
+      }
     } else if (g.recurrenteId) {
       // Recurrentes: también van directo por g.fecha (ya filtrados los futuros arriba)
       cierre = periodoDeGasto(tarjeta, g.fecha);
