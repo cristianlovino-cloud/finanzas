@@ -1198,6 +1198,15 @@ input[type="month"].fi::-webkit-calendar-picker-indicator{
   <!-- ── ALERTS BANNER ── -->
   <div id="overview-alerts" style="margin-bottom:14px"></div>
 
+  <!-- ── CONSOLA: una sola consulta con tarjetas + cuentas + inversiones, y acceso a cada tab ── -->
+  <div class="card" style="margin-bottom:14px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <div class="ct" style="margin-bottom:0">🔎 Consulta rápida</div>
+      <button onclick="toggleConsola()" id="consola-toggle" style="background:none;border:1px solid var(--border2);border-radius:12px;padding:3px 10px;font-size:var(--fs-xs);color:var(--muted);cursor:pointer">ocultar</button>
+    </div>
+    <div id="consola-body" style="margin-top:12px"></div>
+  </div>
+
   <!-- ── 50/30/20 ── -->
   <div id="overview-503020" style="margin-bottom:14px;display:none"></div>
   <div id="overview-analisis" style="margin-bottom:14px;display:none"></div>
@@ -8287,6 +8296,219 @@ function updateOverview() {
 
   if (typeof render503020 === 'function') { try { render503020(); } catch(e) { console.warn('render503020 error:', e); } }
   if (typeof renderAnalisisOverview === 'function') { try { renderAnalisisOverview(); } catch(e) { console.warn('renderAnalisisOverview error:', e); } }
+  if (typeof renderConsola === 'function') { try { renderConsola(); } catch(e) { console.warn('renderConsola error:', e); } }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// CONSOLA DE CONSULTA RÁPIDA (Overview)
+// Una sola vista para contestar "¿cómo venimos?": lo que lleva cada tarjeta en el período
+// en curso, el saldo de cada cuenta, el portafolio, y un acceso directo a cada tab para ir
+// al detalle. SOLO LEE: no recalcula, no corrige y no escribe nada — si algo no se puede
+// resolver (una tarjeta sin período configurado, por ejemplo) lo dice y sigue.
+// ARS y USD nunca se suman entre sí: cada moneda lleva su propio total.
+// ══════════════════════════════════════════════════════════════════════
+
+// Navegación a un tab desde cualquier parte, encontrando el botón real de la barra
+// (go() necesita el botón para marcarlo activo).
+function irATab(id) {
+  const btn = Array.from(document.querySelectorAll('nav .nb'))
+    .find(b => (b.getAttribute('onclick') || '').indexOf("go('" + id + "'") !== -1);
+  if (!btn) return;
+  go(id, btn);
+  try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { window.scrollTo(0, 0); }
+}
+
+function fmtUsd(n) {
+  const v = parseFloat(n) || 0;
+  const abs = Math.abs(v);
+  return (v < 0 ? '-' : '') + 'U$S ' + (abs % 1 === 0 ? abs.toLocaleString('es-AR') : abs.toFixed(2));
+}
+
+// fmt() usa Math.abs, así que un saldo negativo pierde el signo. En la consola el signo tiene
+// que estar sí o sí: un rojo sin "-" se lee como plata que hay, no como descubierto.
+function fmtSaldo(n, moneda) {
+  const v = parseFloat(n) || 0;
+  if (moneda === 'USD') return fmtUsd(v);
+  return (v < 0 ? '-' : '') + fmt(v);
+}
+
+function fechaCortaConsola(iso) {
+  if (!iso || String(iso).length < 10) return '—';
+  const p = String(iso).split('-');
+  const MM = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  return p[2] + ' ' + (MM[parseInt(p[1], 10) - 1] || p[1]);
+}
+
+function consolaFila(nombre, sub, valor, color) {
+  return `
+  <div style="display:flex;align-items:baseline;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
+    <div style="flex:1;min-width:0">
+      <div style="font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${nombre}</div>
+      ${sub ? `<div style="font-size:var(--fs-xs);color:var(--muted)">${sub}</div>` : ''}
+    </div>
+    <div style="flex-shrink:0;font-family:var(--fh);font-weight:700;font-size:var(--fs-sm);color:${color || 'var(--text)'};white-space:nowrap;text-align:right">${valor}</div>
+  </div>`;
+}
+
+function consolaSeccion(titulo, tab, filasHtml, totalHtml) {
+  return `
+  <div style="margin-bottom:14px">
+    <div onclick="irATab('${tab}')" style="display:flex;justify-content:space-between;align-items:center;gap:8px;cursor:pointer;padding-bottom:4px">
+      <div style="font-family:var(--fh);font-weight:700;font-size:var(--fs-sm);text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">${titulo}</div>
+      <div style="font-size:var(--fs-xs);color:var(--blue);flex-shrink:0">ver detalle ›</div>
+    </div>
+    ${filasHtml || `<div style="font-size:var(--fs-xs);color:var(--muted2);padding:6px 0">Sin datos cargados</div>`}
+    ${totalHtml || ''}
+  </div>`;
+}
+
+function consolaTotal(etiqueta, valores) {
+  const vs = valores.filter(Boolean);
+  if (!vs.length) return '';
+  return `
+  <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding-top:7px">
+    <div style="font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.04em">${etiqueta}</div>
+    <div style="font-family:var(--fh);font-weight:700;font-size:var(--fs-lg);text-align:right">${vs.join('<span style="color:var(--muted2);font-weight:400"> · </span>')}</div>
+  </div>`;
+}
+
+// ── Tarjetas: lo que lleva cada una en el período EN CURSO ──
+function consolaBloqueTarjetas() {
+  const tarjetas = (typeof getTarjetas === 'function') ? getTarjetas() : [];
+  const conciliados = DB.get('tarjetas_conciliadas', {});
+  let totalArs = 0, totalUsd = 0;
+  const filas = tarjetas.map(t => {
+    let r = null;
+    try { r = resumenPeriodoTarjeta(t.id); } catch (e) { r = null; }
+    if (!r) {
+      const ps = periodosOrdenados(t).filter(p => p.cierre);
+      const ult = ps.length ? ps[ps.length - 1].cierre : null;
+      const aviso = ult ? 'falta el período nuevo — el último cerró ' + fechaCortaConsola(ult)
+                        : 'sin períodos configurados';
+      return consolaFila(t.nombre, aviso, '⚠', 'var(--yellow)');
+    }
+    totalArs += r.ars; totalUsd += r.usd;
+    const montos = [];
+    if (r.ars) montos.push(fmt(r.ars));
+    if (r.usd) montos.push(fmtUsd(r.usd));
+    const cerrado = !!conciliados[t.id + '|' + r.cierre];
+    const sub = 'cierra ' + fechaCortaConsola(r.cierre) + (cerrado ? ' · ✓ conciliado' : '');
+    return consolaFila(t.nombre, sub, montos.length ? montos.join(' · ') : '$0',
+                       montos.length ? 'var(--text)' : 'var(--muted2)');
+  }).join('');
+  const total = consolaTotal('Total período en curso', [
+    totalArs ? `<span style="color:var(--red)">${fmt(totalArs)}</span>` : '',
+    totalUsd ? `<span style="color:var(--yellow)">${fmtUsd(totalUsd)}</span>` : '',
+  ]);
+  return consolaSeccion('💳 Tarjetas', 'tarjetas', filas, total);
+}
+
+// ── Cuentas: saldo de cada una, agrupadas por tipo, cada moneda con su total ──
+function consolaBloqueCuentas() {
+  const cuentas = getCuentas();
+  const orden = [
+    ['banco', 'Bancos'], ['billetera', 'Billeteras'], ['efectivo', 'Efectivo'],
+    ['fci', 'FCI / Fondos'], ['cripto', 'Cripto'],
+  ];
+  const vistos = {};
+  let html = '';
+  orden.forEach(([tipo, label]) => {
+    const grupo = cuentas.filter(c => c.tipo === tipo);
+    if (!grupo.length) return;
+    grupo.forEach(c => { vistos[c.id] = true; });
+    const gArs = grupo.filter(c => c.moneda === 'ARS').reduce((s, c) => s + (parseFloat(c.saldo) || 0), 0);
+    const gUsd = grupo.filter(c => c.moneda === 'USD').reduce((s, c) => s + (parseFloat(c.saldo) || 0), 0);
+    const sub = [gArs ? fmtSaldo(gArs, 'ARS') : '', gUsd ? fmtUsd(gUsd) : ''].filter(Boolean).join(' · ') || '$0';
+    html += `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-top:8px">
+      <div style="font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.04em">${label}</div>
+      <div style="font-size:var(--fs-xs);color:var(--muted)">${sub}</div>
+    </div>`;
+    html += grupo.map(c => {
+      const saldo = parseFloat(c.saldo) || 0;
+      const color = saldo > 0 ? 'var(--green)' : saldo < 0 ? 'var(--red)' : 'var(--muted2)';
+      return consolaFila(c.nombre, '', fmtSaldo(saldo, c.moneda), color);
+    }).join('');
+  });
+  // Cuentas con un tipo fuera de la lista: no se pierden, van al final
+  const resto = cuentas.filter(c => !vistos[c.id]);
+  if (resto.length) {
+    html += `<div style="font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-top:8px">Otras</div>`;
+    html += resto.map(c => {
+      const saldo = parseFloat(c.saldo) || 0;
+      const color = saldo > 0 ? 'var(--green)' : saldo < 0 ? 'var(--red)' : 'var(--muted2)';
+      return consolaFila(c.nombre, c.tipo || '', fmtSaldo(saldo, c.moneda), color);
+    }).join('');
+  }
+  const totArs = cuentas.filter(c => c.moneda === 'ARS').reduce((s, c) => s + (parseFloat(c.saldo) || 0), 0);
+  const totUsd = cuentas.filter(c => c.moneda === 'USD').reduce((s, c) => s + (parseFloat(c.saldo) || 0), 0);
+  const total = consolaTotal('Total en cuentas', [
+    `<span style="color:${totArs >= 0 ? 'var(--green)' : 'var(--red)'}">${fmtSaldo(totArs, 'ARS')}</span>`,
+    totUsd ? `<span style="color:var(--yellow)">${fmtUsd(totUsd)}</span>` : '',
+  ]);
+  return consolaSeccion('◈ Cuentas', 'cuentas', html, total);
+}
+
+// ── Inversiones: portafolio total y por broker, con el rendimiento que sale de los datos ──
+function consolaBloqueInversiones() {
+  const invs = (typeof getInv === 'function') ? getInv() : DB.get('inversiones', []);
+  if (!invs.length) return consolaSeccion('◈ Inversiones', 'inversiones', '', '');
+  const porBroker = {};
+  let totalArs = 0, totalCosto = 0, conCosto = 0;
+  invs.forEach(i => {
+    const ars = parseFloat(i.ars) || 0;
+    const costo = parseFloat(i.costo) || 0;
+    totalArs += ars;
+    if (costo > 0) { totalCosto += costo; conCosto += ars; }
+    const b = i.broker || 'Sin broker';
+    if (!porBroker[b]) porBroker[b] = { ars: 0, n: 0 };
+    porBroker[b].ars += ars;
+    porBroker[b].n += 1;
+  });
+  const filas = Object.entries(porBroker)
+    .sort((a, b) => b[1].ars - a[1].ars)
+    .map(([b, d]) => consolaFila(b, (d.n === 1 ? '1 posición' : d.n + ' posiciones'), fmtK(d.ars), 'var(--purple)'))
+    .join('');
+  const rend = totalCosto > 0 ? (conCosto - totalCosto) / totalCosto : null;
+  const rendHtml = rend == null ? ''
+    : `<span style="color:${rend >= 0 ? 'var(--green)' : 'var(--red)'};font-size:var(--fs-sm)">${fmtp(rend)}</span>`;
+  const total = consolaTotal('Portafolio', [
+    `<span style="color:var(--purple)">${fmtK(totalArs)}</span>`, rendHtml,
+  ]);
+  return consolaSeccion('◈ Inversiones', 'inversiones', filas, total);
+}
+
+// ── Accesos directos a cada tab ──
+function consolaAccesos() {
+  const tabs = [
+    ['cargar', '＋ Cargar'], ['cuentas', '◈ Cuentas'], ['flujo', '⇄ Flujo'],
+    ['presupuesto', '◎ Presupuesto'], ['inversiones', '◈ Inversiones'],
+    ['analisis', '📊 Análisis'], ['tarjetas', '💳 Tarjetas'], ['config', '⚙ Config'],
+  ];
+  return `
+  <div style="display:flex;flex-wrap:wrap;gap:6px;padding-top:10px;border-top:1px solid var(--border)">
+    ${tabs.map(([id, label]) => `<button onclick="irATab('${id}')" style="background:var(--s2);border:1px solid var(--border);border-radius:14px;padding:5px 11px;font-size:var(--fs-xs);color:var(--text);font-family:var(--fm);cursor:pointer;white-space:nowrap">${label}</button>`).join('')}
+  </div>`;
+}
+
+function toggleConsola() {
+  const abierta = localStorage.getItem('cl_consola_abierta') !== '0';
+  localStorage.setItem('cl_consola_abierta', abierta ? '0' : '1');
+  renderConsola();
+}
+
+function renderConsola() {
+  const cont = document.getElementById('consola-body');
+  if (!cont) return;
+  const toggle = document.getElementById('consola-toggle');
+  const abierta = localStorage.getItem('cl_consola_abierta') !== '0';
+  if (toggle) toggle.textContent = abierta ? 'ocultar' : 'ver';
+  if (!abierta) { cont.innerHTML = ''; cont.style.display = 'none'; return; }
+  cont.style.display = 'block';
+  const armar = fn => { try { return fn(); } catch (e) { console.warn('consola:', e); return ''; } };
+  cont.innerHTML = armar(consolaBloqueTarjetas)
+                 + armar(consolaBloqueCuentas)
+                 + armar(consolaBloqueInversiones)
+                 + armar(consolaAccesos);
 }
 
 // ══════════════════════════════════════════════════════
