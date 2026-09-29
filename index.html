@@ -5309,6 +5309,7 @@ function aplicarDebitosRecurrentes(mes) {
           gastosTarjetas.push({
             id: 'gt_rec_' + r.id + '_' + fecha,
             tarjetaId: r.tarjetaId, fecha, tipo: (r.categoria || r.nombre), monto: r.monto, moneda: r.moneda || 'ARS',
+            servicio: (r.nombre || '').trim(), // qué es realmente: Netflix, Spotify, Claude…
             cargadoPor: 'Recurrente automático', ts: Date.now(), recurrenteId: r.id,
           });
           huboCambiosTarjetas = true;
@@ -6024,6 +6025,36 @@ function actualizarPresupuestoTrasConciliar(tarjetaId, cierre, conciliado) {
 // plástico (ej. "BBVA MASTER" y "BBVA VISA" sueltas) en su categoría compartida ("TC BBVA"),
 // sin perder el historial — se suman, no se pisan. Idempotente y guardada bajo flag propio,
 // así corre una sola vez sin importar cuántas veces se recargue la app.
+// ── Backfill: ponerle el nombre del servicio a los recurrentes ya generados ──
+// Los gastos de recurrentes se venían mostrando con la CATEGORÍA ("Plataformas"), así que
+// cuatro servicios distintos se leían igual en el resumen. El nombre real ya estaba en la
+// config del recurrente; esto solo lo copia al gasto en un campo nuevo.
+// Es puramente de etiqueta: NO toca monto, fecha, período, moneda ni categoría, así que no
+// mueve ninguna estadística ni ninguna conciliación ya cerrada.
+function migrarServicioRecurrentes() {
+  if (DB.get('migracion_servicio_recurrentes_v1', false)) return;
+  const recurrentes = getRecurrentes();
+  if (!recurrentes.length) return; // sin config todavía: reintentar en el próximo arranque
+  const porId = {};
+  recurrentes.forEach(r => { porId[r.id] = (r.nombre || '').trim(); });
+
+  const gastos = getGastosTarjetas();
+  let tocados = 0;
+  gastos.forEach(g => {
+    if (!g.recurrenteId || g.servicio) return;      // solo los que les falta la etiqueta
+    const nombre = porId[g.recurrenteId];
+    // Si la categoría YA es el nombre del servicio (ej. categoría "Starlink"), no hay nada que
+    // agregar: mostraría la misma palabra dos veces.
+    if (!nombre || nombre.toLowerCase() === String(g.tipo || '').trim().toLowerCase()) return;
+    g.servicio = nombre;
+    tocados++;
+  });
+
+  if (tocados) DB.set('gastos_tarjetas', gastos);
+  DB.set('migracion_servicio_recurrentes_v1', true);
+  if (tocados) console.log('migrarServicioRecurrentes: ' + tocados + ' gastos etiquetados');
+}
+
 function migrarCategoriasTarjetaPresupuesto() {
   if (DB.get('migracion_categoria_tc_v1', false)) return;
 
@@ -6440,7 +6471,8 @@ function renderTarjetaCard(grupo, conciliaciones, colapsadoPorDefaultArg) {
         <div style="display:flex;align-items:center;gap:8px">
           <div style="flex:1;min-width:0">
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px">
-              <span style="font-weight:600;font-size:var(--fs-sm)">${g.tipo}</span>
+              <span style="font-weight:600;font-size:var(--fs-sm)">${g.servicio || g.tipo}</span>
+              ${g.servicio && g.servicio.toLowerCase() !== String(g.tipo || '').trim().toLowerCase() ? `<span style="font-size:var(--fs-xs);color:var(--muted)">${g.tipo}</span>` : ''}
               ${quienBadge}
               ${g.esCuotaEnCurso ? `<span style="font-size:var(--fs-xs);color:var(--muted);background:var(--s1);border:1px solid var(--border);padding:1px 5px;border-radius:4px">cuota en curso</span>` : ''}
             </div>
@@ -10107,7 +10139,7 @@ function verGastosDeCategoria(catRaw, idCat, forceReload) {
     if (!g.fecha || !g.fecha.startsWith(yr) || g.moneda === 'USD') return;
     const cat = normalizeCat((g.tipo || 'Otros').replace(/\s*\(cuota\s*\d+\/\d+\)\s*/i,'').trim());
     if (cat !== catRaw) return;
-    encontrados.push({ fecha: g.fecha, desc: g.nota || g.tipo, monto: parseFloat(g.monto)||0, fuente: g.gastoDe || g.cargadoPor || 'Tarjeta', tipo: 'gt', id: g.id });
+    encontrados.push({ fecha: g.fecha, desc: g.servicio || g.nota || g.tipo, monto: parseFloat(g.monto)||0, fuente: g.gastoDe || g.cargadoPor || 'Tarjeta', tipo: 'gt', id: g.id });
   });
 
   encontrados.sort((a,b) => b.fecha.localeCompare(a.fecha));
@@ -12364,6 +12396,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Unificar categorías de tarjeta en Presupuesto (BBVA MASTER+VISA → "TC BBVA", MUNI BLACK → "TC Municipal")
   try { migrarCategoriasTarjetaPresupuesto(); } catch (e) { console.warn('migrarCategoriasTarjetaPresupuesto error:', e); }
+
+  // Mostrar el servicio real (Netflix, Spotify…) en vez de la categoría en los recurrentes ya cargados
+  try { migrarServicioRecurrentes(); } catch (e) { console.warn('migrarServicioRecurrentes error:', e); }
 
   // Foto mensual de los FCI: se toma/actualiza en cada arranque para poder ver evolución
   try { capturarSnapshotFci(); } catch (e) { console.warn('capturarSnapshotFci error:', e); }
