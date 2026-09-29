@@ -828,6 +828,15 @@ nav::-webkit-scrollbar{display:none}
    ancho mínimo de su contenido: la tarjeta se estira más allá del track y desborda.
    Con min-width:0 se respeta el ancho de la columna y el contenido se acomoda adentro. */
 .g2>*,.kg>*,.kg2>*,.kg3>*,.g-op>*,.g-inv>*,.g-comp3>*{min-width:0}
+.hipo-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px}
+.hipo-grid>*{min-width:0}
+.hipo-lbl{font-size:.58rem;color:var(--muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:.04em;line-height:1.3;min-height:2.1em}
+.hipo-grid input{width:100%;font-size:var(--fs-sm);padding:6px 8px}
+.hipo-t{width:100%;border-collapse:collapse;font-size:var(--fs-xs)}
+.hipo-t th{text-align:right;color:var(--muted);font-weight:600;padding:5px 6px;border-bottom:1px solid var(--border);text-transform:uppercase;letter-spacing:.03em;font-size:.58rem;white-space:nowrap}
+.hipo-t th:first-child,.hipo-t td:first-child{text-align:left}
+.hipo-t td{text-align:right;padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap}
+@media(max-width:420px){.hipo-grid{grid-template-columns:1fr}}
 .span2{grid-column:1/-1}
 
 /* ── FORMS ── */
@@ -1149,6 +1158,7 @@ input[type="month"].fi::-webkit-calendar-picker-indicator{
   <button class="nb" onclick="go('inversiones',this)">◈ Inversiones</button>
   <button class="nb" onclick="go('analisis',this)">📊 Análisis</button>
   <button class="nb" onclick="go('tarjetas',this)" id="nb-tarjetas" style="position:relative">💳 Gastos Tarjetas<span id="badge-tarjetas" style="display:none;position:absolute;top:4px;right:4px;background:#f43f5e;color:#fff;font-size:var(--fs-xs);font-weight:700;min-width:16px;height:16px;border-radius:8px;padding:0 4px;line-height:16px;text-align:center;"></span></button>
+  <button class="nb" onclick="go('hipotecario',this)">🏠 Hipotecario</button>
   <button class="nb" onclick="go('config',this)">⚙ Config</button>
   <button class="nb" onclick="go('patrimonio',this)" style="display:none">⬟ Patrimonio</button>
 </nav>
@@ -2117,6 +2127,130 @@ input[type="month"].fi::-webkit-calendar-picker-indicator{
 </div>
 
 <!-- ════════════ CONFIG ════════════ -->
+<div class="page" id="page-hipotecario">
+
+  <!-- KPIs del crédito -->
+  <div class="kg kg3" style="margin-bottom:14px">
+    <div class="kpi" style="--kc:var(--blue)">
+      <div class="kl">Cuota mes 1</div>
+      <div class="kv" style="color:var(--blue)" id="hipo-kpi-cuota">$0</div>
+      <div class="ks" id="hipo-kpi-cuota-sub">capital + interés + seguros</div>
+    </div>
+    <div class="kpi" style="--kc:var(--yellow)">
+      <div class="kl">Cuota / ingreso</div>
+      <div class="kv" style="color:var(--yellow)" id="hipo-kpi-ratio">—%</div>
+      <div class="ks" id="hipo-kpi-ratio-sub">tope del banco</div>
+    </div>
+    <div class="kpi" style="--kc:var(--green)">
+      <div class="kl">vs alquiler hoy</div>
+      <div class="kv" id="hipo-kpi-delta">$0</div>
+      <div class="ks" id="hipo-kpi-delta-sub">por mes</div>
+    </div>
+  </div>
+
+  <!-- Parámetros -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="ct" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <span>🏠 Crédito hipotecario UVA</span>
+      <button onclick="hipoReset()" style="background:none;border:1px solid var(--border2);border-radius:12px;padding:3px 10px;font-size:var(--fs-xs);color:var(--muted);cursor:pointer">restablecer</button>
+    </div>
+
+    <div class="hipo-grid">
+      <div>
+        <div class="hipo-lbl">Préstamo (USD)</div>
+        <input type="number" id="hipo-monto-usd" class="fi" oninput="hipoRecalcular()" step="1000">
+      </div>
+      <div>
+        <div class="hipo-lbl">Plazo (años)</div>
+        <input type="number" id="hipo-anios" class="fi" oninput="hipoRecalcular()" step="1">
+      </div>
+      <div>
+        <div class="hipo-lbl">TNA sobre UVA (%)</div>
+        <input type="number" id="hipo-tna" class="fi" oninput="hipoRecalcular()" step="0.01">
+      </div>
+      <div>
+        <div class="hipo-lbl">Ingreso neto mensual</div>
+        <input type="number" id="hipo-ingreso" class="fi" oninput="hipoRecalcular()" step="1000">
+      </div>
+      <div>
+        <div class="hipo-lbl">Alquiler hoy (lo que dejás de pagar)</div>
+        <input type="number" id="hipo-alquiler" class="fi" oninput="hipoRecalcular()" step="1000">
+      </div>
+      <div>
+        <div class="hipo-lbl">Tope cuota/ingreso del banco (%)</div>
+        <input type="number" id="hipo-ratio-max" class="fi" oninput="hipoRecalcular()" step="1">
+      </div>
+    </div>
+
+    <button onclick="hipoToggleAvanzado()" id="hipo-avanzado-btn"
+      style="margin-top:10px;background:none;border:1px solid var(--border2);border-radius:12px;padding:5px 12px;font-size:var(--fs-xs);color:var(--muted);cursor:pointer;font-family:var(--fm)">⚙ Ajustes finos</button>
+
+    <div id="hipo-avanzado" style="display:none">
+      <div class="hipo-grid">
+        <div>
+          <div class="hipo-lbl">Tipo de cambio (ARS/USD)</div>
+          <input type="number" id="hipo-tc" class="fi" oninput="hipoRecalcular()" step="1">
+        </div>
+        <div>
+          <div class="hipo-lbl">Valor UVA</div>
+          <input type="number" id="hipo-uva" class="fi" oninput="hipoRecalcular()" step="0.01">
+        </div>
+        <div>
+          <div class="hipo-lbl">Valor propiedad (USD)</div>
+          <input type="number" id="hipo-propiedad-usd" class="fi" oninput="hipoRecalcular()" step="1000">
+        </div>
+        <div>
+          <div class="hipo-lbl">Gastos de propietario (ARS/mes)</div>
+          <input type="number" id="hipo-gastos-prop" class="fi" oninput="hipoRecalcular()" step="1000">
+        </div>
+        <div>
+          <div class="hipo-lbl">Seguro de vida (% mes s/saldo)</div>
+          <input type="number" id="hipo-seg-vida" class="fi" oninput="hipoRecalcular()" step="0.001">
+        </div>
+        <div>
+          <div class="hipo-lbl">Seguro de incendio (% mes s/propiedad)</div>
+          <input type="number" id="hipo-seg-incendio" class="fi" oninput="hipoRecalcular()" step="0.001">
+        </div>
+      </div>
+    </div>
+    <div id="hipo-nota-datos" style="font-size:var(--fs-xs);color:var(--muted);margin-top:10px;line-height:1.5"></div>
+  </div>
+
+  <!-- Resultado del crédito -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="ct">📐 El crédito en números</div>
+    <div id="hipo-resultado"></div>
+  </div>
+
+  <!-- Alquiler vs cuota -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="ct">🔄 Alquilar vs. comprar — el mes a mes</div>
+    <div id="hipo-vs-alquiler"></div>
+  </div>
+
+  <!-- Negociación salarial -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="ct">💼 Qué sueldo necesitás — y cómo aguanta en el tiempo</div>
+    <div id="hipo-sueldo"></div>
+  </div>
+
+  <!-- Presupuesto con hipoteca -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="ct">◎ Tu presupuesto con la hipoteca</div>
+    <div id="hipo-presupuesto"></div>
+  </div>
+
+  <!-- Amortización -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="ct" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <span>📋 Amortización</span>
+      <button onclick="hipoToggleAmortDetalle()" id="hipo-amort-btn" style="background:none;border:1px solid var(--border2);border-radius:12px;padding:3px 10px;font-size:var(--fs-xs);color:var(--muted);cursor:pointer">ver primeros 12 meses</button>
+    </div>
+    <div id="hipo-amortizacion" style="overflow-x:auto"></div>
+  </div>
+
+</div>
+
 <div class="page" id="page-config">
   <div style="max-width:600px">
 
@@ -2360,7 +2494,7 @@ const DB = {
 
 // ── Backup manual completo: TODAS las claves de localStorage que usa la app, independiente de Firebase ──
 const BACKUP_KEYS = ['txs','plans','inversiones','tc','cuentas','ct_movimientos','gastos_tarjetas',
-  'tarjetas_cfg','categorias_consumo','tarjetas_conciliadas','debitos_recurrentes','inv_movimientos','cl_font_preset','grupos_categorias','recurrentes_excluidos','tc_contribs_presupuesto','transf_favoritas','reasignaciones','snapshots_fci'];
+  'tarjetas_cfg','categorias_consumo','tarjetas_conciliadas','debitos_recurrentes','inv_movimientos','cl_font_preset','grupos_categorias','recurrentes_excluidos','tc_contribs_presupuesto','transf_favoritas','reasignaciones','snapshots_fci','hipo_cfg'];
 
 function descargarBackupCompleto() {
   try {
@@ -3333,6 +3467,7 @@ function go(id, btn) {
   if (id === 'patrimonio')  updatePatrimonio();
   if (id === 'cuentas')   { renderCuentas(); updateMediosDePago(); updateOverviewSaldos(); renderHistorialTransf(); }
   if (id === 'analisis')   renderAnalisis();
+  if (id === 'hipotecario') renderHipotecario();
   if (id === 'config')     { rotarPeriodosTarjetas(); renderTarjetasCfg(); renderRecurrentesCfg(); renderNormalizadorCategorias(); renderRenombrarCategorias(); applyFontPreset(localStorage.getItem('cl_font_preset') || 'original'); populateTarjetaSelectBorrado(); }
   if (id === 'tarjetas')    {
     renderGastosTarjetas();
@@ -8541,6 +8676,433 @@ function renderConsola() {
                  + armar(consolaBloqueCuentas)
                  + armar(consolaBloqueInversiones)
                  + armar(consolaAccesos);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// SIMULADOR DE CRÉDITO HIPOTECARIO UVA
+// Todo el modelo vive en UVAs, que es la unidad real del crédito: la cuota en UVAs es
+// CONSTANTE (sistema francés), así que lo único que mueve la relación cuota/ingreso a lo
+// largo de 20 años es cuánto le gana (o le pierde) el sueldo a la inflación. Por eso la
+// proyección se hace sobre "aumento REAL" y no sobre inflación proyectada: adivinar la
+// inflación a 20 años no aporta nada, y en UVAs se cancela sola.
+// Los pesos que se muestran son a valor UVA de HOY (pesos de hoy), no pesos nominales
+// futuros — se aclara en pantalla para no confundir.
+// ══════════════════════════════════════════════════════════════════════
+
+const HIPO_DEFAULTS = {
+  montoUsd: 220000,      // el préstamo, no la propiedad
+  tc: 1545,              // dólar oficial venta
+  uva: 2137.27,          // UVA del BCRA
+  anios: 20,
+  tna: 6.68,
+  propiedadUsd: 293000,  // préstamo al 75% del valor (LTV típico)
+  segVida: 0.04,         // % mensual sobre saldo
+  segIncendio: 0.015,    // % mensual sobre valor de la propiedad
+  ingreso: 11100000,
+  ratioMax: 25,
+  alquiler: 1276000,
+  gastosProp: 0,
+};
+
+function getHipoCfg() {
+  const guardado = DB.get('hipo_cfg', null);
+  return Object.assign({}, HIPO_DEFAULTS, hipoSemillaDesdeDatos(), guardado || {});
+}
+
+// Toma de los datos reales de la app lo que se puede: el alquiler del presupuesto, el ingreso
+// de los últimos meses cargados y el TC guardado. Solo son valores iniciales — todo es editable.
+// OJO: plan y txs guardan los pesos EN MILES; acá se trabaja en pesos reales.
+function hipoSemillaDesdeDatos() {
+  const semilla = {};
+  try {
+    const plan = getPlan(getCurMes());
+    const alq = (plan.fijos || []).find(r => /alquiler/i.test(r.l || ''));
+    if (alq && parseFloat(alq.v)) semilla.alquiler = Math.round(parseFloat(alq.v) * 1000);
+  } catch (e) { /* sin plan cargado */ }
+  try {
+    const txsAll = DB.get('txs', {});
+    const meses = Object.keys(txsAll).sort().slice(-4);
+    const totales = meses.map(m => (txsAll[m] || [])
+      .filter(t => t.tipo === 'ingreso' && !/rescate|fci|dividendo|reintegro|venta/i.test(t.desc || ''))
+      .reduce((s, t) => s + (parseFloat(t.monto) || 0), 0)).filter(v => v > 0);
+    if (totales.length) {
+      const mediana = totales.slice().sort((a, b) => a - b)[Math.floor(totales.length / 2)];
+      semilla.ingreso = Math.round(mediana * 1000);
+    }
+  } catch (e) { /* sin transacciones */ }
+  try { const tc = parseFloat(DB.get('tc', 0)); if (tc > 0) semilla.tc = tc; } catch (e) {}
+  return semilla;
+}
+
+// ── El modelo ──
+function hipoCalcular(c) {
+  const uva  = parseFloat(c.uva) > 0 ? parseFloat(c.uva) : 1;
+  const tc   = parseFloat(c.tc) || 0;
+  const n    = Math.max(1, Math.round((parseFloat(c.anios) || 0) * 12));
+  const i    = (parseFloat(c.tna) || 0) / 100 / 12;
+
+  const montoArs   = (parseFloat(c.montoUsd) || 0) * tc;
+  const montoUva   = montoArs / uva;
+  const propiedadUva = ((parseFloat(c.propiedadUsd) || 0) * tc) / uva;
+
+  // Cuota pura del sistema francés, en UVAs. Con tasa 0 es simplemente capital/n.
+  const cuotaUva = i > 0 ? montoUva * i / (1 - Math.pow(1 + i, -n)) : montoUva / n;
+
+  const tVida     = (parseFloat(c.segVida) || 0) / 100;
+  const tIncendio = (parseFloat(c.segIncendio) || 0) / 100;
+  const segIncendioUva = propiedadUva * tIncendio;
+
+  // Tabla mes a mes, toda en UVAs
+  const filas = [];
+  let saldo = montoUva, interesTotal = 0, segurosTotal = 0;
+  for (let m = 1; m <= n; m++) {
+    const interes = saldo * i;
+    const capital = Math.min(cuotaUva - interes, saldo);
+    const segVida = saldo * tVida;
+    const total   = cuotaUva + segVida + segIncendioUva;
+    interesTotal += interes;
+    segurosTotal += segVida + segIncendioUva;
+    filas.push({ m, saldoInicio: saldo, interes, capital, segVida, segIncendio: segIncendioUva, total });
+    saldo = Math.max(0, saldo - capital);
+  }
+
+  const ingreso    = parseFloat(c.ingreso) || 0;
+  const ingresoUva = ingreso / uva;
+  const cuota1Uva  = filas.length ? filas[0].total : 0;
+  const cuota1Ars  = cuota1Uva * uva;
+  const ratio      = ingreso > 0 ? cuota1Ars / ingreso : null;
+  const ratioMax   = (parseFloat(c.ratioMax) || 0) / 100;
+  const ingresoMin = ratioMax > 0 ? cuota1Ars / ratioMax : null;
+  const aumentoNecesario = (ingresoMin && ingreso > 0) ? Math.max(0, ingresoMin / ingreso - 1) : 0;
+
+  const alquiler   = parseFloat(c.alquiler) || 0;
+  const gastosProp = parseFloat(c.gastosProp) || 0;
+  const costoNuevo = cuota1Ars + gastosProp;
+  const delta      = costoNuevo - alquiler; // positivo = te sale MÁS caro por mes
+
+  return {
+    uva, tc, n, i, montoArs, montoUva, propiedadUva,
+    cuotaUva, segIncendioUva, filas,
+    interesTotal, segurosTotal,
+    totalPagadoUva: montoUva + interesTotal + segurosTotal,
+    ingreso, ingresoUva, cuota1Uva, cuota1Ars, ratio, ratioMax, ingresoMin, aumentoNecesario,
+    alquiler, gastosProp, costoNuevo, delta,
+    ltv: (parseFloat(c.propiedadUsd) > 0) ? (parseFloat(c.montoUsd) || 0) / parseFloat(c.propiedadUsd) : null,
+  };
+}
+
+// Relación cuota/ingreso en el año `anio` si el sueldo crece `gReal` por año POR ENCIMA
+// de la inflación. En UVAs la cuota no se mueve, así que el que se mueve es el ingreso.
+function hipoRatioEnAnio(r, anio, gReal) {
+  const mes = Math.min(r.filas.length - 1, Math.max(0, anio * 12 - 1));
+  const cuotaUva = r.filas.length ? r.filas[mes].total : 0;
+  const ingresoUva = r.ingresoUva * Math.pow(1 + gReal, anio);
+  return ingresoUva > 0 ? cuotaUva / ingresoUva : null;
+}
+
+function hipoPct(x, dec) {
+  if (x == null || !isFinite(x)) return '—';
+  return (x * 100).toFixed(dec == null ? 1 : dec) + '%';
+}
+
+// ── Lectura / escritura de los inputs ──
+const HIPO_CAMPOS = {
+  'hipo-monto-usd': 'montoUsd', 'hipo-tc': 'tc', 'hipo-uva': 'uva', 'hipo-anios': 'anios',
+  'hipo-tna': 'tna', 'hipo-propiedad-usd': 'propiedadUsd', 'hipo-seg-vida': 'segVida',
+  'hipo-seg-incendio': 'segIncendio', 'hipo-ingreso': 'ingreso', 'hipo-ratio-max': 'ratioMax',
+  'hipo-alquiler': 'alquiler', 'hipo-gastos-prop': 'gastosProp',
+};
+
+function hipoLeerInputs() {
+  const c = getHipoCfg();
+  Object.entries(HIPO_CAMPOS).forEach(([id, campo]) => {
+    const el = document.getElementById(id);
+    if (el && el.value !== '') c[campo] = parseFloat(el.value);
+  });
+  return c;
+}
+
+function hipoPintarInputs(c) {
+  Object.entries(HIPO_CAMPOS).forEach(([id, campo]) => {
+    const el = document.getElementById(id);
+    if (el) el.value = c[campo];
+  });
+}
+
+function hipoReset() {
+  if (!confirm('¿Volver a los valores por defecto del simulador? No toca ningún otro dato de la app.')) return;
+  DB.del('hipo_cfg');
+  renderHipotecario();
+}
+
+let hipoAvanzadoAbierto = false;
+function hipoToggleAvanzado() {
+  hipoAvanzadoAbierto = !hipoAvanzadoAbierto;
+  const panel = document.getElementById('hipo-avanzado');
+  const btn   = document.getElementById('hipo-avanzado-btn');
+  if (panel) panel.style.display = hipoAvanzadoAbierto ? 'block' : 'none';
+  if (btn)   btn.textContent = hipoAvanzadoAbierto ? '⚙ Ocultar ajustes finos' : '⚙ Ajustes finos';
+}
+
+let hipoAmortDetalle = false;
+function hipoToggleAmortDetalle() {
+  hipoAmortDetalle = !hipoAmortDetalle;
+  hipoRecalcular();
+}
+
+function hipoRecalcular() {
+  const c = hipoLeerInputs();
+  DB.set('hipo_cfg', c);
+  const r = hipoCalcular(c);
+  hipoRenderKpis(r);
+  hipoRenderResultado(r);
+  hipoRenderVsAlquiler(r);
+  hipoRenderSueldo(r);
+  hipoRenderPresupuesto(r);
+  hipoRenderAmortizacion(r);
+}
+
+function renderHipotecario() {
+  const c = getHipoCfg();
+  hipoPintarInputs(c);
+  const nota = document.getElementById('hipo-nota-datos');
+  if (nota) {
+    nota.innerHTML = 'El alquiler y el ingreso salen de tus datos cargados; UVA y dólar son del 29/09/2026. '
+      + 'Todo es editable y se guarda solo — este tab <b>no modifica</b> tu presupuesto ni ningún otro dato.';
+  }
+  hipoRecalcular();
+}
+
+// ── Render: KPIs ──
+function hipoRenderKpis(r) {
+  const set = (id, txt, color) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = txt;
+    if (color) el.style.color = color;
+  };
+  set('hipo-kpi-cuota', fmtK(r.cuota1Ars), 'var(--blue)');
+  const sub = document.getElementById('hipo-kpi-cuota-sub');
+  if (sub) sub.textContent = Math.round(r.cuotaUva + r.segIncendioUva + r.filas[0].segVida).toLocaleString('es-AR') + ' UVAs por mes';
+
+  const ok = r.ratio != null && r.ratio <= r.ratioMax;
+  set('hipo-kpi-ratio', hipoPct(r.ratio), ok ? 'var(--green)' : 'var(--red)');
+  const rsub = document.getElementById('hipo-kpi-ratio-sub');
+  if (rsub) rsub.textContent = ok ? 'entra en el tope de ' + hipoPct(r.ratioMax, 0) : 'supera el tope de ' + hipoPct(r.ratioMax, 0);
+
+  set('hipo-kpi-delta', (r.delta > 0 ? '+' : '') + fmtK(r.delta), r.delta > 0 ? 'var(--red)' : 'var(--green)');
+  const dsub = document.getElementById('hipo-kpi-delta-sub');
+  if (dsub) dsub.textContent = r.delta > 0 ? 'más caro que alquilar' : 'más barato que alquilar';
+}
+
+function hipoLinea(etiqueta, valor, sub, color) {
+  return `
+  <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
+    <div style="flex:1;min-width:0">
+      <div style="font-size:var(--fs-sm)">${etiqueta}</div>
+      ${sub ? `<div style="font-size:var(--fs-xs);color:var(--muted)">${sub}</div>` : ''}
+    </div>
+    <div style="font-family:var(--fh);font-weight:700;font-size:var(--fs-sm);color:${color || 'var(--text)'};white-space:nowrap;text-align:right">${valor}</div>
+  </div>`;
+}
+
+// ── Render: el crédito en números ──
+function hipoRenderResultado(r) {
+  const el = document.getElementById('hipo-resultado');
+  if (!el) return;
+  const f = r.filas[0] || { segVida: 0, interes: 0, capital: 0 };
+  el.innerHTML =
+    hipoLinea('Monto del préstamo', fmtK(r.montoArs), Math.round(r.montoUva).toLocaleString('es-AR') + ' UVAs', 'var(--blue)')
+  + hipoLinea('Relación préstamo / propiedad (LTV)', r.ltv != null ? hipoPct(r.ltv, 0) : '—',
+              r.ltv != null && r.ltv > 0.8 ? 'por encima del 80% que suelen financiar' : 'dentro de lo habitual',
+              r.ltv != null && r.ltv > 0.8 ? 'var(--yellow)' : 'var(--text)')
+  + hipoLinea('Cuota pura (capital + interés)', fmtK(r.cuotaUva * r.uva), 'constante en UVAs los ' + (r.n / 12) + ' años')
+  + hipoLinea('Seguro de vida (mes 1)', fmtK(f.segVida * r.uva), 'baja todos los meses con el saldo', 'var(--muted)')
+  + hipoLinea('Seguro de incendio', fmtK(r.segIncendioUva * r.uva), 'fijo en UVAs', 'var(--muted)')
+  + hipoLinea('<b>Cuota total mes 1</b>', '<b>' + fmtK(r.cuota1Ars) + '</b>', '', 'var(--blue)')
+  + hipoLinea('Intereses totales', Math.round(r.interesTotal).toLocaleString('es-AR') + ' UVAs',
+              'equivale a ' + fmtK(r.interesTotal * r.uva) + ' de hoy', 'var(--red)')
+  + hipoLinea('Total a pagar', Math.round(r.totalPagadoUva).toLocaleString('es-AR') + ' UVAs',
+              'capital + intereses + seguros · ' + (r.montoUva > 0 ? (r.totalPagadoUva / r.montoUva).toFixed(2) : '—') + '× el capital')
+  + `<div style="font-size:var(--fs-xs);color:var(--muted);margin-top:10px;line-height:1.5">
+      Los pesos son <b>pesos de hoy</b> (a UVA ${r.uva.toLocaleString('es-AR')}). En un crédito UVA la cuota sube con la
+      inflación en pesos nominales pero se mantiene igual en poder de compra, así que compararla contra tu sueldo
+      de hoy es la lectura correcta.
+     </div>`;
+}
+
+// ── Render: alquiler vs cuota ──
+function hipoRenderVsAlquiler(r) {
+  const el = document.getElementById('hipo-vs-alquiler');
+  if (!el) return;
+  const anios = r.n / 12;
+  const alquilerTotalUva = (r.alquiler / r.uva) * r.n; // el alquiler también se ajusta por inflación
+  el.innerHTML =
+    hipoLinea('Alquiler hoy', fmtK(r.alquiler), 'lo que dejás de pagar', 'var(--red)')
+  + hipoLinea('Cuota + seguros', fmtK(r.cuota1Ars), 'mes 1', 'var(--blue)')
+  + (r.gastosProp ? hipoLinea('Gastos nuevos de propietario', fmtK(r.gastosProp), 'ABL, impuestos, mantenimiento', 'var(--muted)') : '')
+  + hipoLinea('<b>Diferencia mensual</b>', '<b>' + (r.delta > 0 ? '+' : '') + fmtK(r.delta) + '</b>',
+              r.delta > 0 ? 'te sale más caro comprar' : 'te sale más barato comprar',
+              r.delta > 0 ? 'var(--red)' : 'var(--green)')
+  + `<div style="margin-top:12px;padding:10px;background:var(--s2);border-radius:8px;font-size:var(--fs-xs);color:var(--muted);line-height:1.6">
+      En ${anios} años de alquiler te vas a haber ido en <b>${Math.round(alquilerTotalUva).toLocaleString('es-AR')} UVAs</b>
+      (${fmtK(alquilerTotalUva * r.uva)} de hoy) sin quedarte con nada. Con el crédito pagás
+      <b>${Math.round(r.totalPagadoUva).toLocaleString('es-AR')} UVAs</b> y al final la propiedad es tuya.
+      El alquiler también se ajusta por inflación, así que la comparación en UVAs es pareja.
+     </div>`;
+}
+
+// ── Render: sueldo y negociación ──
+function hipoRenderSueldo(r) {
+  const el = document.getElementById('hipo-sueldo');
+  if (!el) return;
+
+  const entra = r.ratio != null && r.ratio <= r.ratioMax;
+  const cabecera = entra
+    ? `<div style="padding:10px;border-radius:8px;background:rgba(34,211,160,.1);border:1px solid rgba(34,211,160,.25);margin-bottom:12px">
+         <div style="font-family:var(--fh);font-weight:700;color:var(--green);font-size:var(--fs-sm)">Calificás con tu sueldo actual</div>
+         <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:3px">
+           La cuota es el ${hipoPct(r.ratio)} de tu ingreso, contra un tope de ${hipoPct(r.ratioMax, 0)}.
+           Te sobra ${fmtK(r.ingreso * r.ratioMax - r.cuota1Ars)} de margen por mes.
+         </div>
+       </div>`
+    : `<div style="padding:10px;border-radius:8px;background:rgba(244,63,94,.1);border:1px solid rgba(244,63,94,.25);margin-bottom:12px">
+         <div style="font-family:var(--fh);font-weight:700;color:var(--red);font-size:var(--fs-sm)">Te falta sueldo para calificar</div>
+         <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:3px">
+           Necesitás ${fmtK(r.ingresoMin)} netos por mes — un <b>${hipoPct(r.aumentoNecesario)}</b> más de lo que ganás hoy.
+         </div>
+       </div>`;
+
+  const escenarios = [
+    ['-2%', -0.02, 'tu sueldo le pierde a la inflación'],
+    ['0%',   0.00, 'empatás la inflación'],
+    ['+2%',  0.02, 'le ganás 2 puntos por año'],
+    ['+4%',  0.04, 'le ganás 4 puntos por año'],
+  ];
+  const anios = [1, 5, 10, 20].filter(a => a <= r.n / 12);
+
+  const tabla = `
+  <div style="overflow-x:auto">
+  <table class="hipo-t">
+    <thead><tr><th>Aumento real anual</th>${anios.map(a => `<th>Año ${a}</th>`).join('')}</tr></thead>
+    <tbody>
+      ${escenarios.map(([etq, g, desc]) => `
+      <tr>
+        <td><b>${etq}</b><div style="font-size:.55rem;color:var(--muted);font-weight:400">${desc}</div></td>
+        ${anios.map(a => {
+          const ratio = hipoRatioEnAnio(r, a, g);
+          const color = ratio == null ? 'var(--muted)' : ratio <= r.ratioMax ? 'var(--green)' : ratio <= r.ratioMax * 1.4 ? 'var(--yellow)' : 'var(--red)';
+          return `<td style="color:${color};font-weight:700">${hipoPct(ratio)}</td>`;
+        }).join('')}
+      </tr>`).join('')}
+    </tbody>
+  </table>
+  </div>`;
+
+  const peor = hipoRatioEnAnio(r, 20 <= r.n / 12 ? 20 : Math.floor(r.n / 12), -0.02);
+  el.innerHTML = cabecera + `
+    <div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:8px;line-height:1.5">
+      Cuánto de tu sueldo se va a llevar la cuota según cómo evolucione tu salario <b>por encima de la inflación</b>.
+      En UVAs la cuota no se mueve: el único riesgo real es que el sueldo quede atrás.
+    </div>` + tabla + `
+    <div style="margin-top:12px;padding:10px;background:var(--s2);border-radius:8px;font-size:var(--fs-xs);color:var(--muted);line-height:1.6">
+      <b>Para la negociación:</b> si tu sueldo empata la inflación todos los años, la cuota se queda clavada en
+      ${hipoPct(hipoRatioEnAnio(r, 1, 0))} de tu ingreso y el crédito no te aprieta nunca.
+      El escenario a evitar es perder contra la inflación: a -2% real por año la cuota trepa a
+      <b>${hipoPct(peor)}</b> de tu sueldo hacia el final.
+      Pedir aumentos <i>por inflación</i> no es ambición, es lo que sostiene el crédito; todo lo que consigas
+      por encima es margen que se libera.
+    </div>`;
+}
+
+// ── Render: el presupuesto con la hipoteca ──
+function hipoRenderPresupuesto(r) {
+  const el = document.getElementById('hipo-presupuesto');
+  if (!el) return;
+  let plan, pt;
+  try { plan = getPlan(getCurMes()); pt = planTotals(plan); }
+  catch (e) { el.innerHTML = '<div style="font-size:var(--fs-xs);color:var(--muted)">Sin presupuesto cargado para este mes.</div>'; return; }
+
+  // El presupuesto está EN MILES; el simulador en pesos. Se pasa todo a pesos para comparar.
+  const K = 1000;
+  const ingresoPlan = pt.ing * K;
+  const ingreso  = ingresoPlan > 0 ? ingresoPlan : r.ingreso;
+  const gastos   = pt.gastos * K;
+  const inv      = pt.inv * K;
+
+  const gastosSinAlquiler = gastos - r.alquiler;
+  const gastosConHipoteca = gastosSinAlquiler + r.cuota1Ars + r.gastosProp;
+  const netoHoy  = ingreso - gastos - inv;
+  const netoNuevo = ingreso - gastosConHipoteca - inv;
+
+  el.innerHTML =
+    hipoLinea('Ingreso mensual', fmtK(ingreso), ingresoPlan > 0 ? 'de tu presupuesto de ' + mesLabel(getCurMes()) : 'el que cargaste arriba', 'var(--green)')
+  + hipoLinea('Gastos hoy', fmtK(gastos), 'fijos + variables', 'var(--red)')
+  + hipoLinea('− Alquiler', '-' + fmtK(r.alquiler), 'sale del presupuesto', 'var(--green)')
+  + hipoLinea('+ Cuota y gastos de propietario', '+' + fmtK(r.cuota1Ars + r.gastosProp), 'entra al presupuesto', 'var(--red)')
+  + hipoLinea('<b>Gastos con hipoteca</b>', '<b>' + fmtK(gastosConHipoteca) + '</b>', '', 'var(--red)')
+  + hipoLinea('Inversiones', fmtK(inv), 'sin cambios', 'var(--purple)')
+  + hipoLinea('<b>Neto libre hoy</b>', '<b>' + fmtK(netoHoy) + '</b>', '', netoHoy >= 0 ? 'var(--green)' : 'var(--red)')
+  + hipoLinea('<b>Neto libre con hipoteca</b>', '<b>' + fmtK(netoNuevo) + '</b>',
+              (netoNuevo - netoHoy >= 0 ? 'te libera ' : 'te consume ') + fmtK(Math.abs(netoNuevo - netoHoy)) + ' por mes',
+              netoNuevo >= 0 ? 'var(--green)' : 'var(--red)')
+  + `<div style="font-size:var(--fs-xs);color:var(--muted);margin-top:10px;line-height:1.5">
+      Es una simulación: <b>no toca tu presupuesto real</b>.${
+        netoNuevo < 0
+          ? (inv > 0
+              ? ' Con estos números el mes no cierra: el ajuste más a mano es el aporte mensual a inversiones (' + fmtK(inv) + '), que cubriría ' + hipoPct(Math.min(1, inv / Math.abs(netoNuevo)), 0) + ' del rojo.'
+              : ' Con estos números el mes no cierra por ' + fmtK(Math.abs(netoNuevo)) + ': o baja el monto del préstamo, o se estira el plazo, o tiene que subir el ingreso.')
+          : ''}
+     </div>`;
+}
+
+// ── Render: amortización ──
+function hipoRenderAmortizacion(r) {
+  const el = document.getElementById('hipo-amortizacion');
+  if (!el) return;
+  const btn = document.getElementById('hipo-amort-btn');
+  if (btn) btn.textContent = hipoAmortDetalle ? 'ver resumen por año' : 'ver primeros 12 meses';
+
+  let filas, encabezado;
+  if (hipoAmortDetalle) {
+    encabezado = 'Mes';
+    filas = r.filas.slice(0, 12).map(f => ({
+      etq: 'Mes ' + f.m, interes: f.interes, capital: f.capital,
+      seguros: f.segVida + f.segIncendio, total: f.total, saldo: f.saldoInicio - f.capital,
+    }));
+  } else {
+    encabezado = 'Año';
+    filas = [];
+    for (let a = 0; a * 12 < r.filas.length; a++) {
+      const tramo = r.filas.slice(a * 12, a * 12 + 12);
+      if (!tramo.length) continue;
+      filas.push({
+        etq: 'Año ' + (a + 1),
+        interes: tramo.reduce((s, f) => s + f.interes, 0),
+        capital: tramo.reduce((s, f) => s + f.capital, 0),
+        seguros: tramo.reduce((s, f) => s + f.segVida + f.segIncendio, 0),
+        total:   tramo.reduce((s, f) => s + f.total, 0),
+        saldo:   tramo[tramo.length - 1].saldoInicio - tramo[tramo.length - 1].capital,
+      });
+    }
+  }
+
+  const u = n => Math.round(n).toLocaleString('es-AR');
+  el.innerHTML = `
+  <table class="hipo-t">
+    <thead><tr><th>${encabezado}</th><th>Capital</th><th>Interés</th><th>Seguros</th><th>Total</th><th>Saldo</th></tr></thead>
+    <tbody>
+      ${filas.map(f => `<tr>
+        <td>${f.etq}</td>
+        <td style="color:var(--green)">${u(f.capital)}</td>
+        <td style="color:var(--red)">${u(f.interes)}</td>
+        <td style="color:var(--muted)">${u(f.seguros)}</td>
+        <td style="font-weight:700">${u(f.total)}</td>
+        <td style="color:var(--muted)">${u(f.saldo)}</td>
+      </tr>`).join('')}
+    </tbody>
+  </table>
+  <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:8px">Todos los valores en UVAs.</div>`;
 }
 
 // ══════════════════════════════════════════════════════
