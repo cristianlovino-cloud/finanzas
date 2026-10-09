@@ -828,6 +828,10 @@ nav::-webkit-scrollbar{display:none}
    ancho mínimo de su contenido: la tarjeta se estira más allá del track y desborda.
    Con min-width:0 se respeta el ancho de la columna y el contenido se acomoda adentro. */
 .g2>*,.kg>*,.kg2>*,.kg3>*,.g-op>*,.g-inv>*,.g-comp3>*{min-width:0}
+.g-et{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+.g-et>*{min-width:0}
+.g-et .csel-wrap,.g-et .csel-trigger,.g-et select{max-width:100%}
+@media(max-width:560px){.g-et{grid-template-columns:1fr}}
 .g-cat-monto{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
 .g-cat-monto>*{min-width:0}
 @media(max-width:520px){.g-cat-monto{grid-template-columns:1fr}}
@@ -3606,7 +3610,7 @@ function go(id, btn) {
   if (id === 'cargar')    { updateMediosDePago(); populateCatDropdown(); setTimeout(()=>{ const a=document.getElementById('ai-input'); if(a) a.focus(); },120); }
   if (id === 'flujo')       renderFlujo();
   if (id === 'patrimonio')  updatePatrimonio();
-  if (id === 'cuentas')   { renderCuentas(); updateMediosDePago(); updateOverviewSaldos(); renderHistorialTransf(); }
+  if (id === 'cuentas')   { try { migrarTransfIdHistorial(); } catch(e) { console.warn('migrarTransfIdHistorial:', e); } renderCuentas(); updateMediosDePago(); updateOverviewSaldos(); renderHistorialTransf(); }
   if (id === 'analisis')   renderAnalisis();
   if (id === 'hipotecario') renderHipotecario();
   if (id === 'config')     { renderLogosBancos(); rotarPeriodosTarjetas(); renderTarjetasCfg(); renderRecurrentesCfg(); renderNormalizadorCategorias(); renderRenombrarCategorias(); applyFontPreset(localStorage.getItem('cl_font_preset') || 'original'); populateTarjetaSelectBorrado(); }
@@ -7306,11 +7310,215 @@ function toggleNuevaCuenta() {
 }
 
 // ── Registrar movimiento en historial ──
-function registrarMovimiento(cuenta, tipo, monto, moneda, desc, origenTs) {
+function registrarMovimiento(cuenta, tipo, monto, moneda, desc, origenTs, transfId) {
   const movs = DB.get('ct_movimientos', []);
-  movs.unshift({ ts: Date.now(), cuenta, tipo, monto, moneda, desc, origenTs: origenTs || null });
+  const mov = { ts: Date.now(), cuenta, tipo, monto, moneda, desc, origenTs: origenTs || null };
+  if (transfId) mov.transfId = transfId; // une las dos patas de una misma transferencia
+  movs.unshift(mov);
   DB.set('ct_movimientos', movs.slice(0, 300));
   renderHistorialTransf();
+}
+
+
+// ══════════════════════════════════════════════════════════════════════
+// EDICIÓN DE TRANSFERENCIAS
+// Una transferencia son DOS movimientos (el que sale y el que entra). Hasta ahora no estaban
+// vinculados entre sí, así que equivocarse de cuenta obligaba a arreglarlo con ajustes
+// manuales en las dos puntas — y el saldo quedaba bien pero el historial contaba otra cosa.
+// Ahora cada transferencia nueva nace con un transfId compartido, y las viejas se emparejan
+// por su descripción cruzada ("→ X" / "← Y") más la cercanía de ts.
+// Editar revierte el efecto viejo sobre los saldos y aplica el nuevo, dejando asentado qué
+// cambió: no se pierde el registro de que hubo una corrección.
+// ══════════════════════════════════════════════════════════════════════
+
+function getMovimientos() {
+  return DB.get('ct_movimientos', []);
+}
+
+function setMovimientos(movs) {
+  DB.set('ct_movimientos', movs.slice(0, 300));
+}
+
+// Mueve los saldos de una transferencia. Replica EXACTAMENTE la regla de hacerTransferencia:
+// una punta solo se toca si su moneda coincide con la de la transferencia (si transferís ARS
+// a una cuenta en USD, esa punta no movió saldo, y al revertir tampoco tiene que moverse).
+// Con monto negativo, revierte.
+function moverSaldosTransferencia(cuentas, nombreDesde, nombreHacia, monto, moneda) {
+  const d = cuentas.find(c => c.nombre === nombreDesde);
+  const h = cuentas.find(c => c.nombre === nombreHacia);
+  if (d && d.moneda === moneda) d.saldo -= monto;
+  if (h && h.moneda === moneda) h.saldo += monto;
+  return { desdeOk: !!d, haciaOk: !!h };
+}
+
+// Empareja las dos patas de una transferencia que todavía no tienen transfId.
+// El cruce de descripciones es exacto ("→ destino" en la pata que sale, "← origen" en la que
+// entra), así que no hay ambigüedad de a qué par pertenece cada una; el ts más cercano
+// desempata cuando la misma transferencia se repite muchas veces (ej. BBVA FCI → BBVA Sueldo).
+function migrarTransfIdHistorial() {
+  const movs = getMovimientos();
+  const sueltas = movs.filter(m => m.tipo === 'transferencia' && !m.transfId);
+  if (!sueltas.length) return 0;
+
+  const salidas  = sueltas.filter(m => m.monto < 0);
+  const entradas = sueltas.filter(m => m.monto > 0);
+  const usadas = new Set();
+  let pares = 0;
+
+  salidas.forEach(sal => {
+    let mejor = null, mejorDist = Infinity;
+    entradas.forEach(ent => {
+      if (usadas.has(ent)) return;
+      if (ent.moneda !== sal.moneda) return;
+      if (Math.abs(ent.monto + sal.monto) > 1e-9) return;       // montos exactamente opuestos
+      if (sal.desc !== '→ ' + ent.cuenta) return;               // la que sale apunta al destino
+      if (ent.desc !== '← ' + sal.cuenta) return;               // la que entra apunta al origen
+      const dist = Math.abs((ent.ts || 0) - (sal.ts || 0));
+      if (dist > 10000) return;                                  // patas de la misma operación
+      if (dist < mejorDist) { mejor = ent; mejorDist = dist; }
+    });
+    if (mejor) {
+      const id = 'tr_' + (sal.ts || Date.now()) + '_' + Math.random().toString(36).slice(2, 7);
+      sal.transfId = id;
+      mejor.transfId = id;
+      usadas.add(mejor);
+      pares++;
+    }
+  });
+
+  if (pares) setMovimientos(movs);
+  return pares;
+}
+
+// Las dos patas de una transferencia, a partir del id de cualquiera de ellas
+function patasDeTransferencia(transfId) {
+  const movs = getMovimientos();
+  const patas = movs.filter(m => m.transfId === transfId);
+  return {
+    movs,
+    sale:  patas.find(m => m.monto < 0) || null,
+    entra: patas.find(m => m.monto > 0) || null,
+  };
+}
+
+let transfEditandoId = null;
+
+function toggleEditarTransferencia(transfId) {
+  transfEditandoId = (transfEditandoId === transfId) ? null : transfId;
+  renderHistorialTransf();
+}
+
+function guardarEdicionTransferencia(transfId) {
+  const { movs, sale, entra } = patasDeTransferencia(transfId);
+  if (!sale || !entra) { showToast('No encontré las dos patas de esta transferencia', '#f43f5e'); return; }
+
+  const desdeIdx = parseInt(document.getElementById('et-desde-' + transfId).value);
+  const haciaIdx = parseInt(document.getElementById('et-hacia-' + transfId).value);
+  const montoNuevo = parseFloat(document.getElementById('et-monto-' + transfId).value);
+
+  const cuentas = getCuentas();
+  if (isNaN(desdeIdx) || isNaN(haciaIdx) || !cuentas[desdeIdx] || !cuentas[haciaIdx]) {
+    showToast('Elegí las dos cuentas', '#f43f5e'); return;
+  }
+  if (desdeIdx === haciaIdx)        { showToast('Las cuentas deben ser distintas', '#f43f5e'); return; }
+  if (!montoNuevo || montoNuevo <= 0) { showToast('Ingresá un monto', '#f43f5e'); return; }
+
+  const nuevoDesde = cuentas[desdeIdx].nombre;
+  const nuevoHacia = cuentas[haciaIdx].nombre;
+  const moneda     = sale.moneda;
+
+  if (cuentas[desdeIdx].moneda !== moneda && cuentas[haciaIdx].moneda !== moneda) {
+    showToast('La moneda no coincide con ninguna de las cuentas', '#f43f5e'); return;
+  }
+
+  const antes = { desde: sale.cuenta, hacia: entra.cuenta, monto: Math.abs(sale.monto), moneda };
+  const sinCambios = antes.desde === nuevoDesde && antes.hacia === nuevoHacia
+                  && Math.abs(antes.monto - montoNuevo) < 1e-9;
+  if (sinCambios) { transfEditandoId = null; renderHistorialTransf(); return; }
+
+  // Primero deshacer lo que la transferencia original le hizo a los saldos, después aplicar
+  // la nueva. Las dos pasadas van sobre el mismo array y se guarda una sola vez.
+  moverSaldosTransferencia(cuentas, antes.desde, antes.hacia, -antes.monto, moneda);
+  moverSaldosTransferencia(cuentas, nuevoDesde, nuevoHacia,  montoNuevo,   moneda);
+  saveCuentas(cuentas);
+
+  sale.cuenta  = nuevoDesde;
+  sale.monto   = -montoNuevo;
+  sale.desc    = '→ ' + nuevoHacia;
+  entra.cuenta = nuevoHacia;
+  entra.monto  = montoNuevo;
+  entra.desc   = '← ' + nuevoDesde;
+
+  // Queda asentado qué decía antes: corregir no puede borrar el rastro de la corrección
+  const log = { ts: Date.now(), antes };
+  sale.editado  = (sale.editado  || []).concat([log]);
+  entra.editado = (entra.editado || []).concat([log]);
+
+  setMovimientos(movs);
+  transfEditandoId = null;
+  renderHistorialTransf();
+  if (typeof updateOverviewSaldos === 'function') updateOverviewSaldos();
+  showToast('✓ Transferencia corregida: ' + nuevoDesde + ' → ' + nuevoHacia);
+}
+
+function anularTransferencia(transfId) {
+  const { movs, sale, entra } = patasDeTransferencia(transfId);
+  if (!sale || !entra) { showToast('No encontré las dos patas de esta transferencia', '#f43f5e'); return; }
+  const monto = Math.abs(sale.monto);
+  const moneda = sale.moneda;
+  const etiqueta = sale.cuenta + ' → ' + entra.cuenta;
+  const montoTxt = moneda === 'USD' ? 'U$S ' + monto.toFixed(2) : fmt(monto);
+  if (!confirm(`¿Anular la transferencia ${etiqueta} por ${montoTxt}?\n\nLos saldos vuelven a como estaban y queda registrada la anulación.`)) return;
+
+  const cuentas = getCuentas();
+  moverSaldosTransferencia(cuentas, sale.cuenta, entra.cuenta, -monto, moneda);
+  saveCuentas(cuentas);
+
+  // Las dos patas se van, pero la anulación queda registrada como movimiento propio:
+  // si no, el saldo cambiaría sin que el historial explique por qué.
+  const restantes = movs.filter(m => m.transfId !== transfId);
+  restantes.unshift({
+    ts: Date.now(), cuenta: sale.cuenta, tipo: 'ajuste', monto: 0, moneda,
+    desc: `Transferencia anulada: ${etiqueta} por ${montoTxt}`, origenTs: null,
+  });
+  setMovimientos(restantes);
+  transfEditandoId = null;
+  renderHistorialTransf();
+  if (typeof updateOverviewSaldos === 'function') updateOverviewSaldos();
+  showToast('✓ Transferencia anulada');
+}
+
+// El panelito de edición que se despliega debajo de la fila
+function panelEdicionTransferencia(transfId, sale, entra) {
+  const cuentas = getCuentas();
+  const monto = Math.abs(sale.monto);
+  const opts = (seleccionada) => cuentas.map((c, i) =>
+    `<option value="${i}"${c.nombre === seleccionada ? ' selected' : ''}>${c.nombre} (${c.moneda})</option>`).join('');
+  return `
+  <div style="margin:4px 0 10px;padding:10px;background:var(--s2);border-radius:8px">
+    <div class="g-et">
+      <div>
+        <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">SALE DE</div>
+        <select id="et-desde-${transfId}" class="fi" style="width:100%;font-size:var(--fs-sm);padding:6px 8px">${opts(sale.cuenta)}</select>
+      </div>
+      <div>
+        <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">ENTRA EN</div>
+        <select id="et-hacia-${transfId}" class="fi" style="width:100%;font-size:var(--fs-sm);padding:6px 8px">${opts(entra.cuenta)}</select>
+      </div>
+    </div>
+    <div style="margin-bottom:10px">
+      <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">MONTO (${sale.moneda})</div>
+      <input type="number" id="et-monto-${transfId}" class="fi" value="${monto}" step="0.01" style="width:100%;font-size:var(--fs-sm);padding:6px 8px;text-align:right">
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button onclick="guardarEdicionTransferencia('${transfId}')" style="flex:1;min-width:110px;background:var(--green);color:var(--bg);border:none;border-radius:6px;padding:7px 12px;font-family:var(--fh);font-size:var(--fs-sm);font-weight:700;cursor:pointer">Guardar cambios</button>
+      <button onclick="toggleEditarTransferencia('${transfId}')" style="background:none;border:1px solid var(--border2);border-radius:6px;padding:7px 12px;font-size:var(--fs-sm);color:var(--muted);cursor:pointer">Cancelar</button>
+      <button onclick="anularTransferencia('${transfId}')" style="background:rgba(244,63,94,.1);border:1px solid rgba(244,63,94,.25);border-radius:6px;padding:7px 12px;font-size:var(--fs-sm);color:var(--red);cursor:pointer">Anular</button>
+    </div>
+    <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:8px;line-height:1.5">
+      Se corrigen las dos patas y los saldos de las dos cuentas. Queda anotado qué decía antes.
+    </div>
+  </div>`;
 }
 
 // ── Historial de movimientos de cuentas ──
@@ -7350,7 +7558,9 @@ function renderHistorialTransf() {
     const d    = new Date(m.ts);
     const dia  = d.getDate() + '/' + (d.getMonth()+1);
     const hora = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
-    const esEntrada = m.monto > 0;
+    const esEntrada = m.tipo === 'gasto'   ? false
+                    : m.tipo === 'ingreso' ? true
+                    : m.monto > 0;
     const color     = esEntrada ? 'var(--green)' : 'var(--red)';
 
     let badge;
@@ -7369,21 +7579,50 @@ function renderHistorialTransf() {
     }
 
     const signo = esEntrada ? '+' : '−';
-    const mFmt  = m.moneda === 'USD'
-      ? signo + ' U$S ' + Math.abs(m.monto).toFixed(2)
-      : signo + ' ' + (typeof fmtK==='function' ? fmtK(Math.abs(m.monto)) : '$'+Math.abs(m.monto));
+    // Un movimiento de monto 0 es una nota (ej. una anulación): no mueve plata, así que
+    // mostrarle un "− $0" al lado hace ruido y no dice nada.
+    const mFmt  = !m.monto
+      ? ''
+      : m.moneda === 'USD'
+        ? signo + ' U$S ' + Math.abs(m.monto).toFixed(2)
+        : signo + ' ' + (typeof fmtK==='function' ? fmtK(Math.abs(m.monto)) : '$'+Math.abs(m.monto));
     const desc = m.desc || m.cuenta;
 
-    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);gap:10px">
-      <div style="flex:1;min-width:0">
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;flex-wrap:wrap">
-          ${badge}
-          <span style="font-family:var(--fh);font-size:var(--fs-md);font-weight:700;text-transform:uppercase;letter-spacing:.01em">${m.cuenta}</span>
+    // Solo las transferencias se pueden editar desde acá. Los gastos e ingresos son el reflejo
+    // de una transacción de Flujo: tocarlos acá los dejaría peleados con su origen.
+    const editable = m.tipo === 'transferencia' && m.transfId;
+    const abierto  = editable && transfEditandoId === m.transfId;
+
+    const marcaEditado = (m.editado && m.editado.length)
+      ? `<span style="font-size:var(--fs-xs);color:var(--muted);background:var(--s3);border:1px solid var(--border);padding:1px 5px;border-radius:3px">✎ editado</span>` : '';
+    const antesTxt = (m.editado && m.editado.length)
+      ? (() => { const a = m.editado[m.editado.length - 1].antes;
+                 const mt = a.moneda === 'USD' ? 'U$S ' + a.monto.toFixed(2) : fmt(a.monto);
+                 return `<div style="font-size:var(--fs-xs);color:var(--muted);margin-top:1px">antes: ${a.desde} → ${a.hacia} · ${mt}</div>`; })()
+      : '';
+
+    let panel = '';
+    if (abierto) {
+      const { sale, entra } = patasDeTransferencia(m.transfId);
+      if (sale && entra) panel = panelEdicionTransferencia(m.transfId, sale, entra);
+    }
+
+    return `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;flex-wrap:wrap">
+            ${badge}
+            <span style="font-family:var(--fh);font-size:var(--fs-md);font-weight:700;text-transform:uppercase;letter-spacing:.01em">${m.cuenta}</span>
+            ${marcaEditado}
+          </div>
+          <div style="font-size:var(--fs-xs);color:var(--muted2)">${desc}</div>
+          ${antesTxt}
+          <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:1px">${dia} · ${hora}</div>
         </div>
-        <div style="font-size:var(--fs-xs);color:var(--muted2)">${desc}</div>
-        <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:1px">${dia} · ${hora}</div>
+        <div style="font-family:var(--fh);font-weight:700;color:${color};font-size:var(--fs-lg);flex-shrink:0;text-align:right">${mFmt}</div>
+        ${editable ? `<button onclick="toggleEditarTransferencia('${m.transfId}')" style="background:none;border:none;color:${abierto ? 'var(--green)' : 'var(--muted)'};cursor:pointer;font-size:var(--fs-md);padding:2px 4px;flex-shrink:0" title="Corregir esta transferencia">✎</button>` : ''}
       </div>
-      <div style="font-family:var(--fh);font-weight:700;color:${color};font-size:var(--fs-lg);flex-shrink:0;text-align:right">${mFmt}</div>
+      ${panel}
     </div>`;
   }).join('');
 }
@@ -7410,8 +7649,9 @@ function hacerTransferencia() {
   if (ctHacia.moneda === moneda) ctHacia.saldo += monto;
 
   saveCuentas(cuentas);
-  registrarMovimiento(ctDesde.nombre, 'transferencia', -monto, moneda, '→ ' + ctHacia.nombre);
-  registrarMovimiento(ctHacia.nombre, 'transferencia',  monto, moneda, '← ' + ctDesde.nombre);
+  const transfId = 'tr_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+  registrarMovimiento(ctDesde.nombre, 'transferencia', -monto, moneda, '→ ' + ctHacia.nombre, null, transfId);
+  registrarMovimiento(ctHacia.nombre, 'transferencia',  monto, moneda, '← ' + ctDesde.nombre, null, transfId);
   document.getElementById('ct-transf-monto').value = '';
   showToast('✓ Transferencia: ' + ctDesde.nombre + ' → ' + ctHacia.nombre);
 }
