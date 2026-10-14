@@ -5808,6 +5808,162 @@ function generarSecuenciaCierresEstricta(tarjeta, fechaCompra, cantidad) {
   return { cierres, idxInicio };
 }
 
+
+// ══════════════════════════════════════════════════════════════════════
+// MOVER UNA COMPRA EN CUOTAS COMPLETA A OTRA TARJETA
+// Equivocarse de plástico al cargar una compra en cuotas dejaba N filas en la tarjeta
+// incorrecta, y moverlas una por una no alcanzaba: cada tarjeta tiene SUS propias fechas de
+// cierre, así que las cuotas hay que reubicarlas en los períodos de la tarjeta destino, no
+// copiarles las fechas de la tarjeta de origen.
+// Al mover, la compra se pasa al modelo de cuotas nuevo (cuotaV2): en vez de congelar una
+// fecha por cuota, se guarda el período ancla y el resto se resuelve por posición al mostrar.
+// Así, si a la tarjeta destino todavía le faltan períodos, esas cuotas quedan esperando y se
+// acomodan solas cuando los cargues — nunca con una fecha inventada.
+// ══════════════════════════════════════════════════════════════════════
+
+// El cierre donde está parada HOY una cuota, sirva el modelo viejo o el nuevo
+function cierreActualDeCuota(tarjeta, g) {
+  if (g.cuotaV2) return resolverCierreCuota(tarjeta, g);
+  return g.fecha || null;
+}
+
+// Todas las cuotas de una compra, ordenadas por número
+function cuotasDeCompra(compraId, lista) {
+  return (lista || getGastosTarjetas())
+    .filter(g => g.compraId === compraId)
+    .sort((a, b) => (a.cuotaNum || 0) - (b.cuotaNum || 0));
+}
+
+// Cómo quedaría la compra en la tarjeta destino, SIN tocar nada. Es lo que se le muestra al
+// usuario antes de confirmar: si el mapeo no es el esperado, no confirma y listo.
+function previsualizarMovimientoCompra(compraId, tarjetaDestinoId) {
+  const lista   = getGastosTarjetas();
+  const cuotas  = cuotasDeCompra(compraId, lista);
+  if (!cuotas.length) return null;
+  const tarjetas = getTarjetas();
+  const origen   = tarjetas.find(t => t.id === cuotas[0].tarjetaId) || null;
+  const destino  = tarjetas.find(t => t.id === tarjetaDestinoId)    || null;
+  if (!destino) return null;
+
+  const fechaRef = cuotas[0].fechaCompra || cuotas[0].fecha;
+  const { cierres } = generarSecuenciaCierresEstricta(destino, fechaRef, cuotas.length);
+  const conciliados = DB.get('tarjetas_conciliadas', {});
+
+  const filas = cuotas.map((g, i) => {
+    const cierreViejo = origen ? cierreActualDeCuota(origen, g) : null;
+    return {
+      id: g.id,
+      num: g.cuotaNum || (i + 1),
+      total: g.cuotaTotal || cuotas.length,
+      monto: g.monto,
+      moneda: g.moneda || 'ARS',
+      cierreViejo,
+      cierreNuevo: cierres[i] || null,
+      // Mover una cuota que ya está en un resumen conciliado cambia un total cerrado:
+      // no se bloquea (el error hay que poder corregirlo) pero se avisa fuerte.
+      saleDeConciliado: !!(origen && cierreViejo && conciliados[origen.id + '|' + cierreViejo]),
+    };
+  });
+
+  return {
+    compraId, origen, destino, fechaRef, filas,
+    anclaCierre: cierres[0] || null,
+    anclaNum: cuotas[0].cuotaNum || 1,
+    sinPeriodo: filas.filter(f => !f.cierreNuevo).length,
+    conciliadas: filas.filter(f => f.saleDeConciliado).length,
+    etiqueta: (cuotas[0].tipo || '').replace(/\s*\(cuota[^)]*\)\s*$/i, '').trim(),
+  };
+}
+
+function moverCompraDeTarjeta(compraId, tarjetaDestinoId) {
+  const prev = previsualizarMovimientoCompra(compraId, tarjetaDestinoId);
+  if (!prev) { showToast('No encontré esa compra', '#f43f5e'); return; }
+  if (!prev.anclaCierre) {
+    showToast(`${prev.destino.nombre} no tiene ningún período que cubra esa compra — cargá los períodos primero`, '#f43f5e');
+    return;
+  }
+
+  let aviso = `¿Mover las ${prev.filas.length} cuotas de "${prev.etiqueta}" a ${prev.destino.nombre}?`;
+  if (prev.conciliadas) aviso += `\n\n⚠ ${prev.conciliadas} ${prev.conciliadas === 1 ? 'cuota está' : 'cuotas están'} en un resumen ya conciliado: ese total va a cambiar.`;
+  if (prev.sinPeriodo)  aviso += `\n\n${prev.sinPeriodo} ${prev.sinPeriodo === 1 ? 'cuota queda esperando' : 'cuotas quedan esperando'} período en ${prev.destino.nombre}; se acomodan solas cuando cargues esos cierres.`;
+  if (!confirm(aviso)) return;
+
+  const lista  = getGastosTarjetas();
+  const cuotas = cuotasDeCompra(compraId, lista);
+  cuotas.forEach((g, i) => {
+    g.tarjetaId        = tarjetaDestinoId;
+    g.cuotaV2          = true;
+    g.anclaCierre      = prev.anclaCierre;
+    g.anclaNum         = prev.anclaNum;
+    g.fechaCompra      = prev.fechaRef;
+    g.fecha            = prev.fechaRef;              // en cuotaV2, fecha es la fecha de compra
+    g.cierreDelPeriodo = prev.filas[i].cierreNuevo;  // informativo
+    delete g.cierreEstimado;                          // ya no hay fechas estimadas
+    g.movidoDe = (g.movidoDe || []).concat([{
+      ts: Date.now(),
+      tarjeta: prev.origen ? prev.origen.nombre : '(tarjeta borrada)',
+      cierre: prev.filas[i].cierreViejo || null,
+    }]);
+  });
+
+  saveGastosTarjetas(lista);
+  gtCompraMoviendo = null;
+  renderGastosTarjetas();
+  showToast(`✓ ${cuotas.length} cuotas movidas a ${prev.destino.nombre}`);
+}
+
+// Qué tarjeta está elegida en el selector de cada compra (para refrescar la previsualización)
+let gtCompraMoviendo = null;
+
+function elegirDestinoCompra(compraId, tarjetaDestinoId) {
+  gtCompraMoviendo = tarjetaDestinoId ? { compraId, tarjetaDestinoId } : null;
+  renderGastosTarjetas();
+}
+
+// El bloque que se dibuja dentro del panel de edición cuando el gasto es parte de una compra
+// en cuotas: selector de tarjeta destino + cómo queda cada cuota + botón de confirmar.
+function bloqueMoverCompra(g) {
+  if (!g.compraId) return '';
+  const cuotas = cuotasDeCompra(g.compraId);
+  if (cuotas.length < 2) return '';
+  const tarjetas = getTarjetas().filter(t => t.id !== g.tarjetaId);
+  if (!tarjetas.length) return '';
+
+  const elegido = (gtCompraMoviendo && gtCompraMoviendo.compraId === g.compraId)
+    ? gtCompraMoviendo.tarjetaDestinoId : '';
+
+  let preview = '';
+  if (elegido) {
+    const prev = previsualizarMovimientoCompra(g.compraId, elegido);
+    if (prev) {
+      const f = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('es-AR', {day:'2-digit', month:'2-digit', year:'2-digit'}) : '⏳ esperando período';
+      preview = `
+      <div style="margin-top:8px;padding:8px;background:var(--s1);border-radius:6px">
+        <div style="font-size:.58rem;color:var(--muted);margin-bottom:5px">CÓMO QUEDA</div>
+        ${prev.filas.map(fi => `
+          <div style="display:flex;justify-content:space-between;gap:8px;font-size:var(--fs-xs);padding:2px 0">
+            <span style="color:var(--muted)">${fi.num}/${fi.total}${fi.saleDeConciliado ? ' ⚠' : ''}</span>
+            <span style="flex:1;text-align:right;color:var(--muted2)">${f(fi.cierreViejo)}</span>
+            <span style="color:var(--muted2)">→</span>
+            <span style="min-width:74px;text-align:right;color:${fi.cierreNuevo ? 'var(--text)' : 'var(--yellow)'}">${f(fi.cierreNuevo)}</span>
+          </div>`).join('')}
+        ${prev.conciliadas ? `<div style="font-size:var(--fs-xs);color:var(--yellow);margin-top:6px;line-height:1.4">⚠ ${prev.conciliadas} ${prev.conciliadas===1?'cuota sale':'cuotas salen'} de un resumen ya conciliado: ese total cambia.</div>` : ''}
+        <button onclick="moverCompraDeTarjeta('${g.compraId}','${elegido}')" class="btn btn-g" style="width:100%;margin-top:8px;font-size:var(--fs-sm);padding:7px 10px">Mover las ${prev.filas.length} cuotas</button>
+      </div>`;
+    }
+  }
+
+  return `
+  <div style="margin-bottom:6px;padding-top:6px;border-top:1px solid var(--border2)">
+    <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">MOVER TODA LA COMPRA (${cuotas.length} CUOTAS) A OTRA TARJETA</div>
+    <select onchange="elegirDestinoCompra('${g.compraId}', this.value)" class="fi" style="width:100%;font-size:var(--fs-sm);padding:6px 8px">
+      <option value="">— elegir tarjeta destino —</option>
+      ${tarjetas.map(t => `<option value="${t.id}"${t.id===elegido?' selected':''}>${t.nombre}</option>`).join('')}
+    </select>
+    ${preview}
+  </div>`;
+}
+
 // ── Resuelve a qué período pertenece una cuota, al momento de mostrarla ──
 // Solo para cuotas nuevas (cuotaV2). Se ancla en el cierre de la primera cuota cargada y
 // avanza tantos períodos como diga el número de cuota. Si ese período todavía no existe,
@@ -6076,53 +6232,65 @@ async function ownCargarGastoTarjeta() {
   if (esCuotaEnCurso && tarjeta) {
     // Monto = el de UNA cuota (no el total). Generamos esta cuota + todas las que faltan,
     // desde cecActual hasta cecTotal, en períodos de cierre consecutivos a partir de hoy.
+    // Modelo de cuotas NUEVO (cuotaV2): en vez de congelar una fecha por cuota — inventándola
+    // cuando todavía no existe el período —, se guarda el período ancla y cada cuota resuelve
+    // el suyo por posición al mostrarse. Las que no tienen período todavía quedan esperando y
+    // se acomodan solas cuando cargues esos cierres, en vez de abrir resúmenes fantasma.
     const compraId = 'compra_' + Date.now();
     const cuotasFaltantes = cecTotal - cecActual + 1; // incluye la actual
-    const cierres = generarSecuenciaCierres(tarjeta, fecha, cuotasFaltantes);
+    const { cierres } = generarSecuenciaCierresEstricta(tarjeta, fecha, cuotasFaltantes);
+    const ancla = cierres[0];
     cierres.forEach((cierre, i) => {
       const numeroCuota = cecActual + i;
       lista.push({
         id: 'gt_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2,5),
-        tarjetaId, fecha: cierre, fechaCompra: fecha, tipo: `${tipo} (cuota ${numeroCuota}/${cecTotal})`, monto, moneda,
+        tarjetaId, fecha, fechaCompra: fecha, cierreDelPeriodo: cierre || null,
+        cuotaV2: true, anclaCierre: ancla || null, anclaNum: cecActual,
+        tipo: `${tipo} (cuota ${numeroCuota}/${cecTotal})`, monto, moneda,
         cargadoPor: 'Cris', gastoDe: quien, ts: Date.now(), compraId, cuotaNum: numeroCuota, cuotaTotal: cecTotal,
         esCuotaEnCurso: true,
       });
     });
 
-    // Hacia atrás: las cuotas 1 a (cecActual-1), ya pagadas en resúmenes viejos
+    // Hacia atrás: las cuotas 1 a (cecActual-1), ya pagadas en resúmenes viejos. Con el ancla
+    // puesta en la cuota actual, estas resuelven solas hacia los períodos anteriores — ya no
+    // hace falta estimarles una fecha.
     const cargarAtras = document.getElementById('own-tj-cec-atras')?.checked || false;
-    let cuotasAtrasCargadas = 0, cuotasAtrasEstimadas = 0;
+    let cuotasAtrasCargadas = 0;
     if (cargarAtras && cecActual > 1) {
-      const cantidadAtras = cecActual - 1;
-      const { cierres: cierresAtras, estimados } = generarSecuenciaCierresHaciaAtras(tarjeta, fecha, cantidadAtras);
-      for (let n = 1; n <= cantidadAtras; n++) {
+      for (let n = 1; n < cecActual; n++) {
         lista.push({
           id: 'gt_' + Date.now() + '_atras' + n + '_' + Math.random().toString(36).slice(2,5),
-          tarjetaId, fecha: cierresAtras[n-1], fechaCompra: fecha, tipo: `${tipo} (cuota ${n}/${cecTotal})`, monto, moneda,
+          tarjetaId, fecha, fechaCompra: fecha, cierreDelPeriodo: null,
+          cuotaV2: true, anclaCierre: ancla || null, anclaNum: cecActual,
+          tipo: `${tipo} (cuota ${n}/${cecTotal})`, monto, moneda,
           cargadoPor: 'Cris', gastoDe: quien, ts: Date.now(), compraId, cuotaNum: n, cuotaTotal: cecTotal,
-          esCuotaEnCurso: true, cierreEstimado: estimados[n-1] || false,
+          esCuotaEnCurso: true,
         });
         cuotasAtrasCargadas++;
-        if (estimados[n-1]) cuotasAtrasEstimadas++;
       }
     }
 
-    const msgAtras = cargarAtras
-      ? ` · ${cuotasAtrasCargadas} hacia atrás cargadas${cuotasAtrasEstimadas > 0 ? ` (${cuotasAtrasEstimadas} con fecha estimada ~30 días)` : ''}`
-      : '';
-    showToast(`✓ ${tipo}: cuota ${cecActual}/${cecTotal} + ${cuotasFaltantes-1} restante${cuotasFaltantes-1!==1?'s':''} de ${fmt(monto)} c/u${msgAtras}`);
+    const sinPeriodo = cierres.filter(c => !c).length;
+    const msgAtras = cuotasAtrasCargadas ? ` · ${cuotasAtrasCargadas} hacia atrás` : '';
+    const msgEsp   = sinPeriodo ? ` · ${sinPeriodo} esperando período` : '';
+    showToast(`✓ ${tipo}: cuota ${cecActual}/${cecTotal} + ${cuotasFaltantes-1} restante${cuotasFaltantes-1!==1?'s':''} de ${fmt(monto)} c/u${msgAtras}${msgEsp}`);
   } else if (enCuotas && tarjeta) {
     const compraId = 'compra_' + Date.now();
     const montos = repartirEnCuotas(monto, cantCuotas);
-    const cierres = generarSecuenciaCierres(tarjeta, fecha, cantCuotas);
+    const { cierres } = generarSecuenciaCierresEstricta(tarjeta, fecha, cantCuotas);
+    const ancla = cierres[0];
     cierres.forEach((cierre, i) => {
       lista.push({
         id: 'gt_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2,5),
-        tarjetaId, fecha: cierre, fechaCompra: fecha, tipo: `${tipo} (cuota ${i+1}/${cantCuotas})`, monto: montos[i], moneda,
+        tarjetaId, fecha, fechaCompra: fecha, cierreDelPeriodo: cierre || null,
+        cuotaV2: true, anclaCierre: ancla || null, anclaNum: 1,
+        tipo: `${tipo} (cuota ${i+1}/${cantCuotas})`, monto: montos[i], moneda,
         cargadoPor: 'Cris', gastoDe: quien, ts: Date.now(), compraId, cuotaNum: i+1, cuotaTotal: cantCuotas,
       });
     });
-    showToast(`✓ ${tipo} en ${cantCuotas} cuotas de ~${fmt(montos[1] || montos[0])}`);
+    const sinPeriodo = cierres.filter(c => !c).length;
+    showToast(`✓ ${tipo} en ${cantCuotas} cuotas de ~${fmt(montos[1] || montos[0])}${sinPeriodo ? ` · ${sinPeriodo} esperando período` : ''}`);
   } else {
     lista.push({
       id: 'gt_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
@@ -6810,6 +6978,7 @@ function renderTarjetaCard(grupo, conciliaciones, colapsadoPorDefaultArg) {
             <input type="number" id="edit-valor-${g.id}" value="${g.monto}" class="fi" style="flex:1;font-size:var(--fs-sm);padding:6px 8px;text-align:right">
             <button onclick="guardarEdicionMontoGasto('${g.id}')" class="btn btn-g" style="font-size:var(--fs-xs);padding:6px 10px">✓</button>
           </div>
+          ${bloqueMoverCompra(g)}
         </div>` : ''}
         </div>`;
       }).join('')}
