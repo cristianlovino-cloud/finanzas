@@ -828,6 +828,12 @@ nav::-webkit-scrollbar{display:none}
    ancho mínimo de su contenido: la tarjeta se estira más allá del track y desborda.
    Con min-width:0 se respeta el ancho de la columna y el contenido se acomoda adentro. */
 .g2>*,.kg>*,.kg2>*,.kg3>*,.g-op>*,.g-inv>*,.g-comp3>*{min-width:0}
+.ec-fila{display:grid;grid-template-columns:1fr auto auto;gap:9px;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:var(--fs-xs)}
+.ec-fila>*{min-width:0}
+.ec-fila>*:nth-child(2){min-width:58px}
+.ec-fila>*:nth-child(3){min-width:62px}
+.ec-head{font-size:.55rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--border2);padding-bottom:4px}
+@media(min-width:420px){.ec-fila{font-size:var(--fs-sm)}}
 .g-et{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
 .g-et>*{min-width:0}
 .g-et .csel-wrap,.g-et .csel-trigger,.g-et select{max-width:100%}
@@ -7973,26 +7979,36 @@ function renderEstadoCuenta() {
   };
   const plata = v => ct.moneda === 'USD' ? fmtUsd(v) : fmtSaldo(v, 'ARS');
 
-  const etiquetas = { gasto: ['↑ GASTO', 'var(--red)'], ingreso: ['↓ INGRESO', 'var(--green)'],
-                      transferencia: ['⇄ TRANSF', 'var(--blue)'], ajuste: ['⚖ AJUSTE', 'var(--yellow)'] };
+  // Tres columnas reales: concepto · importe · saldo. El saldo tiene su propia columna con
+  // encabezado porque es lo que se compara contra el extracto del banco — en letra chica
+  // debajo del importe no se podía leer de corrido.
+  const flechas = { gasto: ['↑', 'var(--red)'], ingreso: ['↓', 'var(--green)'],
+                    transferencia: ['⇄', 'var(--blue)'], ajuste: ['⚖', 'var(--yellow)'] };
 
-  const listaHtml = filas.length ? filas.map(f => {
+  const encabezado = `
+    <div class="ec-fila ec-head">
+      <div>Movimiento</div>
+      <div style="text-align:right">Importe</div>
+      <div style="text-align:right">Saldo</div>
+    </div>`;
+
+  const listaHtml = filas.length ? encabezado + filas.map(f => {
     const m = f.m;
     const efecto = efectoDeMovimiento(m);
-    const [et, color] = etiquetas[m.tipo] || ['MOV', 'var(--muted)'];
+    const [flecha, color] = flechas[m.tipo] || ['·', 'var(--muted)'];
+    const importe = (efecto >= 0 ? '+' : '−') +
+      (ct.moneda === 'USD' ? fmtUsd(Math.abs(efecto)).replace('-', '') : fmt(Math.abs(efecto)));
     return `
-    <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)">
-      <div style="flex:1;min-width:0">
-        <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
-          <span style="font-size:.55rem;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:.03em">${et}</span>
-          <span style="font-size:var(--fs-xs);color:var(--muted2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.desc || ''}</span>
+    <div class="ec-fila">
+      <div style="min-width:0">
+        <div style="display:flex;align-items:baseline;gap:5px;min-width:0">
+          <span style="color:${color};font-weight:700;flex-shrink:0">${flecha}</span>
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.desc || '(sin detalle)'}</span>
         </div>
-        <div style="font-size:.55rem;color:var(--muted);margin-top:1px">${fFecha(m.ts)}</div>
+        <div style="font-size:.55rem;color:var(--muted);margin-top:1px;padding-left:13px">${fFecha(m.ts)}</div>
       </div>
-      <div style="text-align:right;flex-shrink:0">
-        <div style="font-family:var(--fh);font-weight:700;font-size:var(--fs-xs);color:${efecto >= 0 ? 'var(--green)' : 'var(--red)'};white-space:nowrap">${efecto >= 0 ? '+' : '−'}${ct.moneda === 'USD' ? fmtUsd(Math.abs(efecto)).replace('-','') : fmt(Math.abs(efecto))}</div>
-        <div style="font-size:.55rem;color:var(--muted);white-space:nowrap">saldo ${plata(f.saldoDespues)}</div>
-      </div>
+      <div style="text-align:right;font-family:var(--fh);font-weight:700;color:${efecto >= 0 ? 'var(--green)' : 'var(--red)'};white-space:nowrap">${importe}</div>
+      <div style="text-align:right;font-family:var(--fh);font-weight:700;color:${f.saldoDespues < 0 ? 'var(--red)' : 'var(--text)'};white-space:nowrap">${plata(f.saldoDespues)}</div>
     </div>`;
   }).join('') : '<div style="font-size:var(--fs-xs);color:var(--muted);padding:10px 0;text-align:center">Sin movimientos en este período</div>';
 
