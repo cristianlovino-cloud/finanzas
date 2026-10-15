@@ -1657,6 +1657,9 @@ input[type="month"].fi::-webkit-calendar-picker-indicator{
     </div>
   </div>
 
+  <!-- ESTADO DE CUENTA (se abre al tocar ▤ en una cuenta) -->
+  <div id="estado-cuenta-panel" style="display:none"></div>
+
   <!-- MIS CUENTAS + botón nueva -->
   <div class="card" style="margin-bottom:14px">
     <div class="ct" style="display:flex;justify-content:space-between;align-items:center">
@@ -7227,6 +7230,7 @@ function renderCuentas() {
           </div>
           <div style="font-family:var(--fh);font-weight:700;font-size:1.05rem;color:${saldoColor};flex-shrink:0;white-space:nowrap">${saldoFmt}</div>
           <span style="color:var(--muted2);font-size:var(--fs-xs);flex-shrink:0">${abierta ? '▾' : '▸'}</span>
+          <button onclick="event.stopPropagation();abrirEstadoCuenta('${ct.nombre.replace(/'/g, "\\'")}')" style="background:none;border:none;color:${cuentaDetalle===ct.nombre?'var(--blue)':'var(--muted)'};cursor:pointer;font-size:var(--fs-md);padding:2px 4px;flex-shrink:0" title="Ver movimientos y saldo">&#9636;</button>
           ${cuentasEditMode ? `<button onclick="eliminarCuenta(${i})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:1rem;padding:2px 0 2px 2px;flex-shrink:0" title="Eliminar cuenta">✕</button>` : ''}
         </div>
         <!-- Fila 2: controles. El tipo de cuenta solo se puede tocar en modo edición: cambiarlo
@@ -7268,6 +7272,7 @@ function renderCuentas() {
     if (previo !== '' && cuentas[parseInt(previo)]) sel.value = previo; // no perder lo elegido al re-render
   });
   renderTransfFavoritas();
+  renderEstadoCuenta();
 }
 
 // ── Ajuste manual de saldo ──
@@ -7488,7 +7493,7 @@ function registrarMovimiento(cuenta, tipo, monto, moneda, desc, origenTs, transf
   const mov = { ts: Date.now(), cuenta, tipo, monto, moneda, desc, origenTs: origenTs || null };
   if (transfId) mov.transfId = transfId; // une las dos patas de una misma transferencia
   movs.unshift(mov);
-  DB.set('ct_movimientos', movs.slice(0, 300));
+  DB.set('ct_movimientos', movs.slice(0, 2000));
   renderHistorialTransf();
 }
 
@@ -7509,7 +7514,7 @@ function getMovimientos() {
 }
 
 function setMovimientos(movs) {
-  DB.set('ct_movimientos', movs.slice(0, 300));
+  DB.set('ct_movimientos', movs.slice(0, 2000));
 }
 
 // Mueve los saldos de una transferencia. Replica EXACTAMENTE la regla de hacerTransferencia:
@@ -7806,6 +7811,264 @@ function panelEdicionMedio(mov) {
     <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:8px;line-height:1.5">
       Solo se cambia de cuenta. El monto, la fecha y la categoría se editan en Flujo porque mueven los totales del presupuesto.<br>${aviso}
     </div>
+  </div>`;
+}
+
+
+// ══════════════════════════════════════════════════════════════════════
+// ESTADO DE CUENTA — movimientos y saldo corrido de UNA cuenta
+// El saldo de cada fila se calcula HACIA ATRÁS desde el saldo actual, no hacia adelante desde
+// el saldo inicial: el historial está topado (no guarda toda la vida de la cuenta), así que
+// sumar desde el principio daría un número inventado. Yendo para atrás desde el saldo de hoy,
+// cada fila dice exactamente cuánto había en la cuenta después de ese movimiento, y eso sí
+// se puede comparar contra el extracto del banco.
+//
+// El cuadre compara las dos caras: transacciones de Flujo que dicen haber salido de esta
+// cuenta pero nunca movieron el saldo, y movimientos que movieron el saldo sin una
+// transacción que los respalde. Esas dos listas son donde aparece el descuadre con el banco.
+// ══════════════════════════════════════════════════════════════════════
+
+let cuentaDetalle = null;   // nombre de la cuenta abierta
+let cuentaDetalleMes = '';  // filtro de mes dentro del detalle
+
+function abrirEstadoCuenta(nombre) {
+  cuentaDetalle = (cuentaDetalle === nombre) ? null : nombre;
+  cuentaDetalleMes = '';
+  renderCuentas();
+  if (cuentaDetalle) {
+    setTimeout(() => {
+      const el = document.getElementById('estado-cuenta-panel');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 60);
+  }
+}
+
+function setMesEstadoCuenta(mes) {
+  cuentaDetalleMes = mes || '';
+  renderCuentas();
+}
+
+// Movimientos de la cuenta, del más nuevo al más viejo, con el saldo resultante de cada uno.
+function movimientosConSaldo(nombre) {
+  const ct = getCuentas().find(c => c.nombre === nombre);
+  if (!ct) return [];
+  const propios = getMovimientos()
+    .filter(m => m.cuenta === nombre && (m.moneda || 'ARS') === ct.moneda)
+    .slice()
+    .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+
+  // Hacia atrás desde el saldo de hoy: el saldo DESPUÉS del movimiento más nuevo es el actual,
+  // y para cada movimiento anterior se le deshace el efecto del que vino después.
+  let saldo = parseFloat(ct.saldo) || 0;
+  return propios.map(m => {
+    const fila = { m, saldoDespues: saldo };
+    saldo -= efectoDeMovimiento(m);
+    fila.saldoAntes = saldo;
+    return fila;
+  });
+}
+
+// Cuánto sumó o restó al saldo este movimiento. El signo guardado no alcanza: los gastos se
+// guardan en positivo, así que la dirección la define el tipo.
+function efectoDeMovimiento(m) {
+  const monto = parseFloat(m.monto) || 0;
+  if (m.tipo === 'gasto')   return -Math.abs(monto);
+  if (m.tipo === 'ingreso') return  Math.abs(monto);
+  return monto; // transferencias y ajustes ya vienen con signo
+}
+
+// Cruce entre lo que dice Flujo y lo que movió el saldo, dentro de la ventana que cubre
+// el historial. Empareja igual que el resto de la app: por vínculo directo y, para los
+// movimientos viejos que no lo tienen, por coincidencia exacta de tipo, monto y descripción.
+function cuadreDeCuenta(nombre) {
+  const ct = getCuentas().find(c => c.nombre === nombre);
+  if (!ct) return null;
+  const movs = getMovimientos().filter(m => m.cuenta === nombre && (m.tipo === 'gasto' || m.tipo === 'ingreso'));
+  if (!movs.length) return { desdeTs: null, sinMovimiento: [], huerfanos: [], emparejadas: 0 };
+  const desdeTs = Math.min(...getMovimientos().map(m => m.ts || 0).filter(Boolean));
+
+  const libres = movs.map((m, i) => ({ m, i, usado: false }));
+  const clave = (cuenta, tipo, monto, desc) =>
+    cuenta + '|' + tipo + '|' + Math.round(Math.abs(monto) * 100) + '|' + String(desc || '').trim();
+  const indice = {};
+  libres.forEach(x => {
+    const k = clave(x.m.cuenta, x.m.tipo, x.m.monto, x.m.desc);
+    (indice[k] = indice[k] || []).push(x);
+  });
+
+  const txsAll = DB.get('txs', {});
+  const sinMovimiento = [];
+  let emparejadas = 0;
+  Object.keys(txsAll).forEach(mes => {
+    (txsAll[mes] || []).forEach(t => {
+      if ((t.medio || '').trim() !== nombre) return;
+      if (!t.ts || t.ts < desdeTs) return;                  // fuera de lo que cubre el historial
+      if ((t.moneda || 'ARS') !== ct.moneda) return;
+      const tipo = t.tipo === 'ingreso' ? 'ingreso' : 'gasto';
+      const k = clave(nombre, tipo, parseFloat(t.monto) || 0, t.desc);
+      const libre = (indice[k] || []).find(x => !x.usado);
+      if (libre) { libre.usado = true; emparejadas++; }
+      else sinMovimiento.push({ mes, t, tipo });
+    });
+  });
+
+  return {
+    desdeTs,
+    emparejadas,
+    sinMovimiento,
+    huerfanos: libres.filter(x => !x.usado).map(x => x.m),
+  };
+}
+
+// Registrar el movimiento que le falta a una transacción, y mover el saldo en consecuencia.
+function aplicarMovimientoFaltante(nombre, txTs) {
+  const txsAll = DB.get('txs', {});
+  let encontrada = null;
+  Object.keys(txsAll).forEach(mes => {
+    (txsAll[mes] || []).forEach(t => { if (t.ts === txTs) encontrada = t; });
+  });
+  if (!encontrada) { showToast('No encontré esa transacción', '#f43f5e'); return; }
+
+  const cuentas = getCuentas();
+  const ct = cuentas.find(c => c.nombre === nombre);
+  if (!ct || ct.moneda !== (encontrada.moneda || 'ARS')) { showToast('La moneda no coincide', '#f43f5e'); return; }
+
+  const monto = Math.abs(parseFloat(encontrada.monto) || 0);
+  const esIngreso = encontrada.tipo === 'ingreso';
+  ct.saldo += esIngreso ? monto : -monto;
+  saveCuentas(cuentas);
+  registrarMovimiento(nombre, esIngreso ? 'ingreso' : 'gasto', monto, ct.moneda,
+                      encontrada.desc || nombre, encontrada.ts);
+  renderCuentas();
+  showToast(`✓ Saldo actualizado: ${esIngreso ? '+' : '−'}${fmt(monto)}`);
+}
+
+
+// ── El panel del estado de cuenta, que se dibuja debajo de la lista de cuentas ──
+function renderEstadoCuenta() {
+  const cont = document.getElementById('estado-cuenta-panel');
+  if (!cont) return;
+  if (!cuentaDetalle) { cont.innerHTML = ''; cont.style.display = 'none'; return; }
+  cont.style.display = 'block';
+
+  const ct = getCuentas().find(c => c.nombre === cuentaDetalle);
+  if (!ct) { cont.innerHTML = ''; return; }
+
+  const todas = movimientosConSaldo(cuentaDetalle);
+  const meses = [...new Set(todas.map(f => new Date(f.m.ts).toISOString().slice(0, 7)))].sort().reverse();
+  // Sin filtro de mes se muestran las más recientes: dibujar cientos de filas de una en el
+  // teléfono lo pone pesado, y para ir más atrás está el selector de mes.
+  const TOPE_VISIBLE = 120;
+  const delMes = cuentaDetalleMes
+    ? todas.filter(f => new Date(f.m.ts).toISOString().slice(0, 7) === cuentaDetalleMes)
+    : todas;
+  const filas = delMes.slice(0, TOPE_VISIBLE);
+  const recortadas = delMes.length - filas.length;
+
+  const cuadre = cuadreDeCuenta(cuentaDetalle);
+  const fFecha = ts => {
+    const d = new Date(ts);
+    return d.getDate() + '/' + (d.getMonth() + 1) + ' ' +
+           String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  };
+  const plata = v => ct.moneda === 'USD' ? fmtUsd(v) : fmtSaldo(v, 'ARS');
+
+  const etiquetas = { gasto: ['↑ GASTO', 'var(--red)'], ingreso: ['↓ INGRESO', 'var(--green)'],
+                      transferencia: ['⇄ TRANSF', 'var(--blue)'], ajuste: ['⚖ AJUSTE', 'var(--yellow)'] };
+
+  const listaHtml = filas.length ? filas.map(f => {
+    const m = f.m;
+    const efecto = efectoDeMovimiento(m);
+    const [et, color] = etiquetas[m.tipo] || ['MOV', 'var(--muted)'];
+    return `
+    <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+          <span style="font-size:.55rem;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:.03em">${et}</span>
+          <span style="font-size:var(--fs-xs);color:var(--muted2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.desc || ''}</span>
+        </div>
+        <div style="font-size:.55rem;color:var(--muted);margin-top:1px">${fFecha(m.ts)}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-family:var(--fh);font-weight:700;font-size:var(--fs-xs);color:${efecto >= 0 ? 'var(--green)' : 'var(--red)'};white-space:nowrap">${efecto >= 0 ? '+' : '−'}${ct.moneda === 'USD' ? fmtUsd(Math.abs(efecto)).replace('-','') : fmt(Math.abs(efecto))}</div>
+        <div style="font-size:.55rem;color:var(--muted);white-space:nowrap">saldo ${plata(f.saldoDespues)}</div>
+      </div>
+    </div>`;
+  }).join('') : '<div style="font-size:var(--fs-xs);color:var(--muted);padding:10px 0;text-align:center">Sin movimientos en este período</div>';
+
+  // Bloque de cuadre: las dos caras del descuadre con el banco
+  const sinMov = (cuadre && cuadre.sinMovimiento) || [];
+  const huerf  = (cuadre && cuadre.huerfanos) || [];
+  const netoSinMov = sinMov.reduce((s, x) => s + (x.tipo === 'ingreso' ? 1 : -1) * Math.abs(parseFloat(x.t.monto) || 0), 0);
+  const netoHuerf  = huerf.reduce((s, m) => s + efectoDeMovimiento(m), 0);
+
+  let cuadreHtml = '';
+  if (!sinMov.length && !huerf.length) {
+    cuadreHtml = `<div style="padding:9px 10px;background:rgba(34,211,160,.08);border:1px solid rgba(34,211,160,.22);border-radius:7px;font-size:var(--fs-xs);color:var(--green);line-height:1.5">
+      ✓ Todo lo cargado en Flujo para esta cuenta movió el saldo${cuadre && cuadre.emparejadas ? ` (${cuadre.emparejadas} ${cuadre.emparejadas === 1 ? 'transacción' : 'transacciones'})` : ''}.
+      Si igual no coincide con el banco, falta cargar algo que sí salió de la cuenta.
+    </div>`;
+  } else {
+    cuadreHtml = `<div style="padding:9px 10px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);border-radius:7px;font-size:var(--fs-xs);line-height:1.55">
+      <div style="font-weight:700;color:var(--yellow);margin-bottom:5px">Descuadre detectado</div>
+      ${sinMov.length ? `<div style="margin-bottom:6px">
+        <b>${sinMov.length}</b> ${sinMov.length === 1 ? 'transacción de Flujo dice' : 'transacciones de Flujo dicen'} salir de esta cuenta pero nunca movieron el saldo
+        (${plata(netoSinMov)} de efecto).
+        ${sinMov.slice(0, 6).map(x => `<div style="color:var(--muted);margin-top:3px;display:flex;justify-content:space-between;gap:8px">
+            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${x.t.fecha} · ${x.t.desc || '(sin descripción)'}</span>
+            <span style="flex-shrink:0">${fmt(x.t.monto)}</span>
+            <button onclick="aplicarMovimientoFaltante('${cuentaDetalle.replace(/'/g, "\\'")}', ${x.t.ts})" style="background:rgba(34,211,160,.14);border:1px solid rgba(34,211,160,.3);color:var(--green);border-radius:4px;padding:1px 7px;font-size:.55rem;cursor:pointer;flex-shrink:0">aplicar</button>
+          </div>`).join('')}
+        ${sinMov.length > 6 ? `<div style="color:var(--muted);margin-top:3px">… y ${sinMov.length - 6} más</div>` : ''}
+      </div>` : ''}
+      ${huerf.length ? `<div>
+        <b>${huerf.length}</b> ${huerf.length === 1 ? 'movimiento movió' : 'movimientos movieron'} el saldo sin una transacción en Flujo que lo respalde
+        (${plata(netoHuerf)} de efecto). Suelen ser transacciones borradas después, o cargadas antes de tener cuentas.
+      </div>` : ''}
+    </div>`;
+  }
+
+  const desde = cuadre && cuadre.desdeTs ? new Date(cuadre.desdeTs).toLocaleDateString('es-AR', {day:'2-digit', month:'short', year:'2-digit'}) : null;
+
+  cont.innerHTML = `
+  <div class="card" style="margin-bottom:14px;border:1px solid var(--border2)">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      ${bancoBadge(ct.nombre, 34)}
+      <div style="flex:1;min-width:0">
+        <div style="font-family:var(--fh);font-weight:700;font-size:var(--fs-lg);text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ct.nombre}</div>
+        <div style="font-size:var(--fs-xs);color:var(--muted)">${todas.length} movimiento${todas.length !== 1 ? 's' : ''} registrado${todas.length !== 1 ? 's' : ''}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-family:var(--fh);font-weight:700;font-size:1.05rem;color:${ct.saldo >= 0 ? 'var(--green)' : 'var(--red)'}">${plata(ct.saldo)}</div>
+        <div style="font-size:.55rem;color:var(--muted)">saldo actual</div>
+      </div>
+      <button onclick="abrirEstadoCuenta('${ct.nombre.replace(/'/g, "\\'")}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.1rem;padding:0 2px;flex-shrink:0" title="Cerrar">✕</button>
+    </div>
+
+    ${cuadreHtml}
+
+    <div style="display:flex;gap:6px;align-items:center;margin:12px 0 4px;flex-wrap:wrap">
+      <select onchange="setMesEstadoCuenta(this.value)" class="fi" style="font-size:var(--fs-xs);padding:4px 8px;width:auto">
+        <option value="">Todos los meses</option>
+        ${meses.map(m => {
+          const [y, mo] = m.split('-');
+          const lbl = (typeof MESES !== 'undefined' ? MESES[parseInt(mo) - 1] : mo) + ' ' + y;
+          return `<option value="${m}"${m === cuentaDetalleMes ? ' selected' : ''}>${lbl}</option>`;
+        }).join('')}
+      </select>
+      <span style="font-size:.55rem;color:var(--muted)">saldo corrido desde hoy hacia atrás</span>
+    </div>
+
+    ${listaHtml}
+
+    ${recortadas > 0 ? `<div style="font-size:var(--fs-xs);color:var(--muted);text-align:center;padding:8px 0">
+      Se muestran los ${filas.length} más recientes · ${recortadas} más atrás — elegí un mes para verlos
+    </div>` : ''}
+
+    ${desde ? `<div style="font-size:.55rem;color:var(--muted);margin-top:8px;line-height:1.5">
+      El historial arranca el ${desde}: lo anterior no quedó registrado, así que el saldo de la fila más vieja
+      incluye todo lo que pasó antes.
+    </div>` : ''}
   </div>`;
 }
 
@@ -12923,7 +13186,7 @@ function aplicarDeltaSaldoTx(tx, factor) {
   if (factor > 0 && tx.ts) {
     const movs = DB.get('ct_movimientos', []);
     movs.unshift({ ts: Date.now(), cuenta: tx.medio, tipo: tx.tipo === 'ingreso' ? 'ingreso' : 'gasto', monto: tx.monto, moneda: tx.moneda, desc: tx.desc || tx.medio, origenTs: tx.ts });
-    DB.set('ct_movimientos', movs.slice(0, 300));
+    DB.set('ct_movimientos', movs.slice(0, 2000));
     if (typeof renderHistorialTransf === 'function') renderHistorialTransf();
   }
 }
