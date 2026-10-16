@@ -828,12 +828,13 @@ nav::-webkit-scrollbar{display:none}
    ancho mínimo de su contenido: la tarjeta se estira más allá del track y desborda.
    Con min-width:0 se respeta el ancho de la columna y el contenido se acomoda adentro. */
 .g2>*,.kg>*,.kg2>*,.kg3>*,.g-op>*,.g-inv>*,.g-comp3>*{min-width:0}
-.ec-fila{display:grid;grid-template-columns:1fr auto auto;gap:9px;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:var(--fs-xs)}
+.ec-fila{display:grid;grid-template-columns:1fr auto auto;gap:9px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:var(--fs-sm)}
 .ec-fila>*{min-width:0}
 .ec-fila>*:nth-child(2){min-width:58px}
 .ec-fila>*:nth-child(3){min-width:62px}
-.ec-head{font-size:.55rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--border2);padding-bottom:4px}
-@media(min-width:420px){.ec-fila{font-size:var(--fs-sm)}}
+.ec-concepto{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.3;word-break:break-word}
+.ec-head{font-size:.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--border2);padding-bottom:4px}
+@media(min-width:420px){.ec-fila{font-size:var(--fs-md)}}
 .g-et{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
 .g-et>*{min-width:0}
 .g-et .csel-wrap,.g-et .csel-trigger,.g-et select{max-width:100%}
@@ -7950,6 +7951,44 @@ function aplicarMovimientoFaltante(nombre, txTs) {
 }
 
 
+
+// La categoría no vive en el movimiento sino en la transacción de Flujo que lo originó, así
+// que hay que cruzarlas. Se arma un índice de una sola pasada (buscar tx por tx para cada
+// fila escanearía todos los meses 150 veces y en el teléfono se nota).
+// Mismo criterio de cruce que el resto de la app: primero el vínculo directo, y para los
+// movimientos viejos que no lo tienen, coincidencia exacta de tipo, monto y descripción.
+function categoriasDeMovimientos(nombre) {
+  const mapa = {};
+  const ct = getCuentas().find(c => c.nombre === nombre);
+  if (!ct) return mapa;
+
+  const porTs = {};
+  const porClave = {};
+  const clave = (tipo, monto, desc) =>
+    tipo + '|' + Math.round(Math.abs(parseFloat(monto) || 0) * 100) + '|' + String(desc || '').trim();
+
+  const txsAll = DB.get('txs', {});
+  Object.keys(txsAll).forEach(mes => {
+    (txsAll[mes] || []).forEach(t => {
+      if ((t.medio || '').trim() !== nombre) return;
+      const cat = (t.cat || '').trim();
+      if (!cat) return;
+      if (t.ts) porTs[t.ts] = cat;
+      const k = clave(t.tipo === 'ingreso' ? 'ingreso' : 'gasto', t.monto, t.desc);
+      (porClave[k] = porClave[k] || []).push(cat);
+    });
+  });
+
+  getMovimientos().forEach(m => {
+    if (m.cuenta !== nombre) return;
+    if (m.tipo !== 'gasto' && m.tipo !== 'ingreso') return;
+    if (m.origenTs && porTs[m.origenTs]) { mapa[m.ts] = porTs[m.origenTs]; return; }
+    const lista = porClave[clave(m.tipo, m.monto, m.desc)];
+    if (lista && lista.length) mapa[m.ts] = lista[0];
+  });
+  return mapa;
+}
+
 // ── El panel del estado de cuenta, que se dibuja debajo de la lista de cuentas ──
 function renderEstadoCuenta() {
   const cont = document.getElementById('estado-cuenta-panel');
@@ -7972,6 +8011,7 @@ function renderEstadoCuenta() {
   const recortadas = delMes.length - filas.length;
 
   const cuadre = cuadreDeCuenta(cuentaDetalle);
+  const catPorMov = categoriasDeMovimientos(cuentaDetalle);
   const fFecha = ts => {
     const d = new Date(ts);
     return d.getDate() + '/' + (d.getMonth() + 1) + ' ' +
@@ -8003,9 +8043,11 @@ function renderEstadoCuenta() {
       <div style="min-width:0">
         <div style="display:flex;align-items:baseline;gap:5px;min-width:0">
           <span style="color:${color};font-weight:700;flex-shrink:0">${flecha}</span>
-          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.desc || '(sin detalle)'}</span>
+          <span class="ec-concepto">${
+            catPorMov[m.ts] ? `<span style="color:var(--muted)">${catPorMov[m.ts]}</span> · ` : ''
+          }${m.desc || '(sin detalle)'}</span>
         </div>
-        <div style="font-size:.55rem;color:var(--muted);margin-top:1px;padding-left:13px">${fFecha(m.ts)}</div>
+        <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:2px;padding-left:14px">${fFecha(m.ts)}</div>
       </div>
       <div style="text-align:right;font-family:var(--fh);font-weight:700;color:${efecto >= 0 ? 'var(--green)' : 'var(--red)'};white-space:nowrap">${importe}</div>
       <div style="text-align:right;font-family:var(--fh);font-weight:700;color:${f.saldoDespues < 0 ? 'var(--red)' : 'var(--text)'};white-space:nowrap">${plata(f.saldoDespues)}</div>
