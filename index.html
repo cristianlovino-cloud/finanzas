@@ -311,14 +311,53 @@ window.cfSincronizarAhora = async function() {
   }
 };
 
-// ── Login con Google (redirect, no popup — más confiable en Chrome mobile) ──
+// ── Login con Google ──
+// Va con POPUP, no con redirect. signInWithRedirect dejó de funcionar cuando los navegadores
+// empezaron a aislar el almacenamiento de terceros (Chrome 115+, Firefox 109+, Safari 16.1+):
+// el flujo necesita leer el storage de <proyecto>.firebaseapp.com, que desde este dominio es
+// un tercero, así que vuelve del login y se pierde la sesión sin decir nada. Es la causa de
+// que el botón "no haga nada" y el ícono quede en desconectado.
+// El redirect queda solo como plan B por si el navegador bloquea la ventana emergente.
+// Importante: signInWithPopup tiene que ser el PRIMER await del handler — si hay cualquier
+// otra espera antes, el navegador pierde el gesto del usuario y bloquea el popup.
+window.fbDiag = function(txt, color) {
+  const el = document.getElementById('fb-diag');
+  if (el) { el.innerHTML = txt; el.style.color = color || 'var(--muted)'; }
+};
+
 window.fbLogin = async function() {
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: 'select_account' });
   try {
-    const provider = new GoogleAuthProvider();
-    await signInWithRedirect(auth, provider);
-    // La página se recarga acá mismo; el resultado se procesa más abajo con getRedirectResult al volver.
+    fbDiag('Abriendo la ventana de Google…');
+    const res = await signInWithPopup(auth, provider);
+    if (res && res.user) {
+      fbDiag('✓ Sesión iniciada como ' + (res.user.email || res.user.displayName || ''), 'var(--green)');
+      showToast('✓ Sesión iniciada — sincronizando...');
+    }
   } catch(e) {
     console.error('Login error:', e);
+    const code = (e && e.code) || '';
+    if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+      fbDiag('Cerraste la ventana antes de terminar. Probá de nuevo.', 'var(--yellow)');
+      return;
+    }
+    if (code === 'auth/unauthorized-domain') {
+      fbDiag('Firebase no tiene autorizado este dominio. Agregá <b>' + location.hostname +
+             '</b> en Firebase → Authentication → Settings → Authorized domains.', 'var(--red)');
+      return;
+    }
+    if (code === 'auth/popup-blocked' || code === 'auth/operation-not-supported-in-this-environment') {
+      fbDiag('El navegador bloqueó la ventana — probando con redirección…', 'var(--yellow)');
+      try { await signInWithRedirect(auth, provider); }
+      catch(e2) {
+        console.error('Login redirect error:', e2);
+        fbDiag('No se pudo iniciar sesión: ' + ((e2 && e2.code) || e2), 'var(--red)');
+        showToast('No se pudo iniciar sesión', '#f43f5e');
+      }
+      return;
+    }
+    fbDiag('No se pudo iniciar sesión — ' + (code || (e && e.message) || e), 'var(--red)');
     showToast('Error al iniciar sesión', '#f43f5e');
   }
 };
@@ -327,10 +366,13 @@ window.fbLogin = async function() {
 getRedirectResult(auth).then(result => {
   if (result && result.user) {
     showToast('✓ Sesión iniciada — sincronizando...', '#22d3a0');
+    if (window.fbDiag) fbDiag('✓ Sesión iniciada como ' + (result.user.email || ''), 'var(--green)');
   }
 }).catch(e => {
   console.error('getRedirectResult error:', e);
   if (e && e.code && e.code !== 'auth/no-auth-event') {
+    if (window.fbDiag) fbDiag('El login por redirección no se pudo completar (' + e.code + '). ' +
+      'Es el problema conocido de los navegadores que aíslan el almacenamiento de terceros.', 'var(--red)');
     showToast('No se pudo completar el login — probá de nuevo', '#f43f5e');
   }
 });
@@ -2491,6 +2533,10 @@ input[type="month"].fi::-webkit-calendar-picker-indicator{
     <button id="fb-login-btn" onclick="fbLogin()" style="width:100%;padding:12px;background:var(--green);color:var(--bg);border:none;border-radius:8px;font-family:var(--fh);font-size:var(--fs-md);font-weight:700;cursor:pointer">
       Iniciar sesión con Google
     </button>
+    <!-- Qué pasó en el último intento de login. Sin esto, cuando falla solo queda un toast
+         genérico y no hay forma de saber si es el dominio, el popup o la sesión. -->
+    <div id="fb-diag" style="margin-top:10px;font-size:var(--fs-xs);color:var(--muted);line-height:1.5"></div>
+    <div style="margin-top:6px;font-size:.6rem;color:var(--muted2)">dominio de esta app: <b id="fb-host"></b></div>
     <div style="margin-top:12px;padding:10px;background:var(--s2);border-radius:6px;font-size:var(--fs-xs);color:var(--muted);line-height:1.5">
       <strong style="color:var(--muted2)">Cómo funciona:</strong><br>
       • Cada vez que guardás un gasto o presupuesto, se sincroniza automáticamente<br>
@@ -3627,7 +3673,7 @@ function go(id, btn) {
   if (id === 'cuentas')   { try { migrarTransfIdHistorial(); } catch(e) { console.warn('migrarTransfIdHistorial:', e); } renderCuentas(); updateMediosDePago(); updateOverviewSaldos(); renderHistorialTransf(); }
   if (id === 'analisis')   renderAnalisis();
   if (id === 'hipotecario') renderHipotecario();
-  if (id === 'config')     { renderLogosBancos(); rotarPeriodosTarjetas(); renderTarjetasCfg(); renderRecurrentesCfg(); renderNormalizadorCategorias(); renderRenombrarCategorias(); applyFontPreset(localStorage.getItem('cl_font_preset') || 'original'); populateTarjetaSelectBorrado(); }
+  if (id === 'config')     { const fh=document.getElementById('fb-host'); if(fh) fh.textContent=location.hostname||'(archivo local)'; renderLogosBancos(); rotarPeriodosTarjetas(); renderTarjetasCfg(); renderRecurrentesCfg(); renderNormalizadorCategorias(); renderRenombrarCategorias(); applyFontPreset(localStorage.getItem('cl_font_preset') || 'original'); populateTarjetaSelectBorrado(); }
   if (id === 'tarjetas')    {
     renderGastosTarjetas();
     renderOwnTarjetaSelector();
@@ -3782,9 +3828,14 @@ function fabAccion() {
 // ══════════════════════════════════════════════════════
 // SALUD FINANCIERA — color dinámico del acento
 // ══════════════════════════════════════════════════════
-function calcularSaludFinanciera({ totalIng, totalGas, totalTarjetasEsteMes }) {
+function calcularSaludFinanciera({ totalIng, totalGas, totalTarjetasEsteMes, ingMensualRef }) {
   // Usamos solo operativa: ing vs gastos, sin inversiones (que son siempre positivas)
-  const ingMensual = totalIng / Math.max(1, new Date().getMonth() + 1); // promedio mensual del año
+  // El ingreso de referencia viene calculado de afuera (mes en curso, o mediana de los meses
+  // cargados). El viejo promedio totalIng / número-de-mes contaba como cero los meses sin
+  // cargar y se distorsionaba con el aguinaldo.
+  const ingMensual = (ingMensualRef > 0)
+    ? ingMensualRef
+    : totalIng / Math.max(1, new Date().getMonth() + 1);
   const tasaAhorro = totalIng > 0 ? (totalIng - totalGas) / totalIng : 0;
   const cargaTarjetas = ingMensual > 0 ? totalTarjetasEsteMes / ingMensual : 0;
 
@@ -9388,18 +9439,50 @@ function updateOverview() {
 
   // ── Color dinámico según salud financiera ──
   try {
-    const tarjetasData = getGastosTarjetas ? getGastosTarjetas() : [];
-    const conciliaciones = DB.get('tarjetas_conciliadas', {});
-    const grupos = typeof agruparGastosPorPeriodo === 'function' ? agruparGastosPorPeriodo() : [];
-    const gruposEsteMes = grupos.filter(g => !g.esHuerfano && !conciliaciones[g.tarjeta.id+'|'+g.cierre]);
-    const totalTarjetas = gruposEsteMes.reduce((s, g) =>
-      s + g.gastos.filter(x => x.moneda !== 'USD').reduce((a, x) => a + (x.monto||0), 0), 0);
+    // Carga de tarjetas = lo que llevan los períodos EN CURSO, el mismo número que muestra
+    // "Total período en curso" en la Consulta Rápida. Antes se sumaban TODOS los resúmenes
+    // sin conciliar: eso incluía cada cuota futura hasta 2027, así que la deuda entera de las
+    // compras en cuotas se contaba como consumo de este mes y el indicador se disparaba.
+    // Solo ARS: mezclar con USD sería sumar peras con manzanas.
+    let totalTarjetas = 0;
+    (typeof getTarjetas === 'function' ? getTarjetas() : []).forEach(t => {
+      try { const r = resumenPeriodoTarjeta(t.id); if (r) totalTarjetas += r.ars; } catch(e) {}
+    });
+
+    // Ingreso mensual de referencia: el del mes en curso si ya está cargado; si no, la MEDIANA
+    // de los meses cargados. El promedio se iba a las nubes con el mes del aguinaldo y hacía
+    // parecer liviana la carga de tarjetas.
+    const ingresosMensuales = [];
+    MESES.forEach((_, i) => {
+      const mes = overviewYear + '-' + String(i + 1).padStart(2, '0');
+      if (mes > curMesKey) return;
+      const tienePlan = !!DB.get('plans', {})[mes];
+      const tieneTxs  = (DB.get('txs', {})[mes] || []).length > 0;
+      if (!tienePlan && !tieneTxs) return;
+      const v = planTotals(getPlan(mes)).ing;
+      if (v > 0) ingresosMensuales.push(v);
+    });
+    const ingDelMes = planTotals(getPlan(curMesKey)).ing;
+    let ingMensualRef = 0;
+    if (ingDelMes > 0) ingMensualRef = ingDelMes;
+    else if (ingresosMensuales.length) {
+      const orden = ingresosMensuales.slice().sort((a, b) => a - b);
+      ingMensualRef = orden[Math.floor(orden.length / 2)];
+    }
+
     const salud = calcularSaludFinanciera({
       totalIng, totalGas,
       totalTarjetasEsteMes: totalTarjetas,
+      ingMensualRef,
     });
     aplicarSaludFinanciera(salud);
-  } catch(e) { /* no romper overview si falla el cálculo de salud */ }
+
+    // Para poder auditarlo sin abrir la consola: el detalle queda en el tooltip del aviso
+    const lbl = document.getElementById('health-badge');
+    if (lbl && ingMensualRef > 0) {
+      lbl.title = `Tarjetas (períodos en curso): ${fmt(totalTarjetas)} · Ingreso mensual de referencia: ${fmt(ingMensualRef)}`;
+    }
+  } catch(e) { console.warn('salud financiera:', e); }
 
   if (typeof render503020 === 'function') { try { render503020(); } catch(e) { console.warn('render503020 error:', e); } }
   if (typeof renderAnalisisOverview === 'function') { try { renderAnalisisOverview(); } catch(e) { console.warn('renderAnalisisOverview error:', e); } }
