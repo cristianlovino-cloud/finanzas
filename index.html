@@ -8659,7 +8659,10 @@ function concilRenderResultado() {
       <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)">
         <div style="flex:1;min-width:0">
           <div style="font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${b.desc}</div>
-          <div style="font-size:var(--fs-xs);color:var(--muted)">${b.fecha}</div>
+          <div style="font-size:var(--fs-xs);color:var(--muted)">${b.fecha}${
+            b.cuota ? ` · <span style="color:var(--blue)">cuota ${b.cuota.n}/${b.cuota.total}${
+              b.cuota.total > b.cuota.n ? ` — se crean también las ${b.cuota.total - b.cuota.n} que faltan` : ' — última'}</span>` : ''
+          }</div>
         </div>
         <div style="font-family:var(--fm);font-size:var(--fs-sm);flex-shrink:0">${b.usdK ? 'U$S ' + b.usdK.toFixed(2) : fmt(b.k)}</div>
         <select id="concil-quien-${d.faltan.indexOf(b)}" class="fi" style="width:74px;flex-shrink:0;padding:3px 6px;font-size:var(--fs-xs)">
@@ -8703,6 +8706,12 @@ function concilRenderResultado() {
 
 // Carga un consumo del banco que no estaba en la app. Queda a nombre de quien concilia;
 // si fue de Lara o Emma hay que reasignarlo después desde el listado.
+// Saca el "02/03" del final de la descripción del banco: el número de cuota se guarda aparte
+// y la app lo vuelve a escribir con su propio formato "(cuota 2/3)".
+function concilDescLimpia(desc) {
+  return String(desc || '').trim().replace(/\s*\(?\d{1,2}\s*\/\s*\d{1,2}\s*\)?\s*$/, '').trim() || 'Consumo';
+}
+
 async function concilCargarFaltante(i) {
   const d = _concilDatos;
   const b = d && d.faltan[i];
@@ -8710,21 +8719,62 @@ async function concilCargarFaltante(i) {
   const esUsd = b.usdK > 0 && b.ars === 0;
   // Se lee ANTES de tocar el DOM: al re-renderizar, el selector de esta fila deja de existir
   const quien = (document.getElementById('concil-quien-' + i) || {}).value || _concilQuienDefault;
+  const monto = esUsd ? b.usdK : Math.round(b.k);
   const gastos = getGastosTarjetas();
+
+  if (b.cuota) {
+    // El banco está facturando la cuota n de una compra en `total` cuotas. Cargar solo esa
+    // fila dejaría la compra incompleta: el mes que viene volvería a aparecer como faltante,
+    // y así hasta la última — cargando la misma compra de a una cuota por mes para siempre.
+    // Además quedaría fuera de todo lo que trabaja por compra (mover de tarjeta, detectar
+    // cuotas desviadas, detectar duplicados), que se guían por el compraId.
+    // Se crean la cuota en curso y las que faltan hacia adelante. Las anteriores NO: ya se
+    // facturaron en resúmenes pasados, posiblemente conciliados, y tocarlos cambiaría totales
+    // ya cerrados.
+    const restantes = b.cuota.total - b.cuota.n;
+    const limpio = concilDescLimpia(b.desc);
+    const aviso = restantes > 0
+      ? `"${limpio}" es la cuota ${b.cuota.n} de ${b.cuota.total}.\n\nSe cargan ${restantes + 1} cuotas: la de este resumen y las ${restantes} que faltan.\n\nLas ${b.cuota.n - 1} anteriores no se tocan (ya se facturaron en resúmenes pasados).`
+      : `"${limpio}" es la última cuota (${b.cuota.n}/${b.cuota.total}). Se carga solo esta.`;
+    if (!confirm(aviso)) return;
+
+    const compraId = 'compra_' + Date.now();
+    for (let n = b.cuota.n; n <= b.cuota.total; n++) {
+      gastos.push({
+        id: 'gt_' + Date.now() + '_' + n + '_' + Math.random().toString(36).slice(2, 5),
+        tarjetaId: d.tarjeta.id,
+        fecha: b.fecha, fechaCompra: b.fecha,
+        cuotaV2: true, anclaCierre: d.actual.cierre, anclaNum: b.cuota.n,
+        cierreDelPeriodo: n === b.cuota.n ? d.actual.cierre : null,
+        tipo: `${limpio} (cuota ${n}/${b.cuota.total})`,
+        monto, moneda: esUsd ? 'USD' : 'ARS',
+        cargadoPor: quien, gastoDe: quien, ts: Date.now(),
+        compraId, cuotaNum: n, cuotaTotal: b.cuota.total, esCuotaEnCurso: true,
+        notas: 'Importado del detalle del banco',
+      });
+    }
+    saveGastosTarjetas(gastos);
+    d.faltan.splice(i, 1);
+    d.totalAppArs += esUsd ? 0 : monto; // al período en curso entra UNA sola cuota
+    concilRenderResultado();
+    renderGastosTarjetas();
+    showToast(`✓ ${limpio}: ${restantes + 1} cuota${restantes ? 's' : ''} cargada${restantes ? 's' : ''} → ${quien}`);
+    return;
+  }
+
   gastos.push({
     id: 'gt_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5),
     tarjetaId: d.tarjeta.id,
-    fecha: b.cuota ? d.actual.cierre : b.fecha, // una cuota se factura en el cierre, no en la fecha de compra
+    fecha: b.fecha,
     tipo: b.desc,
-    monto: esUsd ? b.usdK : Math.round(b.k),
-    moneda: esUsd ? 'USD' : 'ARS',
+    monto, moneda: esUsd ? 'USD' : 'ARS',
     cargadoPor: quien,
     ts: Date.now(),
     notas: 'Importado del detalle del banco',
   });
   saveGastosTarjetas(gastos);
   d.faltan.splice(i, 1);
-  d.totalAppArs += esUsd ? 0 : Math.round(b.k);
+  d.totalAppArs += esUsd ? 0 : monto;
   concilRenderResultado();
   renderGastosTarjetas();
   showToast(`✓ ${b.desc} → ${quien}`);
