@@ -11249,24 +11249,46 @@ function renderConfigGrupos() {
         <input type="text" value="${g.grupo}" oninput="_gruposDraft[${gi}].grupo=this.value"
           class="fi" style="flex:1;font-size:var(--fs-sm);font-weight:700;padding:5px 8px">
         <button onclick="draftEliminarGrupo(${gi})" title="Eliminar grupo"
-          style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:var(--fs-sm)">✕</button>
+          style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:var(--fs-md);padding:6px 8px;flex-shrink:0">✕</button>
       </div>
-      <div style="display:flex;flex-wrap:wrap;gap:4px">
+      <div style="display:flex;flex-wrap:wrap;gap:5px">
         ${g.miembros.map((m, mi) => {
           const esIA = (g.aiAsignados||[]).includes(m);
+          const elegida = _grupoMoviendo && _grupoMoviendo.gi === gi && _grupoMoviendo.mi === mi;
           return `
-          <div style="background:${esIA?'rgba(139,92,246,.12)':'var(--s3)'};border:${esIA?'1px solid rgba(139,92,246,.25)':'none'};border-radius:8px;padding:4px 8px;font-size:var(--fs-xs);color:var(--muted2);display:flex;align-items:center;gap:4px">
-            <span>${m}${esIA?` <span style="color:#a78bfa;font-size:.55rem" title="Asignado por IA">✦</span>`:''}</span>
-            <select onchange="draftMoverMiembro(${gi},${mi},this.value)" title="Mover a otro grupo"
-              style="background:none;border:none;color:var(--muted);font-size:var(--fs-xs);cursor:pointer;padding:0;outline:none;max-width:60px">
-              <option value="">↗</option>
-              ${nombresGrupos.filter((_,i)=>i!==gi).map(n=>`<option value="${n}">${n}</option>`).join('')}
-            </select>
-            <button onclick="draftQuitarMiembro(${gi},${mi})" title="Quitar"
-              style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:var(--fs-xs);padding:0">✕</button>
-          </div>`;
+          <button onclick="draftElegirMiembro(${gi},${mi})" title="Tocá para moverla de grupo"
+            style="background:${elegida?'rgba(34,211,160,.14)':(esIA?'rgba(139,92,246,.12)':'var(--s3)')};
+                   border:1px solid ${elegida?'var(--green)':(esIA?'rgba(139,92,246,.25)':'transparent')};
+                   border-radius:8px;padding:6px 10px;font-size:var(--fs-xs);font-family:var(--fm);
+                   color:${elegida?'var(--green)':'var(--muted2)'};cursor:pointer;text-align:left;max-width:100%;
+                   overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+            ${m}${esIA?` <span style="color:#a78bfa;font-size:.55rem" title="Asignado por IA">✦</span>`:''}
+          </button>`;
         }).join('')}
+        ${!g.miembros.length ? `<span style="font-size:var(--fs-xs);color:var(--muted)">— sin categorías —</span>` : ''}
       </div>
+      ${_grupoMoviendo && _grupoMoviendo.gi === gi ? (() => {
+        const cat = g.miembros[_grupoMoviendo.mi];
+        if (cat === undefined) return '';
+        return `
+        <div style="margin-top:9px;padding:9px;background:var(--s1);border-radius:8px">
+          <div style="font-size:.58rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">
+            Mover «${cat}» a
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:5px">
+            ${nombresGrupos.map((n, i) => i === gi ? '' : `
+              <button onclick="draftMoverMiembro(${gi},${_grupoMoviendo.mi},'${String(n).replace(/'/g, "\\'")}')"
+                style="background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:7px 11px;
+                       font-size:var(--fs-xs);font-family:var(--fm);color:var(--text);cursor:pointer">${n}</button>`).join('')}
+            <button onclick="draftQuitarMiembro(${gi},${_grupoMoviendo.mi})"
+              style="background:rgba(244,63,94,.1);border:1px solid rgba(244,63,94,.25);border-radius:8px;padding:7px 11px;
+                     font-size:var(--fs-xs);font-family:var(--fm);color:var(--red);cursor:pointer">Quitar</button>
+            <button onclick="draftElegirMiembro(-1,-1)"
+              style="background:none;border:1px solid var(--border2);border-radius:8px;padding:7px 11px;
+                     font-size:var(--fs-xs);font-family:var(--fm);color:var(--muted);cursor:pointer">Cancelar</button>
+          </div>
+        </div>`;
+      })() : ''}
     </div>`).join('') + `
     <div style="display:flex;gap:6px;margin-top:4px">
       <button onclick="draftAgregarGrupo()" class="btn btn-o" style="flex:1;font-size:var(--fs-xs)">＋ Grupo</button>
@@ -11277,14 +11299,28 @@ function renderConfigGrupos() {
     <div id="ia-sugerencias" style="margin-top:10px"></div>`;
 }
 
-function draftEliminarGrupo(gi) { _gruposDraft.splice(gi,1); renderConfigGrupos(); }
-function draftQuitarMiembro(gi, mi) { _gruposDraft[gi].miembros.splice(mi,1); renderConfigGrupos(); }
+// Qué categoría está elegida para mover. Antes cada chip tenía su propio desplegable de 60px
+// con una flecha por toda etiqueta: no se entendía qué hacía, no se sabía a qué grupo iba, y
+// el menú se abría fuera de la pantalla. Ahora se toca la categoría y aparecen los grupos
+// destino como botones grandes.
+let _grupoMoviendo = null;
+
+function draftElegirMiembro(gi, mi) {
+  _grupoMoviendo = (gi < 0 || (_grupoMoviendo && _grupoMoviendo.gi === gi && _grupoMoviendo.mi === mi))
+    ? null : { gi, mi };
+  renderConfigGrupos();
+}
+
+function draftEliminarGrupo(gi) { _grupoMoviendo = null; _gruposDraft.splice(gi,1); renderConfigGrupos(); }
+function draftQuitarMiembro(gi, mi) { _grupoMoviendo = null; _gruposDraft[gi].miembros.splice(mi,1); renderConfigGrupos(); }
 function draftMoverMiembro(gi, mi, destGrupo) {
   if (!destGrupo) return;
   const m = _gruposDraft[gi].miembros.splice(mi,1)[0];
   const dest = _gruposDraft.find(g => g.grupo === destGrupo);
   if (dest) dest.miembros.push(m);
+  _grupoMoviendo = null;
   renderConfigGrupos();
+  if (typeof showToast === 'function') showToast(`✓ ${m} → ${destGrupo}`);
 }
 function draftAgregarGrupo() { _gruposDraft.push({ grupo: 'Nuevo grupo', miembros: [] }); renderConfigGrupos(); }
 function draftDescartar() { _gruposDraft = null; const p = document.getElementById('config-grupos-panel'); if(p) p.style.display='none'; }
@@ -14232,10 +14268,24 @@ document.addEventListener('DOMContentLoaded', () => {
       const r = wrap.getBoundingClientRect();
       // Abrir hacia arriba si abajo no entra
       menu.classList.toggle('csel-menu-up', (window.innerHeight - r.bottom) < 220 && r.top > (window.innerHeight - r.bottom));
-      // Alinear a la derecha si al abrir a la izquierda el menú se saldría de pantalla
-      // (pasa con triggers angostos pegados al borde derecho).
+
+      // Posición horizontal. Alinear a la derecha resuelve el trigger pegado al borde
+      // derecho, pero con un trigger ANGOSTO deja el menú colgando hacia la izquierda y se
+      // iba de pantalla por ese lado (quedaba medio menú cortado contra el borde). Así que
+      // después de elegir la alineación se mide de verdad y, si se sale por cualquiera de
+      // los dos lados, se lo corre con un desplazamiento exacto en píxeles.
       menu.classList.remove('csel-menu-right');
-      if (r.left + menu.offsetWidth > window.innerWidth - 8) menu.classList.add('csel-menu-right');
+      menu.style.left = '';
+      const anchoMenu = menu.offsetWidth;
+      if (r.left + anchoMenu > window.innerWidth - 8) menu.classList.add('csel-menu-right');
+      const m = menu.getBoundingClientRect();
+      if (m.left < 8) {
+        menu.classList.remove('csel-menu-right');
+        menu.style.left = (8 - r.left) + 'px';
+      } else if (m.right > window.innerWidth - 8) {
+        menu.classList.remove('csel-menu-right');
+        menu.style.left = (window.innerWidth - 8 - anchoMenu - r.left) + 'px';
+      }
     };
 
     // El value de un <select> no es un atributo del DOM (no dispara MutationObserver de
