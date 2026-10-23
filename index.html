@@ -817,15 +817,43 @@ header{position:sticky;top:0;z-index:200;background:rgba(8,10,15,.92);backdrop-f
 .logo em{color:var(--green);font-style:normal}
 .mes-badge{background:var(--s2);border:1px solid var(--border2);border-radius:20px;padding:4px 12px;font-size:var(--fs-sm);color:var(--green);line-height:1.2}
 
-/* ── NAV ── */
-nav{position:sticky;top:52px;z-index:199;background:var(--s1);border-bottom:1px solid var(--border);display:flex;overflow-x:auto;padding:0 16px;scrollbar-width:none}
-nav::-webkit-scrollbar{display:none}
-.nb{padding:12px 14px;font-family:var(--fp);font-size:var(--fs-sm);color:var(--muted);background:none;border:none;cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;white-space:nowrap;line-height:1.2}
-.nb.active{color:var(--green);border-bottom-color:var(--green)}
+/* ── NAV INFERIOR ── */
+nav{
+  position:fixed;left:0;right:0;bottom:0;z-index:300;
+  background:var(--s1);border-top:1px solid var(--border);
+  display:flex;align-items:stretch;
+  padding-bottom:env(safe-area-inset-bottom);
+  box-shadow:0 -2px 14px rgba(0,0,0,.18);
+}
+.nb{
+  flex:1 1 0;min-width:0;position:relative;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  padding:8px 2px 7px;font-family:var(--fp);font-size:.62rem;color:var(--muted);
+  background:none;border:none;cursor:pointer;transition:color .2s;line-height:1.1;
+}
+.nb-ico{font-size:1.1rem;line-height:1;transition:transform .2s}
+.nb-txt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.nb.active{color:var(--green)}
+.nb.active .nb-ico{transform:translateY(-1px)}
+.nb.active::before{
+  content:'';position:absolute;top:0;left:50%;transform:translateX(-50%);
+  width:26px;height:3px;border-radius:0 0 3px 3px;background:var(--green);
+}
 .nb:hover:not(.active){color:var(--text)}
+.nb-oculto{display:none !important}
+.mas-item{
+  display:flex;align-items:center;gap:9px;padding:12px 12px;border-radius:10px;
+  background:var(--s2);border:1px solid var(--border);color:var(--text);
+  font-family:var(--fp);font-size:var(--fs-sm);cursor:pointer;text-align:left;
+}
+.mas-item.activo{border-color:var(--green);color:var(--green);background:rgba(34,211,160,.08)}
+.acc-chevron{color:var(--muted);font-size:.8rem;transition:transform .2s;flex-shrink:0}
+.acc-abierto > .ct > .acc-chevron{transform:rotate(180deg);color:var(--green)}
+#page-config .card{transition:border-color .2s}
+#page-config .acc-body{padding-top:12px}
 
 /* ── PAGES ── */
-.page{display:none;padding:20px;max-width:1100px;margin:0 auto;position:relative;z-index:1}
+.page{display:none;padding:20px 20px calc(78px + env(safe-area-inset-bottom));max-width:1100px;margin:0 auto;position:relative;z-index:1}
 .page.active{display:block;animation:fadeUp .25s ease}
 @keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 
@@ -1082,7 +1110,7 @@ input[type="month"].fi::-webkit-calendar-picker-indicator{
 @media(max-width:900px){.kg,.kg2,.kg3{grid-template-columns:1fr 1fr}.g2{grid-template-columns:1fr}.span2{grid-column:1}}
 @media(max-width:680px){
   .page{padding:12px 10px} header{padding:0 12px;height:48px} .logo{font-size:var(--fs-lg)}
-  nav{top:48px;padding:0 8px} .nb{padding:10px 10px;font-size:var(--fs-xs)}
+  .nb{padding:7px 2px 6px;font-size:.58rem} .nb-ico{font-size:1rem}
   .kg{gap:8px} .kpi{padding:12px 14px} .kv{font-size:1.1rem}
   .r2{grid-template-columns:1fr} .pvr-label{width:80px;font-size:var(--fs-xs)}
   .pvr-vals{display:none} .tbl{font-size:var(--fs-sm)} .tbl th{font-size:.58rem;padding:7px 6px} .tbl td{padding:7px 6px}
@@ -1205,19 +1233,31 @@ input[type="month"].fi::-webkit-calendar-picker-indicator{
   </div>
 </header>
 
-<nav>
-  <button class="nb" onclick="go('cargar',this)">＋ Cargar</button>
-  <button class="nb active" onclick="go('overview',this)">⬡ Overview</button>
-  <button class="nb" onclick="go('cuentas',this)">◈ Cuentas</button>
-  <button class="nb" onclick="go('flujo',this)">⇄ Flujo</button>
-  <button class="nb" onclick="go('presupuesto',this)">◎ Presupuesto</button>
-  <button class="nb" onclick="go('inversiones',this)">◈ Inversiones</button>
-  <button class="nb" onclick="go('analisis',this)">📊 Análisis</button>
-  <button class="nb" onclick="go('tarjetas',this)" id="nb-tarjetas" style="position:relative">💳 Gastos Tarjetas<span id="badge-tarjetas" style="display:none;position:absolute;top:4px;right:4px;background:#f43f5e;color:#fff;font-size:var(--fs-xs);font-weight:700;min-width:16px;height:16px;border-radius:8px;padding:0 4px;line-height:16px;text-align:center;"></span></button>
-  <button class="nb" onclick="go('hipotecario',this)">🏠 Hipotecario</button>
-  <button class="nb" onclick="go('config',this)">⚙ Config</button>
-  <button class="nb" onclick="go('patrimonio',this)" style="display:none">⬟ Patrimonio</button>
+<nav id="navbar">
+  <button class="nb active" onclick="go('overview',this)"><span class="nb-ico">⬡</span><span class="nb-txt">Resumen</span></button>
+  <button class="nb" onclick="go('cuentas',this)"><span class="nb-ico">◈</span><span class="nb-txt">Cuentas</span></button>
+  <button class="nb" onclick="go('tarjetas',this)" id="nb-tarjetas"><span class="nb-ico">💳</span><span class="nb-txt">Tarjetas</span><span id="badge-tarjetas" style="display:none;position:absolute;top:4px;right:calc(50% - 20px);background:#f43f5e;color:#fff;font-size:.55rem;font-weight:700;min-width:15px;height:15px;border-radius:8px;padding:0 4px;line-height:15px;text-align:center">
+  </span></button>
+  <button class="nb" onclick="go('flujo',this)"><span class="nb-ico">⇄</span><span class="nb-txt">Flujo</span></button>
+  <button class="nb" id="nb-mas" onclick="toggleMenuMas()"><span class="nb-ico">☰</span><span class="nb-txt">Más</span></button>
+
+  <!-- Secundarios: no se dibujan en la barra, pero siguen en el DOM para que go() y el
+       resaltado del tab activo funcionen igual. Se abren desde la hoja de "Más". -->
+  <button class="nb nb-oculto" onclick="go('cargar',this)">＋ Cargar</button>
+  <button class="nb nb-oculto" onclick="go('presupuesto',this)">◎ Presupuesto</button>
+  <button class="nb nb-oculto" onclick="go('inversiones',this)">◈ Inversiones</button>
+  <button class="nb nb-oculto" onclick="go('analisis',this)">📊 Análisis</button>
+  <button class="nb nb-oculto" onclick="go('hipotecario',this)">🏠 Hipotecario</button>
+  <button class="nb nb-oculto" onclick="go('config',this)">⚙ Config</button>
+  <button class="nb nb-oculto" onclick="go('patrimonio',this)">⬟ Patrimonio</button>
 </nav>
+
+<!-- Hoja de "Más": el resto de las secciones -->
+<div id="menu-mas-fondo" onclick="toggleMenuMas()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:399"></div>
+<div id="menu-mas" style="display:none;position:fixed;left:0;right:0;bottom:0;z-index:400;background:var(--s1);border-top:1px solid var(--border2);border-radius:16px 16px 0 0;padding:14px 16px calc(16px + env(safe-area-inset-bottom));box-shadow:0 -10px 30px rgba(0,0,0,.35)">
+  <div style="width:38px;height:4px;border-radius:2px;background:var(--border2);margin:0 auto 12px"></div>
+  <div id="menu-mas-items" style="display:grid;grid-template-columns:1fr 1fr;gap:8px"></div>
+</div>
 
 <!-- ALERTAS DE CONSUMO DE TARJETA -->
 <div id="alertas-consumo-banner" style="display:none"></div>
@@ -1229,8 +1269,8 @@ input[type="month"].fi::-webkit-calendar-picker-indicator{
 <button id="fab-btn" onclick="fabAccion()" style="
   display:none;
   position:fixed;
-  bottom:24px;
-  right:20px;
+  bottom:calc(74px + env(safe-area-inset-bottom));
+  right:16px;
   z-index:800;
   width:52px;
   height:52px;
@@ -3646,7 +3686,10 @@ function go(id, btn) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nb').forEach(b => b.classList.remove('active'));
   document.getElementById('page-' + id).classList.add('active');
-  btn.classList.add('active');
+  if (btn && btn.classList) btn.classList.add('active'); // puede llamarse sin botón
+  if (typeof toggleMenuMas === 'function') toggleMenuMas(true);
+  if (typeof sincronizarNavInferior === 'function') sincronizarNavInferior(id);
+  window.scrollTo({ top: 0, behavior: 'auto' });
   // Show sticky save only on presupuesto
   const stickySave = document.getElementById('sticky-save');
   if (stickySave) stickySave.style.display = id === 'presupuesto' ? 'flex' : 'none';
@@ -3673,7 +3716,7 @@ function go(id, btn) {
   if (id === 'cuentas')   { try { migrarTransfIdHistorial(); } catch(e) { console.warn('migrarTransfIdHistorial:', e); } renderCuentas(); updateMediosDePago(); updateOverviewSaldos(); renderHistorialTransf(); }
   if (id === 'analisis')   renderAnalisis();
   if (id === 'hipotecario') renderHipotecario();
-  if (id === 'config')     { const fh=document.getElementById('fb-host'); if(fh) fh.textContent=location.hostname||'(archivo local)'; renderLogosBancos(); rotarPeriodosTarjetas(); renderTarjetasCfg(); renderRecurrentesCfg(); renderNormalizadorCategorias(); renderRenombrarCategorias(); applyFontPreset(localStorage.getItem('cl_font_preset') || 'original'); populateTarjetaSelectBorrado(); }
+  if (id === 'config')     { prepararAcordeonConfig(); const fh=document.getElementById('fb-host'); if(fh) fh.textContent=location.hostname||'(archivo local)'; renderLogosBancos(); rotarPeriodosTarjetas(); renderTarjetasCfg(); renderRecurrentesCfg(); renderNormalizadorCategorias(); renderRenombrarCategorias(); applyFontPreset(localStorage.getItem('cl_font_preset') || 'original'); populateTarjetaSelectBorrado(); }
   if (id === 'tarjetas')    {
     renderGastosTarjetas();
     renderOwnTarjetaSelector();
@@ -8179,6 +8222,141 @@ function renderEstadoCuenta() {
       incluye todo lo que pasó antes.
     </div>` : ''}
   </div>`;
+}
+
+
+// ══════════════════════════════════════════════════════════════════════
+// NAVEGACIÓN INFERIOR
+// Cuatro secciones primarias en la barra y el resto en la hoja de "Más". Los botones
+// secundarios siguen existiendo en el DOM (ocultos) para que go(id, btn) y el resaltado del
+// tab activo no cambien en nada: lo único que se agrega es que, cuando el tab activo es uno
+// de los secundarios, se marca "Más" como activo para que la barra no quede toda apagada.
+// ══════════════════════════════════════════════════════════════════════
+const MENU_MAS = [
+  ['cargar',      '＋', 'Cargar'],
+  ['presupuesto', '◎',  'Presupuesto'],
+  ['inversiones', '◈',  'Inversiones'],
+  ['analisis',    '📊', 'Análisis'],
+  ['hipotecario', '🏠', 'Hipotecario'],
+  ['config',      '⚙',  'Config'],
+];
+
+function menuMasAbierto() {
+  const m = document.getElementById('menu-mas');
+  return !!m && m.style.display === 'block';
+}
+
+function toggleMenuMas(forzarCerrar) {
+  const hoja  = document.getElementById('menu-mas');
+  const fondo = document.getElementById('menu-mas-fondo');
+  if (!hoja || !fondo) return;
+  const abrir = forzarCerrar === true ? false : !menuMasAbierto();
+  if (abrir) renderMenuMas();
+  hoja.style.display  = abrir ? 'block' : 'none';
+  fondo.style.display = abrir ? 'block' : 'none';
+}
+
+function renderMenuMas() {
+  const cont = document.getElementById('menu-mas-items');
+  if (!cont) return;
+  const activa = (document.querySelector('.page.active') || {}).id || '';
+  cont.innerHTML = MENU_MAS.map(([id, ico, label]) => `
+    <button class="mas-item${activa === 'page-' + id ? ' activo' : ''}" onclick="irDesdeMenuMas('${id}')">
+      <span style="font-size:1.1rem;line-height:1;flex-shrink:0">${ico}</span>
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${label}</span>
+    </button>`).join('');
+}
+
+function irDesdeMenuMas(id) {
+  toggleMenuMas(true);
+  irATab(id);
+}
+
+// Deja "Más" encendido cuando la sección abierta no está en la barra
+function sincronizarNavInferior(id) {
+  const mas = document.getElementById('nb-mas');
+  if (!mas) return;
+  const esSecundaria = MENU_MAS.some(([t]) => t === id) || id === 'patrimonio';
+  mas.classList.toggle('active', esSecundaria);
+}
+
+
+// ══════════════════════════════════════════════════════════════════════
+// CONFIG EN ACORDEÓN
+// Config tenía una docena de tarjetas largas apiladas: para llegar a la última había que
+// scrollear media pantalla. Cada tarjeta pasa a ser un panel plegable y arranca cerrado.
+// La conversión se hace sobre el DOM que ya existe (envolviendo lo que va después del
+// título) en vez de reescribir el markup de cada tarjeta: los nodos no se mueven fuera del
+// documento, así que todos los id siguen resolviendo igual.
+// ══════════════════════════════════════════════════════════════════════
+function prepararAcordeonConfig() {
+  const pagina = document.getElementById('page-config');
+  if (!pagina || pagina.dataset.acordeon === '1') return;
+
+  const abiertos = new Set(JSON.parse(localStorage.getItem('cl_config_abiertos') || '[]'));
+
+  pagina.querySelectorAll('.card').forEach((card, i) => {
+    const titulo = card.querySelector(':scope > .ct');
+    if (!titulo) return;
+
+    const clave = 'cfg_' + i;
+    card.dataset.accKey = clave;
+
+    // Todo lo que viene después del título pasa a ser el cuerpo plegable
+    const cuerpo = document.createElement('div');
+    cuerpo.className = 'acc-body';
+    const aMover = [];
+    let n = titulo.nextSibling;
+    while (n) { aMover.push(n); n = n.nextSibling; }
+    aMover.forEach(x => cuerpo.appendChild(x));
+    card.appendChild(cuerpo);
+
+    // El texto del título se envuelve en su propio elemento: como nodo de texto suelto, flex
+    // lo trata como ítem anónimo y con títulos de dos renglones empujaba el chevron abajo a
+    // la izquierda.
+    const texto = document.createElement('span');
+    texto.style.cssText = 'flex:1;min-width:0;line-height:1.3';
+    const nodosTitulo = [];
+    let tn = titulo.firstChild;
+    while (tn) { nodosTitulo.push(tn); tn = tn.nextSibling; }
+    nodosTitulo.forEach(x => texto.appendChild(x));
+    titulo.appendChild(texto);
+
+    // El título se vuelve el botón que abre y cierra
+    titulo.style.cursor = 'pointer';
+    titulo.style.marginBottom = '0';
+    titulo.style.display = 'flex';
+    titulo.style.alignItems = 'center';
+    titulo.style.justifyContent = 'space-between';
+    titulo.style.gap = '8px';
+    const chevron = document.createElement('span');
+    chevron.className = 'acc-chevron';
+    chevron.textContent = '▾';
+    titulo.appendChild(chevron);
+    titulo.setAttribute('onclick', `toggleAcordeonConfig('${clave}')`);
+
+    const abierto = abiertos.has(clave);
+    cuerpo.style.display = abierto ? 'block' : 'none';
+    card.classList.toggle('acc-abierto', abierto);
+  });
+
+  pagina.dataset.acordeon = '1';
+}
+
+function toggleAcordeonConfig(clave) {
+  const card = document.querySelector('#page-config .card[data-acc-key="' + clave + '"]');
+  if (!card) return;
+  const cuerpo = card.querySelector(':scope > .acc-body');
+  if (!cuerpo) return;
+  const abrir = cuerpo.style.display === 'none';
+  cuerpo.style.display = abrir ? 'block' : 'none';
+  card.classList.toggle('acc-abierto', abrir);
+
+  const abiertos = new Set(JSON.parse(localStorage.getItem('cl_config_abiertos') || '[]'));
+  if (abrir) abiertos.add(clave); else abiertos.delete(clave);
+  try { localStorage.setItem('cl_config_abiertos', JSON.stringify([...abiertos])); } catch(e) {}
+
+  if (abrir) setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 80);
 }
 
 // ── Historial de movimientos de cuentas ──
