@@ -8669,6 +8669,26 @@ function concilNumeroCuota(desc) {
   return { n, total };
 }
 
+
+// ── ¿El texto del banco y el de la app hablan de lo mismo? ──
+// El banco escribe "NETFLIX.COM 3DIGITOS" y la app "Netflix". Alcanza con que compartan una
+// palabra significativa: sirve para reconocer un recurrente aunque le haya cambiado el monto.
+// Palabras que aparecen en medio resumen y no identifican a nadie: si el único punto en
+// común es una de estas, no alcanza para decir que es el mismo consumo.
+const CONCIL_GENERICAS = new Set(['srl','sa','sas','pago','pagos','mercado','compra','cuota',
+  'arg','argentina','servicios','servicio','online','web','com','net','tarjeta','credito','debito']);
+
+function concilParecido(descBanco, textoApp) {
+  const a = concilNormalizar(descBanco), b = concilNormalizar(textoApp);
+  if (!a || !b) return false;
+  if (a.includes(b) || b.includes(a)) return true;
+  // Umbral de 3 letras: muchas marcas se abrevian corto ("CGS", "YPF", "MP") y con 4 se
+  // perdían. El filtro de palabras genéricas evita que "SRL" o "PAGO" emparejen cualquier cosa.
+  const tokens = t => t.split(' ').filter(x => x.length >= 3 && !CONCIL_GENERICAS.has(x));
+  const ta = tokens(a), tb = tokens(b);
+  return ta.some(x => tb.some(y => x === y || x.startsWith(y) || y.startsWith(x)));
+}
+
 function concilNormalizar(s) {
   return (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 }
@@ -8775,13 +8795,61 @@ function concilCruzar(movs, meta) {
     a.usado = c[0].usado = true; montoDistinto.push({ a, b: c[0] });
   });
 
+  // Pase 5 — ya está cargado, pero fuera del período en curso.
+  // El matcher solo mira los gastos cuyo período resuelto es el actual. Un recurrente o una
+  // cuota que quedaron en otro resumen —o esperando período— le resultan invisibles, así que
+  // el movimiento del banco caía en "no cargado" y al tocar Cargar se duplicaba. Acá se busca
+  // en TODOS los gastos de la tarjeta antes de declarar que falta algo.
+  const enApp = new Set(app.map(a => a.g.id));
+  const cierreDe = g => g.cuotaV2 ? resolverCierreCuota(tarjeta, g)
+                      : (g.compraId || g.esCuotaEnCurso) ? g.fecha
+                      : g.fecha;
+  // Un gasto que vive en un resumen YA CONCILIADO no es candidato: ese total está cerrado y
+  // moverlo de ahí lo rompería. Si el banco cobra algo parecido ahora, es un consumo nuevo.
+  const conciliadosTarjeta = DB.get('tarjetas_conciliadas', {});
+  const fuera = getGastosTarjetas()
+    .filter(g => g.tarjetaId === tarjetaId && !enApp.has(g.id))
+    .map(g => ({ g, m: parseFloat(g.monto) || 0, esUsd: g.moneda === 'USD',
+                 cuota: concilNumeroCuota(g.tipo), cierre: cierreDe(g), usado: false }))
+    .filter(f => !(f.cierre && conciliadosTarjeta[tarjetaId + '|' + f.cierre]));
+
+  const yaCargadas = [];
+  banco.forEach(b => {
+    if (b.usado) return;
+    const cand = fuera.filter(f => {
+      if (f.usado) return false;
+      if (f.esUsd !== (b.usdK > 0 && b.ars === 0)) return false;
+      if (b.cuota || f.cuota) {
+        // Cuotas: mandan los números. Misma compra y misma cuota es identidad suficiente.
+        if (!b.cuota || !f.cuota) return false;
+        return b.cuota.total === f.cuota.total && b.cuota.n === f.cuota.n;
+      }
+      const mismoMonto = Math.abs(montoBanco(b, f.esUsd) - f.m) <= 1.0;
+      const mismoTexto = concilParecido(b.desc, f.g.servicio || f.g.tipo);
+      // Un recurrente se reconoce por el nombre aunque le hayan cambiado el precio
+      if (f.g.recurrenteId && mismoTexto) return true;
+      return mismoMonto && mismoTexto;
+    });
+    if (!cand.length) return;
+    // Con varios candidatos (un recurrente tiene uno por mes), gana el más cercano en el
+    // tiempo al movimiento del banco; el importe desempata.
+    const dist = f => {
+      const ref = f.cierre || f.g.fechaCompra || f.g.fecha;
+      return ref ? Math.abs(new Date(b.fecha) - new Date(ref)) : Infinity;
+    };
+    cand.sort((x, y) => (dist(x) - dist(y)) ||
+      (Math.abs(montoBanco(b, x.esUsd) - x.m) - Math.abs(montoBanco(b, y.esUsd) - y.m)));
+    cand[0].usado = true; b.usado = true;
+    yaCargadas.push({ a: cand[0], b });
+  });
+
   const faltan = banco.filter(b => !b.usado);
   const sobran = app.filter(a => !a.usado);
 
   const totalBancoArs = banco.reduce((s, b) => s + b.k, 0);
   const totalAppArs   = app.reduce((s, a) => s + (a.esUsd ? 0 : a.m), 0);
 
-  _concilDatos = { tarjeta, actual, coinciden, desfasadas, montoDistinto, faltan, sobran, meta, totalBancoArs, totalAppArs };
+  _concilDatos = { tarjeta, actual, coinciden, desfasadas, montoDistinto, yaCargadas, faltan, sobran, meta, totalBancoArs, totalAppArs };
   concilRenderResultado();
 }
 
@@ -8833,6 +8901,24 @@ function concilRenderResultado() {
         </select>
         <span style="font-size:var(--fs-xs);color:var(--muted)">— podés cambiarlo fila por fila</span>
       </div>` : ''}
+    ${bloque('✓ Ya cargado, en otro período', 'var(--purple)', d.yaCargadas || [], (y, i) => {
+      const f = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'}) : 'esperando período';
+      return `
+      <div style="padding:7px 0;border-bottom:1px solid var(--border)">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${y.a.g.servicio || y.a.g.tipo}</div>
+            <div style="font-size:var(--fs-xs);color:var(--muted)">${y.b.desc} · está en ${f(y.a.cierre)}</div>
+          </div>
+          <div style="font-family:var(--fm);font-size:var(--fs-sm);flex-shrink:0">${y.a.esUsd ? 'U$S ' + y.a.m.toFixed(2) : fmt(y.a.m)}</div>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <button onclick="concilMoverAcaPeriodo(${d.yaCargadas.indexOf(y)})" style="background:rgba(139,92,246,.12);border:1px solid rgba(139,92,246,.3);color:#a78bfa;border-radius:5px;padding:4px 10px;font-size:var(--fs-xs);font-weight:700;cursor:pointer">Mover a este resumen</button>
+          <button onclick="concilEsOtroConsumo(${d.yaCargadas.indexOf(y)})" style="background:none;border:1px solid var(--border2);color:var(--muted);border-radius:5px;padding:4px 10px;font-size:var(--fs-xs);cursor:pointer">Es otro consumo</button>
+        </div>
+      </div>`;
+    })}
+
     ${bloque('➕ En el banco, no cargado', 'var(--blue)', d.faltan, (b, i) => `
       <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)">
         <div style="flex:1;min-width:0">
@@ -8956,6 +9042,53 @@ async function concilCargarFaltante(i) {
   concilRenderResultado();
   renderGastosTarjetas();
   showToast(`✓ ${b.desc} → ${quien}`);
+}
+
+// Trae al resumen en curso un gasto que estaba cargado en otro período. Para las cuotas
+// nuevas se re-ancla la serie (el banco dice que ESTA cuota se factura ahora, así que las
+// siguientes se corren con ella); para el resto alcanza con moverle la fecha.
+function concilMoverAcaPeriodo(i) {
+  const d = _concilDatos;
+  const y = d && d.yaCargadas && d.yaCargadas[i];
+  if (!y) return;
+  const gastos = getGastosTarjetas();
+  const g = gastos.find(x => x.id === y.a.g.id);
+  if (!g) return;
+  if (g.cuotaV2) {
+    g.anclaCierre = d.actual.cierre;
+    g.anclaNum    = g.cuotaNum || 1;
+    g.cierreDelPeriodo = d.actual.cierre;
+  } else {
+    g.fecha = d.actual.cierre;
+  }
+  saveGastosTarjetas(gastos);
+  d.yaCargadas.splice(i, 1);
+  d.totalAppArs += y.a.esUsd ? 0 : y.a.m;
+
+  // Si el banco lo cobra por otro importe (un recurrente que aumentó, típico), en vez de
+  // darlo por conciliado pasa a "monto distinto" y se arregla con un toque más.
+  const montoB = y.a.esUsd ? y.b.usdK : y.b.k;
+  if (Math.abs(montoB - y.a.m) > 1.0) {
+    d.montoDistinto.push({ a: y.a, b: y.b });
+    showToast(`✓ ${g.servicio || g.tipo} movido — el banco lo cobra ${fmt(montoB)}`);
+  } else {
+    d.coinciden.push({ a: y.a, b: y.b });
+    showToast(`✓ ${g.servicio || g.tipo} movido a este resumen`);
+  }
+  concilRenderResultado();
+  renderGastosTarjetas();
+}
+
+// "No, este movimiento del banco es otro consumo distinto": vuelve a la lista de faltantes
+// para poder cargarlo. El que ya estaba queda donde está.
+function concilEsOtroConsumo(i) {
+  const d = _concilDatos;
+  const y = d && d.yaCargadas && d.yaCargadas[i];
+  if (!y) return;
+  d.yaCargadas.splice(i, 1);
+  y.b.usado = false;
+  d.faltan.push(y.b);
+  concilRenderResultado();
 }
 
 // Reemplaza el monto de la app por el del banco (el banco es la fuente de verdad).
