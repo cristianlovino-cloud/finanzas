@@ -6467,8 +6467,17 @@ function agruparGastosPorPeriodo() {
       cierre = g.fecha;
       const periodosT = periodosOrdenados(tarjeta).filter(p => p.inicio && p.cierre);
       if (!periodosT.some(p => p.cierre === g.fecha)) {
-        const contiene = periodosT.find(p => g.fecha >= p.inicio && g.fecha <= p.cierre);
-        if (contiene && !conciliados[tarjeta.id + '|' + contiene.cierre]) cierre = contiene.cierre;
+        // 1) el período que contiene esa fecha
+        let idx = periodosT.findIndex(p => g.fecha >= p.inicio && g.fecha <= p.cierre);
+        // 2) si cae en un HUECO entre períodos configurados (pasa cuando se cargan los
+        //    cierres salteados: del 24/09 al 19/11 directo), va al primero que cierre
+        //    después. Sin esto quedaba suelta y abría su propio "resumen" fantasma con una
+        //    fecha que no es de ninguna tarjeta.
+        if (idx === -1) idx = periodosT.findIndex(p => p.cierre >= g.fecha);
+        // 3) si ese resumen ya está conciliado, se corre al siguiente sin conciliar: un
+        //    consumo que no entró en un total cerrado lo factura el resumen siguiente.
+        while (idx !== -1 && idx < periodosT.length && conciliados[tarjeta.id + '|' + periodosT[idx].cierre]) idx++;
+        if (idx !== -1 && idx < periodosT.length) cierre = periodosT[idx].cierre;
       }
     } else if (g.recurrenteId) {
       // Recurrentes: también van directo por g.fecha (ya filtrados los futuros arriba)
