@@ -2169,6 +2169,10 @@ input[type="month"].fi::-webkit-calendar-picker-indicator{
         <option value="Emma">Emma</option>
       </select>
     </div>
+    <div style="margin-bottom:10px">
+      <div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">COMERCIO <span style="text-transform:none;color:var(--muted2)">(opcional — así lo reconocés después)</span></div>
+      <input type="text" id="own-tj-comercio" class="fi" placeholder="ej. Faldani, Farmacity, YPF" style="width:100%;font-size:var(--fs-sm);padding:8px 10px">
+    </div>
     <div class="g-cat-monto">
       <div>
         <div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:3px">TIPO DE GASTO</div>
@@ -6309,6 +6313,7 @@ async function ownCargarGastoTarjeta() {
   const fecha     = document.getElementById('own-tj-fecha').value;
   const quien     = document.getElementById('own-tj-quien')?.value || 'Cris';
   const tipo      = document.getElementById('own-tj-tipo').value.trim();
+  const comercio  = (document.getElementById('own-tj-comercio')?.value || '').trim();
   const monto     = parseFloat(document.getElementById('own-tj-monto').value);
   const moneda    = document.getElementById('own-tj-moneda')?.value || 'ARS';
   const enCuotas  = document.getElementById('own-tj-cuotas-check').checked;
@@ -6358,7 +6363,7 @@ async function ownCargarGastoTarjeta() {
         id: 'gt_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2,5),
         tarjetaId, fecha, fechaCompra: fecha, cierreDelPeriodo: cierre || null,
         cuotaV2: true, anclaCierre: ancla || null, anclaNum: cecActual,
-        tipo: `${tipo} (cuota ${numeroCuota}/${cecTotal})`, monto, moneda,
+        tipo: `${tipo} (cuota ${numeroCuota}/${cecTotal})`, monto, moneda, nota: comercio || undefined,
         cargadoPor: 'Cris', gastoDe: quien, ts: Date.now(), compraId, cuotaNum: numeroCuota, cuotaTotal: cecTotal,
         esCuotaEnCurso: true,
       });
@@ -6375,7 +6380,7 @@ async function ownCargarGastoTarjeta() {
           id: 'gt_' + Date.now() + '_atras' + n + '_' + Math.random().toString(36).slice(2,5),
           tarjetaId, fecha, fechaCompra: fecha, cierreDelPeriodo: null,
           cuotaV2: true, anclaCierre: ancla || null, anclaNum: cecActual,
-          tipo: `${tipo} (cuota ${n}/${cecTotal})`, monto, moneda,
+          tipo: `${tipo} (cuota ${n}/${cecTotal})`, monto, moneda, nota: comercio || undefined,
           cargadoPor: 'Cris', gastoDe: quien, ts: Date.now(), compraId, cuotaNum: n, cuotaTotal: cecTotal,
           esCuotaEnCurso: true,
         });
@@ -6397,7 +6402,7 @@ async function ownCargarGastoTarjeta() {
         id: 'gt_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2,5),
         tarjetaId, fecha, fechaCompra: fecha, cierreDelPeriodo: cierre || null,
         cuotaV2: true, anclaCierre: ancla || null, anclaNum: 1,
-        tipo: `${tipo} (cuota ${i+1}/${cantCuotas})`, monto: montos[i], moneda,
+        tipo: `${tipo} (cuota ${i+1}/${cantCuotas})`, monto: montos[i], moneda, nota: comercio || undefined,
         cargadoPor: 'Cris', gastoDe: quien, ts: Date.now(), compraId, cuotaNum: i+1, cuotaTotal: cantCuotas,
       });
     });
@@ -6406,12 +6411,13 @@ async function ownCargarGastoTarjeta() {
   } else {
     lista.push({
       id: 'gt_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
-      tarjetaId, fecha, tipo, monto, moneda,
+      tarjetaId, fecha, tipo, monto, moneda, nota: comercio || undefined,
       cargadoPor: 'Cris', gastoDe: quien, ts: Date.now(),
     });
     showToast('✓ Gasto registrado: ' + tipo + ' — ' + fmt(monto));
   }
 
+  const elCom = document.getElementById('own-tj-comercio'); if (elCom) elCom.value = '';
   saveGastosTarjetas(lista);
 
   // Si el gasto es "de" Lara/Emma (Cris cargó en su nombre), también lo subimos
@@ -6859,7 +6865,7 @@ function renderGastosTarjetas() {
       ${grupoHuerfano.gastos.map(g => `
         <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
           <div style="flex:1;min-width:0">
-            <div style="font-weight:600;font-size:var(--fs-sm)">${g.tipo}</div>
+            <div style="font-weight:600;font-size:var(--fs-sm)">${gtTitulo(g)}${gtSecundario(g) ? ` <span style="font-weight:400;font-size:var(--fs-xs);color:var(--muted)">${gtSecundario(g)}</span>` : ''}</div>
             <div style="font-size:var(--fs-xs);color:var(--muted)">${new Date(g.fecha+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'})} · ${g.cargadoPor} · ${g.moneda==='USD' ? 'U$S '+g.monto : fmt(g.monto)}</div>
           </div>
           <select onchange="reasignarTarjetaGasto('${g.id}', this.value)" class="fi" style="width:130px;font-size:var(--fs-sm);padding:6px 6px">
@@ -6933,7 +6939,7 @@ function renderGastosTarjetas() {
         <div style="padding:8px 0;border-bottom:1px solid var(--border)">
           <div style="display:flex;align-items:center;gap:8px">
             <div style="flex:1;min-width:0">
-              <div style="font-weight:600;font-size:var(--fs-sm)">${g.tipo}</div>
+              <div style="font-weight:600;font-size:var(--fs-sm)">${gtTitulo(g)}${gtSecundario(g) ? ` <span style="font-weight:400;font-size:var(--fs-xs);color:var(--muted)">${gtSecundario(g)}</span>` : ''}</div>
               <div style="font-size:var(--fs-xs);color:var(--muted)">${tj?.nombre||'?'} · ${g.fecha}</div>
             </div>
             <div style="font-weight:700;color:var(--red);font-size:var(--fs-md);cursor:pointer" onclick="toggleEditarMontoGasto('${g.id}')">${montoDisplay} ✎</div>
@@ -7097,12 +7103,12 @@ function renderTarjetaCard(grupo, conciliaciones, colapsadoPorDefaultArg) {
         <div style="display:flex;align-items:center;gap:8px">
           <div style="flex:1;min-width:0">
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px">
-              <span style="font-weight:600;font-size:var(--fs-sm)">${g.servicio || g.tipo}</span>
-              ${g.servicio && g.servicio.toLowerCase() !== String(g.tipo || '').trim().toLowerCase() ? `<span style="font-size:var(--fs-xs);color:var(--muted)">${g.tipo}</span>` : ''}
+              <span style="font-weight:600;font-size:var(--fs-sm)">${gtTitulo(g)}</span>
+              ${gtSecundario(g) ? `<span style="font-size:var(--fs-xs);color:var(--muted)">${gtSecundario(g)}</span>` : ''}
               ${quienBadge}
               ${g.esCuotaEnCurso ? `<span style="font-size:var(--fs-xs);color:var(--muted);background:var(--s1);border:1px solid var(--border);padding:1px 5px;border-radius:4px">cuota en curso</span>` : ''}
             </div>
-            <div style="font-size:var(--fs-xs);color:var(--muted)">${new Date((g.fechaCompra || g.fecha)+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'})}${g.nota ? ' · ' + g.nota : ''}</div>
+            <div style="font-size:var(--fs-xs);color:var(--muted)">${new Date((g.fechaCompra || g.fecha)+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'})}</div>
           </div>
           <div style="text-align:right;flex-shrink:0;cursor:${estaConciliado?'default':'pointer'}" ${!estaConciliado ? `onclick="toggleEditarMontoGasto('${g.id}')"` : ''}>
             <div style="font-weight:700;color:var(--red);font-size:var(--fs-md)">${montoDisplay}${!estaConciliado ? ' ✎' : ''}</div>
@@ -7188,7 +7194,7 @@ function renderFuturosAgrupados(gruposFuturos) {
       <div style="padding:6px 0;border-bottom:1px solid var(--border)">
         <div style="display:flex;align-items:center;gap:6px">
           <div style="flex:1;min-width:0">
-            <div style="font-size:var(--fs-sm);font-weight:600">${g.tipo}</div>
+            <div style="font-size:var(--fs-sm);font-weight:600">${gtTitulo(g)}${gtSecundario(g) ? ` <span style="font-weight:400;font-size:var(--fs-xs);color:var(--muted)">${gtSecundario(g)}</span>` : ''}</div>
             <div style="font-size:.58rem;color:var(--muted)">${grupo.tarjeta.nombre} · ${new Date((g.fechaCompra || g.fecha)+'T00:00:00').toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'})}</div>
           </div>
           <div style="font-size:var(--fs-sm);font-weight:700;color:var(--muted2);cursor:pointer" onclick="toggleEditarMontoGasto('${g.id}')">${montoDisplay} ✎</div>
@@ -8469,6 +8475,28 @@ function buscarGastoTarjeta(texto) {
     + (hits.length > 25 ? `<div style="font-size:var(--fs-xs);color:var(--muted);padding-top:6px">… y ${hits.length - 25} más</div>` : '');
 }
 
+
+// ── Qué se lee primero en un gasto de tarjeta ──
+// El comercio identifica el consumo mucho mejor que la categoría: "Farmacia" hay diez,
+// "FARMACITY CORDOBA 1200" es uno solo. Así que si está, va adelante y la categoría queda
+// al costado en gris. El nombre sale de `servicio` (recurrentes) o de `nota`, que es donde
+// quedó el detalle del comercio en todo lo importado del banco.
+function gtComercio(g) {
+  return String((g && (g.servicio || g.nota)) || '').trim();
+}
+
+function gtTitulo(g) {
+  return gtComercio(g) || String((g && g.tipo) || '').trim();
+}
+
+// La categoría, salvo que ya sea lo mismo que el título
+function gtSecundario(g) {
+  const com = gtComercio(g);
+  const cat = String((g && g.tipo) || '').trim();
+  if (!com) return '';
+  return com.toLowerCase() === cat.toLowerCase() ? '' : cat;
+}
+
 // ── Historial de movimientos de cuentas ──
 function renderHistorialTransf() {
   const el     = document.getElementById('ct-historial-transf');
@@ -9121,6 +9149,7 @@ async function concilCargarFaltante(i) {
         cuotaV2: true, anclaCierre: d.actual.cierre, anclaNum: b.cuota.n,
         cierreDelPeriodo: n === b.cuota.n ? d.actual.cierre : null,
         tipo: `${limpio} (cuota ${n}/${b.cuota.total})`,
+        nota: b.desc,                      // el texto del banco, tal cual, como comercio
         monto, moneda: esUsd ? 'USD' : 'ARS',
         cargadoPor: quien, gastoDe: quien, ts: Date.now(),
         compraId, cuotaNum: n, cuotaTotal: b.cuota.total, esCuotaEnCurso: true,
