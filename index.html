@@ -2225,6 +2225,14 @@ input[type="month"].fi::-webkit-calendar-picker-indicator{
     <button id="orden-monto-btn" class="chip" onclick="setOrdenGastosTarjeta('monto')" style="border:1px solid var(--border2);color:var(--muted2);background:var(--s2)">Monto (ver duplicados)</button>
   </div>
 
+  <!-- Buscador: encuentra un gasto en CUALQUIER período, incluidos los futuros y los que
+       esperan período, que son los dos lugares donde "desaparece" una compra. -->
+  <div class="card" style="margin-bottom:14px">
+    <input type="text" id="tj-buscar" class="fi" placeholder="🔍 Buscar un gasto (ej. Faldani, 114, service)"
+      oninput="buscarGastoTarjeta(this.value)" style="width:100%;font-size:var(--fs-sm);padding:9px 12px">
+    <div id="tj-buscar-resultado" style="margin-top:10px"></div>
+  </div>
+
   <div id="tarjetas-periodos-list"></div>
 
 </div>
@@ -6442,6 +6450,42 @@ function agruparGastosPorPeriodo() {
   const huerfanos = []; // gastos cuyo tarjetaId ya no coincide con ninguna tarjeta configurada
   const esperando = []; // cuotas nuevas cuyo período todavía no está configurado
 
+  // ── Ancla por compra para las cuotas VIEJAS con fecha estimada ──
+  // Reubicar cada cuota por su cuenta mandaba al mismo resumen a todas las que cayeran en el
+  // mismo hueco: la 3/12 y la 4/12 de un mismo viaje terminaban juntas en noviembre, cuando
+  // van en resúmenes consecutivos. Acá se fija UNA referencia por compra y el resto se ubica
+  // por posición (cuotaNum - númeroDeLaReferencia), que es como las factura el banco.
+  const anclaCompra = {}; // compraId -> { idx, num }
+  (function calcularAnclas() {
+    const porCompra = {};
+    gastosFamilia.forEach(g => {
+      if (!g.compraId || g.cuotaV2 || !g.cuotaNum) return;
+      (porCompra[g.compraId] = porCompra[g.compraId] || []).push(g);
+    });
+    Object.entries(porCompra).forEach(([compraId, cuotas]) => {
+      const tarjeta = tarjetas.find(t => t.id === cuotas[0].tarjetaId);
+      if (!tarjeta) return;
+      const periodosT = periodosOrdenados(tarjeta).filter(p => p.inicio && p.cierre);
+      if (!periodosT.length) return;
+      const ordenadas = cuotas.slice().sort((a, b) => (a.cuotaNum || 0) - (b.cuotaNum || 0));
+
+      // Preferir como referencia una cuota que YA caiga en un cierre real: respeta lo que
+      // esté bien ubicado y acomoda el resto alrededor.
+      let ref = ordenadas.find(c => periodosT.some(p => p.cierre === c.fecha));
+      if (ref) {
+        anclaCompra[compraId] = { idx: periodosT.findIndex(p => p.cierre === ref.fecha), num: ref.cuotaNum };
+        return;
+      }
+      // Ninguna cae en un cierre real: se ancla la más baja en el primer período que la
+      // contenga o, si cae en un hueco, en el primero que cierre después.
+      ref = ordenadas[0];
+      let idx = periodosT.findIndex(p => ref.fecha >= p.inicio && ref.fecha <= p.cierre);
+      if (idx === -1) idx = periodosT.findIndex(p => p.cierre >= ref.fecha);
+      while (idx !== -1 && idx < periodosT.length && conciliados[tarjeta.id + '|' + periodosT[idx].cierre]) idx++;
+      if (idx !== -1 && idx < periodosT.length) anclaCompra[compraId] = { idx, num: ref.cuotaNum };
+    });
+  })();
+
   gastosFamilia.forEach(g => {
     const tarjeta = tarjetas.find(t => t.id === g.tarjetaId);
     if (!tarjeta) { huerfanos.push(g); return; }
@@ -6467,17 +6511,19 @@ function agruparGastosPorPeriodo() {
       cierre = g.fecha;
       const periodosT = periodosOrdenados(tarjeta).filter(p => p.inicio && p.cierre);
       if (!periodosT.some(p => p.cierre === g.fecha)) {
-        // 1) el período que contiene esa fecha
-        let idx = periodosT.findIndex(p => g.fecha >= p.inicio && g.fecha <= p.cierre);
-        // 2) si cae en un HUECO entre períodos configurados (pasa cuando se cargan los
-        //    cierres salteados: del 24/09 al 19/11 directo), va al primero que cierre
-        //    después. Sin esto quedaba suelta y abría su propio "resumen" fantasma con una
-        //    fecha que no es de ninguna tarjeta.
-        if (idx === -1) idx = periodosT.findIndex(p => p.cierre >= g.fecha);
-        // 3) si ese resumen ya está conciliado, se corre al siguiente sin conciliar: un
-        //    consumo que no entró en un total cerrado lo factura el resumen siguiente.
-        while (idx !== -1 && idx < periodosT.length && conciliados[tarjeta.id + '|' + periodosT[idx].cierre]) idx++;
-        if (idx !== -1 && idx < periodosT.length) cierre = periodosT[idx].cierre;
+        const ancla = g.compraId && g.cuotaNum ? anclaCompra[g.compraId] : null;
+        let idx;
+        if (ancla) {
+          // Por POSICIÓN dentro de la compra: cada cuota en su propio resumen, consecutivos.
+          idx = ancla.idx + (g.cuotaNum - ancla.num);
+        } else {
+          // Gasto suelto con fecha que no es cierre: el período que la contiene o, si cae en
+          // un hueco de la configuración, el primero que cierre después.
+          idx = periodosT.findIndex(p => g.fecha >= p.inicio && g.fecha <= p.cierre);
+          if (idx === -1) idx = periodosT.findIndex(p => p.cierre >= g.fecha);
+          while (idx !== -1 && idx < periodosT.length && conciliados[tarjeta.id + '|' + periodosT[idx].cierre]) idx++;
+        }
+        if (idx !== null && idx !== -1 && idx >= 0 && idx < periodosT.length) cierre = periodosT[idx].cierre;
       }
     } else if (g.recurrenteId) {
       // Recurrentes: también van directo por g.fecha (ya filtrados los futuros arriba)
@@ -8366,6 +8412,61 @@ function toggleAcordeonConfig(clave) {
   try { localStorage.setItem('cl_config_abiertos', JSON.stringify([...abiertos])); } catch(e) {}
 
   if (abrir) setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 80);
+}
+
+
+// ── Buscador de gastos de tarjeta ──
+// Busca en TODOS los gastos de todas las tarjetas, sin importar en qué período hayan caído,
+// y dice dónde está cada uno. Es la respuesta a "cargué algo y no lo veo": casi siempre está
+// en "A futuro" o esperando período, los dos lugares que quedan colapsados al final.
+function buscarGastoTarjeta(texto) {
+  const cont = document.getElementById('tj-buscar-resultado');
+  if (!cont) return;
+  const q = (texto || '').trim();
+  if (q.length < 2) { cont.innerHTML = ''; return; }
+
+  const norm = t => concilNormalizar(String(t || ''));
+  const qn = norm(q);
+  const qNum = parseFloat(q.replace(',', '.'));
+
+  // Dónde quedó ubicado cada gasto, según el mismo criterio con que se dibujan los resúmenes
+  const ubicacion = {};
+  const grupos = agruparGastosPorPeriodo();
+  grupos.forEach(gr => gr.gastos.forEach(g => {
+    ubicacion[g.id] = gr.esHuerfano ? 'sin tarjeta'
+                    : gr.cierre === '0000-00-00' ? 'esperando período'
+                    : (gr.tarjeta ? gr.tarjeta.nombre : '') + ' · cierre ' + gr.cierre;
+  }));
+
+  const hits = getGastosTarjetas().filter(g => {
+    const enTexto = norm(g.tipo).includes(qn) || norm(g.servicio).includes(qn) || norm(g.nota).includes(qn);
+    const enMonto = !isNaN(qNum) && qNum > 0 && Math.abs((parseFloat(g.monto) || 0) - qNum) <= Math.max(1, qNum * 0.02);
+    return enTexto || enMonto;
+  }).sort((a, b) => String(b.fechaCompra || b.fecha).localeCompare(String(a.fechaCompra || a.fecha)));
+
+  if (!hits.length) {
+    cont.innerHTML = `<div style="font-size:var(--fs-xs);color:var(--muted);padding:6px 0">
+      Nada con «${q}». Probá con parte del nombre o con el monto (ej. 114).</div>`;
+    return;
+  }
+
+  const tarjetas = getTarjetas();
+  cont.innerHTML = `<div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:6px">${hits.length} resultado${hits.length !== 1 ? 's' : ''}</div>`
+    + hits.slice(0, 25).map(g => {
+      const t = tarjetas.find(x => x.id === g.tarjetaId);
+      const donde = ubicacion[g.id] || 'sin ubicar';
+      const monto = g.moneda === 'USD' ? 'U$S ' + Number(g.monto).toFixed(2) : fmt(g.monto);
+      return `
+      <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)">
+        ${t ? bancoBadge(t.nombre, 24) : ''}
+        <div style="flex:1;min-width:0">
+          <div style="font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${g.servicio || g.tipo}</div>
+          <div style="font-size:var(--fs-xs);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${donde}</div>
+        </div>
+        <div style="font-family:var(--fm);font-size:var(--fs-sm);flex-shrink:0;color:var(--red)">${monto}</div>
+      </div>`;
+    }).join('')
+    + (hits.length > 25 ? `<div style="font-size:var(--fs-xs);color:var(--muted);padding-top:6px">… y ${hits.length - 25} más</div>` : '');
 }
 
 // ── Historial de movimientos de cuentas ──
