@@ -8676,8 +8676,13 @@ function actualizarEstadoInstalacion() {
 function esCarteraDeEjemplo(invs) {
   if (!Array.isArray(invs) || typeof INV_DEFAULT === 'undefined') return false;
   if (invs.length !== INV_DEFAULT.length) return false;
-  if (invs.some(i => i && (i.broker || i.precioTs))) return false;
-  const clave = arr => arr.map(i => String((i && (i.ticker || i.activo)) || '')).sort().join('|');
+  // NO se puede mirar precioTs: el actualizador de precios se lo pone a los pocos segundos de
+  // abrir Inversiones, y entonces el ejemplo dejaba de reconocerse. El broker, en cambio, no
+  // lo toca nadie automáticamente — la cartera del código no trae ninguno y la real los tiene
+  // todos. Eso, más que coincidan los tickers y las cantidades, lo identifica sin ambigüedad.
+  if (invs.some(i => i && i.broker)) return false;
+  const clave = arr => arr.map(i => String((i && (i.ticker || i.activo)) || '') + ':' + (i && i.cantidad))
+                          .sort().join('|');
   return clave(invs) === clave(INV_DEFAULT);
 }
 
