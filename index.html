@@ -10078,7 +10078,7 @@ function updateOverview() {
   }
 
   // Patrimonio
-  const invs = DB.get('inversiones', INV_DEFAULT);
+  const invs = getInv();
   const totalPat = invs.reduce((s, i) => s + (i.ars||0), 0);
   document.getElementById('ov-pat').textContent = fmtK(totalPat);
 
@@ -12807,7 +12807,13 @@ function buildCotizBadge(inv, cotiz) {
 // INVERSIONES
 // ══════════════════════════════════════════════════════
 function getInv() {
-  return DB.get('inversiones', INV_DEFAULT);
+  // NUNCA devolver INV_DEFAULT como fallback. Si no hay nada guardado, la cartera está
+  // vacía y punto. El fallback a la cartera de ejemplo fue lo que destruyó la cartera real:
+  // en un celu nuevo, antes de que la nube contestara, getInv() devolvía el ejemplo, el
+  // actualizador de precios lo persistía con DB.set, y DB.set lo subía a Firestore pisando
+  // la cartera verdadera. Vacío es recuperable; el ejemplo persistido no.
+  const guardada = DB.get('inversiones', null);
+  return Array.isArray(guardada) ? guardada : [];
 }
 
 // ── Clasificación de riesgo para análisis de cartera ──
@@ -13034,7 +13040,10 @@ async function renderInvList() {
     }
   });
   // Persistir precios actualizados en localStorage (y Firebase via DB.set)
-  if (updatedPrices) DB.set('inversiones', invs);
+  // Doble cerrojo: jamás persistir (ni subir a la nube) la cartera de ejemplo.
+  if (updatedPrices && !(typeof esCarteraDeEjemplo === 'function' && esCarteraDeEjemplo(invs))) {
+    DB.set('inversiones', invs);
+  }
 
   // Update TC from MEP if available
   if (cotiz.MEP) {
@@ -13213,9 +13222,19 @@ async function renderInvList() {
     </div>`;
   }).join('');
 
+  // Estado vacío explícito: sin esto la pantalla queda en blanco y no se distingue
+  // "no tengo nada cargado" de "la app se rompió".
+  const vacioHtml = invs.length ? '' : `
+    <div style="border:1px dashed var(--bd);border-radius:10px;padding:20px 16px;text-align:center;color:var(--muted);font-size:var(--fs-sm);line-height:1.6">
+      <div style="font-size:1.6rem;margin-bottom:8px">📭</div>
+      <div style="color:var(--tx);font-weight:600;margin-bottom:4px">Sin posiciones cargadas</div>
+      La cartera está vacía. Podés cargarla con <b>＋ Agregar / Rotar</b>,
+      o restaurarla desde un backup en <b>Config → Backup</b>.
+    </div>`;
+
   document.getElementById('inv-list').innerHTML = pnlBanner +
     `<div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:10px;text-align:right">Cotizaciones: ${tsLabel}</div>` +
-    portafolioHtml;
+    (vacioHtml || portafolioHtml);
 
   // Donut de Distribución eliminado — con muchos tickers no aportaba, la lista de abajo
   // ya agrupa bien por ticker dentro de cada broker.
@@ -14616,10 +14635,11 @@ document.addEventListener('DOMContentLoaded', () => {
       // localStorage; después la restauración veía la clave "con datos" y no bajaba la real.
       // Sin datos locales no hay nada que migrar: la nube decide, y si tampoco hay nada
       // getInv() ya muestra INV_DEFAULT sin necesidad de persistirlo.
-      if (saved && savedCedears < defaultCedears) {
-        DB.set('inversiones', JSON.parse(JSON.stringify(INV_DEFAULT)));
-        console.log('Migrated: loaded full INVIU portfolio (' + defaultCedears + ' CEDEARs)');
-      }
+      // DESACTIVADO. Esta migración sembraba INV_DEFAULT encima de la cartera guardada
+      // cuando tenía menos CEDEARs que el ejemplo — y una cartera real perfectamente
+      // válida puede tener menos. Sembrar datos de ejemplo sobre datos reales no se hace
+      // nunca. Se deja el flag de versión para no volver a correr nada viejo.
+      void saved; void savedCedears; void defaultCedears;
       localStorage.setItem(SCHEMA_V, '1');
     }
   })();
