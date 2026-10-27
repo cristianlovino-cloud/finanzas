@@ -192,7 +192,19 @@ async function loadFromFirestore(uid) {
   _alreadyLoaded = true;
   setSyncStatus('syncing');
 
-  const keys = ['txs', 'plans', 'inversiones', 'tc', 'cuentas', 'ct_movimientos', 'gastos_tarjetas', 'tarjetas_cfg', 'categorias_consumo', 'tarjetas_conciliadas', 'debitos_recurrentes', 'recurrentes_excluidos'];
+  // Lo que se BAJA de la nube tiene que ser exactamente lo que entra al backup. Mantener dos
+  // listas separadas las hizo desfasarse: el backup cubría 21 claves y acá se pedían 12, así
+  // que en un dispositivo nuevo volvían los gastos y las tarjetas pero no los logos de los
+  // bancos, los grupos de categorías, las fotos mensuales de FCI, las reasignaciones, los
+  // favoritos de transferencia ni la configuración del simulador hipotecario. Estaban subidas
+  // —FBsave sube toda clave que se guarde— pero nadie las iba a buscar.
+  const CLAVES_FALLBACK = ['txs','plans','inversiones','tc','cuentas','ct_movimientos','gastos_tarjetas',
+    'tarjetas_cfg','categorias_consumo','tarjetas_conciliadas','debitos_recurrentes','inv_movimientos',
+    'cl_font_preset','grupos_categorias','recurrentes_excluidos','tc_contribs_presupuesto',
+    'transf_favoritas','reasignaciones','snapshots_fci','hipo_cfg','logos_bancos'];
+  const keys = (typeof BACKUP_KEYS !== 'undefined' && Array.isArray(BACKUP_KEYS) && BACKUP_KEYS.length)
+    ? BACKUP_KEYS.slice()
+    : CLAVES_FALLBACK;
   let restoredFromCloud = false;
 
   for (const key of keys) {
