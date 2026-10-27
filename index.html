@@ -234,6 +234,9 @@ onAuthStateChanged(auth, async (user) => {
     window._uid = _uid;
     if (btn)    { btn.textContent = 'Cerrar sesión'; btn.onclick = () => { signOut(auth); _alreadyLoaded = false; }; }
     if (userEl)   userEl.textContent = user.displayName || user.email;
+    // Sacar el aviso de "conectate" y devolver Config a su orden normal
+    if (window.renderAvisoSinSesion) try { renderAvisoSinSesion(); } catch(e) {}
+    if (window.destacarConfigSiSinSesion) try { destacarConfigSiSinSesion(); } catch(e) {}
     if (!_alreadyLoaded) await loadFromFirestore(user.uid);
     else setSyncStatus('ok');
     iniciarEscuchaGastosFamiliares();
@@ -244,6 +247,8 @@ onAuthStateChanged(auth, async (user) => {
     if (btn)    { btn.textContent = 'Iniciar sesión con Google'; btn.onclick = fbLogin; }
     if (userEl)   userEl.textContent = 'No conectado';
     setSyncStatus('loggedout');
+    if (window.renderAvisoSinSesion) try { renderAvisoSinSesion(); } catch(e) {}
+    if (window.destacarConfigSiSinSesion) try { destacarConfigSiSinSesion(); } catch(e) {}
   }
 });
 
@@ -321,8 +326,11 @@ window.cfSincronizarAhora = async function() {
 // Importante: signInWithPopup tiene que ser el PRIMER await del handler — si hay cualquier
 // otra espera antes, el navegador pierde el gesto del usuario y bloquea el popup.
 window.fbDiag = function(txt, color) {
-  const el = document.getElementById('fb-diag');
-  if (el) { el.innerHTML = txt; el.style.color = color || 'var(--muted)'; }
+  // El mismo mensaje en los dos lugares desde donde se puede iniciar sesión
+  ['fb-diag', 'aviso-sin-sesion-diag'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.innerHTML = txt; el.style.color = color || 'var(--muted)'; }
+  });
 };
 
 window.fbLogin = async function() {
@@ -1289,6 +1297,9 @@ input[type="month"].fi::-webkit-calendar-picker-indicator{
 
 <!-- ════════════ OVERVIEW ════════════ -->
 <div class="page active" id="page-overview">
+
+  <!-- Aviso de sesión: lo primero que se ve si la app no está conectada a la nube -->
+  <div id="aviso-sin-sesion" style="display:none"></div>
 
   <!-- Year selector + summary bar -->
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">
@@ -2532,6 +2543,10 @@ input[type="month"].fi::-webkit-calendar-picker-indicator{
 
     <div class="card" style="margin-bottom:14px">
       <div class="ct">📲 Instalar como app</div>
+      <button id="btn-instalar" onclick="instalarApp()" style="display:none;width:100%;padding:12px;background:var(--green);color:var(--bg);border:none;border-radius:8px;font-family:var(--fh);font-size:var(--fs-md);font-weight:700;cursor:pointer;margin-bottom:10px">
+        Instalar ahora
+      </button>
+      <div id="instalar-estado" style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:10px;line-height:1.5"></div>
       <p style="font-size:var(--fs-sm);color:var(--muted2);line-height:1.7;margin-bottom:8px"><strong>Android (Chrome):</strong> Menú ⋮ → Agregar a pantalla de inicio</p>
       <p style="font-size:var(--fs-sm);color:var(--muted2);line-height:1.7"><strong>iPhone (Safari):</strong> Botón compartir □↑ → Añadir a pantalla de inicio</p>
     </div>
@@ -3728,7 +3743,7 @@ function go(id, btn) {
   if (id === 'cuentas')   { try { migrarTransfIdHistorial(); } catch(e) { console.warn('migrarTransfIdHistorial:', e); } renderCuentas(); updateMediosDePago(); updateOverviewSaldos(); renderHistorialTransf(); }
   if (id === 'analisis')   renderAnalisis();
   if (id === 'hipotecario') renderHipotecario();
-  if (id === 'config')     { prepararAcordeonConfig(); const fh=document.getElementById('fb-host'); if(fh) fh.textContent=location.hostname||'(archivo local)'; renderLogosBancos(); rotarPeriodosTarjetas(); renderTarjetasCfg(); renderRecurrentesCfg(); renderNormalizadorCategorias(); renderRenombrarCategorias(); applyFontPreset(localStorage.getItem('cl_font_preset') || 'original'); populateTarjetaSelectBorrado(); }
+  if (id === 'config')     { prepararAcordeonConfig(); destacarConfigSiSinSesion(); actualizarEstadoInstalacion(); const fh=document.getElementById('fb-host'); if(fh) fh.textContent=location.hostname||'(archivo local)'; renderLogosBancos(); rotarPeriodosTarjetas(); renderTarjetasCfg(); renderRecurrentesCfg(); renderNormalizadorCategorias(); renderRenombrarCategorias(); applyFontPreset(localStorage.getItem('cl_font_preset') || 'original'); populateTarjetaSelectBorrado(); }
   if (id === 'tarjetas')    {
     renderGastosTarjetas();
     renderOwnTarjetaSelector();
@@ -8402,6 +8417,7 @@ function prepararAcordeonConfig() {
   });
 
   pagina.dataset.acordeon = '1';
+  destacarConfigSiSinSesion();
 }
 
 function toggleAcordeonConfig(clave) {
@@ -8495,6 +8511,131 @@ function gtSecundario(g) {
   const cat = String((g && g.tipo) || '').trim();
   if (!com) return '';
   return com.toLowerCase() === cat.toLowerCase() ? '' : cat;
+}
+
+
+// ══════════════════════════════════════════════════════════════════════
+// ARRANQUE EN UN DISPOSITIVO NUEVO
+// Sin sesión iniciada, lo único que importa es conectarse con Google e instalar la app: todo
+// lo demás de Config es irrelevante hasta que eso pase. Esas dos tarjetas estaban al fondo
+// (la de la nube era la última de dieciocho) y con el acordeón quedaron además cerradas, así
+// que en un celular nuevo no había forma de encontrarlas.
+// Mientras no haya sesión: las dos suben al principio y la de la nube arranca abierta.
+// ══════════════════════════════════════════════════════════════════════
+function hayCuentaConectada() {
+  return !!window._uid;
+}
+
+function destacarConfigSiSinSesion() {
+  const pagina = document.getElementById('page-config');
+  if (!pagina || pagina.dataset.acordeon !== '1') return;
+
+  // Las tarjetas de Config no cuelgan todas del mismo div (la de la nube está aparte), así
+  // que el contenedor es el que agrupa a la mayoría y la búsqueda va sobre la página entera.
+  const todas = Array.from(pagina.querySelectorAll('.card'));
+  if (!todas.length) return;
+  const conteo = new Map();
+  todas.forEach(c => conteo.set(c.parentElement, (conteo.get(c.parentElement) || 0) + 1));
+  let contenedor = null, max = 0;
+  conteo.forEach((n, padre) => { if (n > max) { max = n; contenedor = padre; } });
+  if (!contenedor) return;
+
+  const buscar = txt => todas.find(c => { const t = c.querySelector('.ct'); return t && t.textContent.includes(txt); });
+
+  const nube    = buscar('Sincronización en la nube');
+  const instalar = buscar('Instalar como app');
+  if (!nube) return;
+
+  if (!hayCuentaConectada()) {
+    if (instalar) contenedor.insertBefore(instalar, contenedor.firstChild);
+    contenedor.insertBefore(nube, contenedor.firstChild);
+    const cuerpo = nube.querySelector(':scope > .acc-body');
+    if (cuerpo && cuerpo.style.display === 'none') {
+      cuerpo.style.display = 'block';
+      nube.classList.add('acc-abierto');
+    }
+    nube.style.borderColor = 'var(--green)';
+  } else {
+    nube.style.borderColor = '';
+  }
+}
+
+// Aviso en Overview cuando no hay sesión: es la pantalla a la que se entra, y en un celular
+// nuevo además está vacía, así que es donde hay que decir qué hacer.
+function renderAvisoSinSesion() {
+  const cont = document.getElementById('aviso-sin-sesion');
+  if (!cont) return;
+  if (hayCuentaConectada()) { cont.innerHTML = ''; cont.style.display = 'none'; return; }
+
+  const sinDatos = (getGastosTarjetas().length === 0) &&
+                   Object.keys(DB.get('txs', {})).length === 0;
+  cont.style.display = 'block';
+  cont.innerHTML = `
+  <div class="card" style="margin-bottom:14px;border:1px solid #22d3a0;background:rgba(34,211,160,.08)">
+    <div class="ct" style="color:#12b88a">☁ ${sinDatos ? '¿Celular nuevo?' : 'No estás conectado'}</div>
+    <p style="font-size:var(--fs-sm);color:var(--muted2);line-height:1.5;margin-bottom:12px">
+      ${sinDatos
+        ? 'Iniciá sesión con la misma cuenta de Google de siempre y tus datos se restauran solos: gastos, tarjetas, presupuesto e inversiones.'
+        : 'Lo que cargues queda solo en este dispositivo hasta que te conectes.'}
+    </p>
+    <button onclick="fbLogin()" style="width:100%;padding:13px;background:#22d3a0;color:#06281f;border:none;border-radius:8px;font-family:var(--fh);font-size:var(--fs-md);font-weight:700;cursor:pointer">
+      Iniciar sesión con Google
+    </button>
+    <div id="aviso-sin-sesion-diag" style="margin-top:9px;font-size:var(--fs-xs);color:var(--muted);line-height:1.5"></div>
+  </div>`;
+}
+
+
+// ── Instalación de la app ──
+// Chrome avisa cuando la app se puede instalar con un evento que hay que guardar: si no se
+// retiene, el botón nativo no vuelve a aparecer y solo queda el camino manual por el menú.
+let _promptInstalar = null;
+
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  _promptInstalar = e;
+  const btn = document.getElementById('btn-instalar');
+  if (btn) btn.style.display = 'block';
+  const est = document.getElementById('instalar-estado');
+  if (est) est.textContent = '';
+});
+
+window.addEventListener('appinstalled', () => {
+  _promptInstalar = null;
+  const btn = document.getElementById('btn-instalar');
+  if (btn) btn.style.display = 'none';
+  const est = document.getElementById('instalar-estado');
+  if (est) { est.textContent = '✓ Instalada'; est.style.color = 'var(--green)'; }
+});
+
+async function instalarApp() {
+  const est = document.getElementById('instalar-estado');
+  if (!_promptInstalar) {
+    if (est) est.textContent = 'Tu navegador no ofreció la instalación automática — usá el menú como dice abajo.';
+    return;
+  }
+  _promptInstalar.prompt();
+  const { outcome } = await _promptInstalar.userChoice;
+  _promptInstalar = null;
+  const btn = document.getElementById('btn-instalar');
+  if (btn) btn.style.display = 'none';
+  if (est) est.textContent = outcome === 'accepted' ? '✓ Instalando…' : 'Instalación cancelada.';
+}
+
+// Estado al abrir Config: si ya corre instalada, decirlo en vez de ofrecer instalar
+function actualizarEstadoInstalacion() {
+  const est = document.getElementById('instalar-estado');
+  const btn = document.getElementById('btn-instalar');
+  if (!est) return;
+  const instalada = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  if (instalada) {
+    est.textContent = '✓ Ya la estás usando instalada';
+    est.style.color = 'var(--green)';
+    if (btn) btn.style.display = 'none';
+  } else if (!_promptInstalar) {
+    est.textContent = 'Si no aparece el botón, instalala desde el menú del navegador (abajo dice cómo).';
+    est.style.color = 'var(--muted)';
+  }
 }
 
 // ── Historial de movimientos de cuentas ──
@@ -9987,6 +10128,7 @@ function updateOverview() {
   if (typeof render503020 === 'function') { try { render503020(); } catch(e) { console.warn('render503020 error:', e); } }
   if (typeof renderAnalisisOverview === 'function') { try { renderAnalisisOverview(); } catch(e) { console.warn('renderAnalisisOverview error:', e); } }
   if (typeof renderConsola === 'function') { try { renderConsola(); } catch(e) { console.warn('renderConsola error:', e); } }
+  if (typeof renderAvisoSinSesion === 'function') { try { renderAvisoSinSesion(); } catch(e) { console.warn('renderAvisoSinSesion error:', e); } }
 }
 
 // ══════════════════════════════════════════════════════════════════════
