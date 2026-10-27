@@ -210,7 +210,14 @@ async function loadFromFirestore(uid) {
   for (const key of keys) {
     try {
       const local      = localStorage.getItem(key);
-      const localEmpty = !local || local === '{}' || local === '[]' || local === 'null';
+      let localEmpty   = !local || local === '{}' || local === '[]' || local === 'null';
+
+      // Caso especial de 'inversiones': si lo que hay guardado es la cartera de EJEMPLO sin
+      // tocar, cuenta como vacío. Si no, un dispositivo que ya quedó sembrado con el ejemplo
+      // nunca bajaría la cartera real —y encima subiría el ejemplo pisándola en la nube.
+      if (!localEmpty && key === 'inversiones' && typeof esCarteraDeEjemplo === 'function') {
+        try { if (esCarteraDeEjemplo(JSON.parse(local))) localEmpty = true; } catch (e) {}
+      }
 
       if (localEmpty) {
         // Sin datos locales → bajar de la nube
@@ -2695,7 +2702,19 @@ function restaurarBackupCompleto(event) {
         if (partes.length) avisoPerdida = `\n\n⚠ Tenés datos más nuevos que este backup: ${partes.join(' y ')}. Se van a borrar.`;
       } catch (err) { console.error('conteo pérdida error:', err); }
 
-      if (!(await appConfirm(`Vas a reemplazar TODOS los datos actuales de este dispositivo con el backup del ${fechaBackup}.${avisoPerdida}\n\n¿Confirmás?`))) return;
+      // Un archivo puede traer TODO o solo una parte (ej. un rescate de inversiones). Decir
+      // cuál es el caso evita que un restore parcial parezca que va a borrar el resto.
+      const NOMBRES = { txs:'Flujo', plans:'Presupuesto', inversiones:'Inversiones',
+        inv_movimientos:'Movimientos de inversiones', cuentas:'Cuentas', ct_movimientos:'Movimientos de cuentas',
+        gastos_tarjetas:'Gastos de tarjeta', tarjetas_cfg:'Tarjetas', logos_bancos:'Logos de bancos',
+        grupos_categorias:'Grupos de categorías', snapshots_fci:'Fotos mensuales de FCI' };
+      const traeClaves = BACKUP_KEYS.filter(k => backup[k] !== undefined && backup[k] !== null);
+      const esParcial  = traeClaves.length < BACKUP_KEYS.length;
+      const listado    = traeClaves.map(k => NOMBRES[k] || k).join(', ');
+      const encabezado = esParcial
+        ? `Este archivo trae SOLO: ${listado}.\n\nSe reemplaza únicamente eso; el resto de tus datos queda como está.`
+        : `Vas a reemplazar TODOS los datos actuales de este dispositivo con el backup del ${fechaBackup}.`;
+      if (!(await appConfirm(`${encabezado}${esParcial ? '' : avisoPerdida}\n\n¿Confirmás?`))) return;
 
       // ── RED DE SEGURIDAD ──
       // Antes de pisar nada, se baja un backup automático del estado actual. Restaurar un
@@ -8650,6 +8669,18 @@ function actualizarEstadoInstalacion() {
   }
 }
 
+
+// ¿Lo guardado es la cartera de ejemplo recién sembrada, sin ninguna edición?
+// Los datos reales traen broker y marca de hora del precio; el ejemplo del código no tiene
+// ninguno de los dos. Si además coinciden los tickers uno a uno, es el ejemplo intacto.
+function esCarteraDeEjemplo(invs) {
+  if (!Array.isArray(invs) || typeof INV_DEFAULT === 'undefined') return false;
+  if (invs.length !== INV_DEFAULT.length) return false;
+  if (invs.some(i => i && (i.broker || i.precioTs))) return false;
+  const clave = arr => arr.map(i => String((i && (i.ticker || i.activo)) || '')).sort().join('|');
+  return clave(invs) === clave(INV_DEFAULT);
+}
+
 // ── Historial de movimientos de cuentas ──
 function renderHistorialTransf() {
   const el     = document.getElementById('ct-historial-transf');
@@ -14575,7 +14606,12 @@ document.addEventListener('DOMContentLoaded', () => {
       const saved = DB.get('inversiones', null);
       const defaultCedears = INV_DEFAULT.filter(i => i.tipo === 'CEDEAR').length;
       const savedCedears   = saved ? saved.filter(i => i.tipo === 'CEDEAR').length : 0;
-      if (savedCedears < defaultCedears) {
+      // SOLO migrar si YA hay una cartera guardada. Cuando no hay nada —dispositivo nuevo—
+      // esto corría antes de que la nube contestara y escribía la cartera de ejemplo en
+      // localStorage; después la restauración veía la clave "con datos" y no bajaba la real.
+      // Sin datos locales no hay nada que migrar: la nube decide, y si tampoco hay nada
+      // getInv() ya muestra INV_DEFAULT sin necesidad de persistirlo.
+      if (saved && savedCedears < defaultCedears) {
         DB.set('inversiones', JSON.parse(JSON.stringify(INV_DEFAULT)));
         console.log('Migrated: loaded full INVIU portfolio (' + defaultCedears + ' CEDEARs)');
       }
