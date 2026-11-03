@@ -1457,6 +1457,9 @@ input[type="month"].fi::-webkit-calendar-picker-indicator{
 
   <div id="plan-autocompletado-aviso" style="display:none"></div>
 
+  <!-- Resúmenes apilados: dos cierres de la misma tarjeta cayendo en un mismo mes de pago -->
+  <div id="plan-apilados" style="display:none"></div>
+
 
   <!-- KPIs del plan -->
   <div class="kg">
@@ -4040,6 +4043,7 @@ function loadPlanUI() {
   curPlan = getPlan(curMes);
   renderPlanSections();
   updateHeaderMes();
+  if (typeof renderApilados === 'function') { try { renderApilados(); } catch (e) {} }
 }
 
 function renderPlanSections() {
@@ -4177,6 +4181,29 @@ function mesSiguienteDePago(mesStr) {
   const [y, m] = mesStr.split('-').map(Number);
   const d = new Date(y, m, 1); // m ya viene 1-indexado, Date con mes=m avanza un mes
   return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+}
+
+// Día del mes hasta el cual un cierre se considera "corrido" del mes anterior.
+// Los cierres reales caen entre el 19 y el 30; cuando el banco corre el cierre uno o dos
+// días (ej. 30/09 → 01/10), el resumen SIGUE siendo el del mes anterior y se paga en el
+// mismo mes en que cerró, no al siguiente. El umbral deja margen de sobra entre ambos grupos.
+const DIA_CIERRE_CORRIDO = 5;
+
+// Mes en que se PAGA un resumen, a partir de la fecha completa de cierre.
+//
+// Antes esto era cierre.slice(0,7) + 1 mes, a ciegas. Con un cierre del 01/10 (que es el
+// resumen de septiembre, corrido un día) daba noviembre — y ese resumen terminaba apilado
+// sobre el que sí cierra a fin de octubre. Dos resúmenes en un mismo mes de presupuesto,
+// y el mes que correspondía quedaba corto. Ya había pasado en agosto 2026 con BBVA VISA y
+// MUNI BLACK (cierres 02/07 y 30/07, los dos a agosto).
+//
+// NO toca ninguna fecha de período: solo interpreta a qué mes de pago pertenece el cierre.
+function mesDePagoDeCierre(cierre) {
+  if (!cierre || cierre.length < 10) return mesSiguienteDePago(String(cierre || '').slice(0, 7));
+  const dia = Number(cierre.slice(8, 10));
+  // Cierre corrido al arranque del mes: el resumen es del mes anterior → se paga ESTE mes.
+  if (dia <= DIA_CIERRE_CORRIDO) return cierre.slice(0, 7);
+  return mesSiguienteDePago(cierre.slice(0, 7));
 }
 
 let curTipo = 'gasto';
@@ -6650,7 +6677,7 @@ function actualizarPresupuestoTrasConciliar(tarjetaId, cierre, conciliado) {
   if (!periodo || !periodo.inicio) return;
 
   const label = categoriaPresupuestoTarjeta(tarjeta);
-  const mesDePago = mesSiguienteDePago(cierre.slice(0, 7));
+  const mesDePago = mesDePagoDeCierre(cierre);
   const contribs = DB.get('tc_contribs_presupuesto', {});
   const key = tarjetaId + '|' + cierre;
 
@@ -6676,9 +6703,19 @@ function actualizarPresupuestoTrasConciliar(tarjetaId, cierre, conciliado) {
   const planes = DB.get('plans', {});
   const plan = planes[mesDePago] ? planes[mesDePago] : JSON.parse(JSON.stringify(getPlan(mesDePago)));
 
-  const fila = plan.fijos.find(r => r.l === label) || plan.vars.find(r => r.l === label);
-  if (fila) {
-    fila.v = sumaCategoria;
+  // Puede haber quedado la misma categoría en Fijos Y en Variables (ej. tras usar ⇄ en un mes
+  // y "Copiar anterior" en otro). Antes se actualizaba solo la primera y la otra quedaba con
+  // el valor viejo: el total del presupuesto contaba las dos y se veía inflado. Ahora la
+  // primera lleva el valor y las repetidas se eliminan.
+  const filas = [];
+  ['fijos', 'vars'].forEach(sec => {
+    (plan[sec] || []).forEach(r => { if (r.l === label) filas.push({ sec, r }); });
+  });
+  if (filas.length) {
+    filas[0].r.v = sumaCategoria;
+    filas.slice(1).forEach(({ sec, r }) => {
+      plan[sec] = plan[sec].filter(x => x !== r);
+    });
   } else if (sumaCategoria > 0) {
     plan.vars.push({ l: label, v: sumaCategoria });
   }
@@ -6694,6 +6731,114 @@ function actualizarPresupuestoTrasConciliar(tarjetaId, cierre, conciliado) {
   }
   if (typeof updateOverview === 'function') updateOverview();
   showToast(`✓ ${label}: ${fmt(sumaCategoria)} en Presupuesto de ${mesLabel(mesDePago)}`);
+  if (typeof renderApilados === 'function') { try { renderApilados(); } catch (e) {} }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// RESÚMENES APILADOS
+// Detecta los aportes al Presupuesto cuyo mes de pago quedó mal calculado porque el cierre
+// vino corrido al arranque del mes (ej. 01/10 en vez de 30/09). Esos resúmenes se fueron al
+// mes siguiente y se apilaron encima del que sí cerraba a fin de mes: la línea del
+// Presupuesto quedó inflada y el mes que correspondía, corto.
+//
+// NO corrige nada solo. Muestra qué hay mal, de cuánto es cada resumen y a qué mes va cada
+// uno. Aplicar es un botón, y lo aprieta una persona.
+// ══════════════════════════════════════════════════════════════════════
+function detectarApilados() {
+  const contribs = DB.get('tc_contribs_presupuesto', {});
+  const mal = [];
+  Object.keys(contribs).forEach(key => {
+    const c = contribs[key];
+    if (!c || !c.mesDePago) return;
+    const cierre = key.slice(key.indexOf('|') + 1);
+    if (!cierre || cierre.length < 10) return;
+    const correcto = mesDePagoDeCierre(cierre);
+    if (correcto !== c.mesDePago) {
+      mal.push({ key, cierre, label: c.label, monto: c.monto, de: c.mesDePago, a: correcto });
+    }
+  });
+  return mal.sort((a, b) => a.cierre.localeCompare(b.cierre));
+}
+
+function renderApilados() {
+  const cont = document.getElementById('plan-apilados');
+  if (!cont) return;
+  const mal = detectarApilados();
+  if (!mal.length) { cont.style.display = 'none'; cont.innerHTML = ''; return; }
+
+  const filas = mal.map(m => `
+    <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:var(--fs-sm)">${m.label} · cierre ${m.cierre.slice(8,10)}/${m.cierre.slice(5,7)}</div>
+        <div style="font-size:var(--fs-xs);color:var(--muted)">${mesLabel(m.de)} → ${mesLabel(m.a)}</div>
+      </div>
+      <div style="font-family:var(--fm);font-size:var(--fs-sm);flex-shrink:0">${fmt(m.monto)}</div>
+    </div>`).join('');
+
+  cont.style.display = 'block';
+  cont.innerHTML = `
+    <div class="card" style="border-color:rgba(251,191,36,.35);background:rgba(251,191,36,.05);margin-bottom:14px">
+      <div class="ct" style="color:var(--yellow)">⚠ Resúmenes en el mes equivocado (${mal.length})</div>
+      <p style="font-size:var(--fs-sm);color:var(--muted2);line-height:1.5;margin-bottom:10px">
+        Estos resúmenes cerraron al arranque del mes (ej. 01/10 en vez de 30/09), así que son
+        del mes anterior pero quedaron cargados al mes siguiente, encima del resumen que sí
+        cierra a fin de mes. Por eso una línea se ve inflada y otro mes quedó corto.
+        <b>No se toca ninguna fecha de período</b>: solo se reubica el aporte al mes que paga.
+      </p>
+      ${filas}
+      <button onclick="aplicarApilados()" class="btn btn-g btn-full" style="margin-top:12px">⇄ Reubicar y recalcular presupuesto</button>
+      <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:8px;text-align:center">
+        Se recalculan solo las líneas de tarjeta de los meses afectados.
+      </div>
+    </div>`;
+}
+
+function aplicarApilados() {
+  const mal = detectarApilados();
+  if (!mal.length) { showToast('No hay nada para reubicar'); return; }
+
+  const contribs = DB.get('tc_contribs_presupuesto', {});
+  const afectados = new Set(); // "mes|label" a recalcular
+  mal.forEach(m => {
+    if (!contribs[m.key]) return;
+    afectados.add(m.de + '|' + m.label);
+    afectados.add(m.a  + '|' + m.label);
+    contribs[m.key].mesDePago = m.a;
+  });
+  DB.set('tc_contribs_presupuesto', contribs);
+  if (window.FBsave) window.FBsave('tc_contribs_presupuesto', contribs);
+
+  const planes = DB.get('plans', {});
+  afectados.forEach(k => {
+    const mes   = k.slice(0, k.indexOf('|'));
+    const label = k.slice(k.indexOf('|') + 1);
+    const suma = Object.values(contribs)
+      .filter(c => c.mesDePago === mes && c.label === label)
+      .reduce((s, c) => s + c.monto, 0);
+
+    const plan = planes[mes] ? planes[mes] : JSON.parse(JSON.stringify(getPlan(mes)));
+    const filas = [];
+    ['fijos', 'vars'].forEach(sec => {
+      (plan[sec] || []).forEach(r => { if (r.l === label) filas.push({ sec, r }); });
+    });
+    if (filas.length) {
+      filas[0].r.v = suma;
+      filas.slice(1).forEach(({ sec, r }) => { plan[sec] = plan[sec].filter(x => x !== r); });
+    } else if (suma > 0) {
+      plan.vars.push({ l: label, v: suma });
+    }
+    planes[mes] = plan;
+  });
+  DB.set('plans', planes);
+  if (window.FBsave) window.FBsave('plans', planes);
+
+  if (typeof curMes !== 'undefined' && planes[curMes]) {
+    curPlan = JSON.parse(JSON.stringify(planes[curMes]));
+    if (typeof renderPlanSections === 'function') renderPlanSections();
+  }
+  if (typeof updateOverview === 'function') updateOverview();
+  renderApilados();
+  showToast(`✓ ${mal.length} resumen${mal.length === 1 ? '' : 'es'} reubicado${mal.length === 1 ? '' : 's'}`);
 }
 
 // ── Migración one-time: unificar líneas de Presupuesto que hoy están separadas por
@@ -6755,7 +6900,7 @@ function migrarCategoriasTarjetaPresupuesto() {
     if (!(totalArs > 0)) return;
 
     contribs[key] = {
-      mesDePago: mesSiguienteDePago(cierre.slice(0, 7)),
+      mesDePago: mesDePagoDeCierre(cierre),
       label: categoriaPresupuestoTarjeta(tarjeta),
       monto: Math.round(totalArs),
     };
@@ -12134,7 +12279,8 @@ function renderEvolCategorias() {
   // El pago de una tarjeta sale de la cuenta un mes DESPUÉS del cierre del resumen (ej. BSF
   // cierra el 23 y se paga ~05 del mes siguiente). Para que el desglose por categoría neteé
   // bien contra el pago real de Flujo, agrupamos cada gasto de tarjeta por su "mes de pago"
-  // (cierre + 1 mes), no por el mes en que se hizo la compra.
+  // (cierre + 1 mes), no por el mes en que se hizo la compra. mesDePagoDeCierre además
+  // corrige el cierre corrido al 01/02 del mes, que es el resumen del mes anterior.
   const mesSiguiente = mesSiguienteDePago;
 
   // Mapa tarjetaId → períodos ordenados, para ubicar el CIERRE real del resumen al que
@@ -12161,8 +12307,12 @@ function renderEvolCategorias() {
   getGastosTarjetas().forEach(g => {
     if (!g.fecha || g.moneda === 'USD') return;
     const cierreReal = cierreDelPeriodo(g.tarjetaId, g.fecha);
-    const mesBase = cierreReal ? cierreReal.slice(0,7) : g.fecha.slice(0,7); // fallback: sin período configurado para esa fecha
-    const mesDePago = mesSiguiente(mesBase);
+    // Con cierre real usamos la fecha COMPLETA (mesDePagoDeCierre corrige el cierre corrido
+    // al arranque del mes). Sin período configurado no hay cierre que interpretar: cae al
+    // criterio viejo sobre el mes de la compra.
+    const mesDePago = cierreReal
+      ? mesDePagoDeCierre(cierreReal)
+      : mesSiguiente(g.fecha.slice(0,7));
     if (!gastosTarjPorMesDePago[mesDePago]) gastosTarjPorMesDePago[mesDePago] = [];
     gastosTarjPorMesDePago[mesDePago].push(g);
   });
