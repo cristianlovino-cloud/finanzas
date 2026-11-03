@@ -4188,25 +4188,44 @@ function mesSiguienteDePago(mesStr) {
 }
 
 // Día del mes hasta el cual un cierre se considera "corrido" del mes anterior.
-// Los cierres reales caen entre el 19 y el 30; cuando el banco corre el cierre uno o dos
-// días (ej. 30/09 → 01/10), el resumen SIGUE siendo el del mes anterior y se paga en el
-// mismo mes en que cerró, no al siguiente. El umbral deja margen de sobra entre ambos grupos.
+// Solo se usa como RED cuando la tarjeta todavía no tiene día de vencimiento cargado.
 const DIA_CIERRE_CORRIDO = 5;
 
-// Mes en que se PAGA un resumen, a partir de la fecha completa de cierre.
+// Mes en que se PAGA un resumen.
 //
-// Antes esto era cierre.slice(0,7) + 1 mes, a ciegas. Con un cierre del 01/10 (que es el
-// resumen de septiembre, corrido un día) daba noviembre — y ese resumen terminaba apilado
-// sobre el que sí cierra a fin de octubre. Dos resúmenes en un mismo mes de presupuesto,
-// y el mes que correspondía quedaba corto. Ya había pasado en agosto 2026 con BBVA VISA y
-// MUNI BLACK (cierres 02/07 y 30/07, los dos a agosto).
+// El criterio bueno es el que vale en la vida real: un resumen se paga en su VENCIMIENTO,
+// que es el primer día de vencimiento de esa tarjeta posterior al cierre. Nada de "mes del
+// cierre + 1", que es lo que había antes y rompía en los dos extremos:
+//   · cierre corrido al arranque del mes (MUNI 01/10, vence 13/10) → mandaba a noviembre
+//     un resumen que se paga en octubre, apilándolo sobre el que cierra a fin de octubre.
+//   · cierre a mitad de mes (MP 12/10, vence ~15/10) → mandaba a noviembre un resumen que
+//     se paga en octubre.
+// Contrastado contra los 22 pagos reales del historial: con el día de vencimiento por
+// tarjeta acierta 22/22; "mes del cierre + 1" acertaba 18 y la regla del cierre corrido 20.
 //
 // NO toca ninguna fecha de período: solo interpreta a qué mes de pago pertenece el cierre.
-function mesDePagoDeCierre(cierre) {
+function diaVtoDeTarjeta(tarjetaId) {
+  if (!tarjetaId) return null;
+  const t = (typeof getTarjetas === 'function' ? getTarjetas() : []).find(x => x.id === tarjetaId);
+  const d = t && parseInt(t.diaVto, 10);
+  return (d >= 1 && d <= 28) ? d : null;
+}
+
+function mesDePagoDeCierre(cierre, tarjetaId) {
   if (!cierre || cierre.length < 10) return mesSiguienteDePago(String(cierre || '').slice(0, 7));
-  const dia = Number(cierre.slice(8, 10));
-  // Cierre corrido al arranque del mes: el resumen es del mes anterior → se paga ESTE mes.
-  if (dia <= DIA_CIERRE_CORRIDO) return cierre.slice(0, 7);
+
+  const diaVto = diaVtoDeTarjeta(tarjetaId);
+  if (diaVto) {
+    let y = Number(cierre.slice(0, 4));
+    let m = Number(cierre.slice(5, 7));
+    const diaCierre = Number(cierre.slice(8, 10));
+    // El vencimiento es el primer día `diaVto` ESTRICTAMENTE posterior al cierre.
+    if (diaVto <= diaCierre) { m++; if (m > 12) { m = 1; y++; } }
+    return y + '-' + String(m).padStart(2, '0');
+  }
+
+  // Sin día de vencimiento cargado: red mínima para el cierre corrido al arranque del mes.
+  if (Number(cierre.slice(8, 10)) <= DIA_CIERRE_CORRIDO) return cierre.slice(0, 7);
   return mesSiguienteDePago(cierre.slice(0, 7));
 }
 
@@ -5143,11 +5162,25 @@ function actualizarTarjetaCfg(id, campo, valor) {
   const tarjetas = getTarjetas();
   const t = tarjetas.find(t => t.id === id);
   if (!t) return;
-  t[campo] = campo === 'diaFijo' ? (parseInt(valor) || 1) : valor;
+  if (campo === 'diaFijo') {
+    t[campo] = parseInt(valor) || 1;
+  } else if (campo === 'diaVto') {
+    // Vacío = sin vencimiento cargado (vuelve a la red por defecto). Fuera de 1-28 se ignora:
+    // el 29/30/31 no existe en todos los meses y daría un mes de pago distinto según el mes.
+    const n = parseInt(valor, 10);
+    if (!valor && valor !== 0) delete t.diaVto;
+    else if (n >= 1 && n <= 28) t.diaVto = n;
+    else { showToast('El día de vencimiento tiene que estar entre 1 y 28', P.yellow); return; }
+  } else {
+    t[campo] = valor;
+  }
   // Los campos de texto/número se guardan sin re-renderizar (evita perder foco mientras se tipea).
   // Solo 'tipoCierre' cambia la estructura visible (aparece/desaparece el input de día fijo), así que ese sí re-renderiza.
-  const requiereRerender = campo === 'tipoCierre';
+  // diaVto se edita con onchange (no oninput), así que re-renderizar no corta la escritura
+  // y además refresca el texto de ayuda con el día cargado.
+  const requiereRerender = campo === 'tipoCierre' || campo === 'diaVto';
   saveTarjetas(tarjetas, { skipRender: !requiereRerender });
+  if (campo === 'diaVto' && typeof renderApilados === 'function') { try { renderApilados(); } catch (e) {} }
   if (campo === 'mostrarComoEsteMes' && typeof renderGastosTarjetas === 'function') renderGastosTarjetas();
 
   // Si cambió el día fijo (sin re-render completo), actualizamos solo el texto de "próximo cierre" in-place
@@ -5314,7 +5347,18 @@ function renderTarjetasCfg() {
         <button onclick="eliminarTarjetaCfg('${t.id}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:var(--fs-md);padding:4px 6px">✕</button>
       </div>
       <div id="tj-cfg-body-${t.id}" style="display:none">
-        <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:2px;margin-bottom:4px">📅 Períodos de resumen</div>
+        <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:2px;margin-bottom:4px">💳 Vencimiento</div>
+        <div style="background:var(--bg);border-radius:6px;padding:8px;display:flex;gap:8px;align-items:center">
+          <div style="font-size:var(--fs-sm);flex:1">Vence el día</div>
+          <input type="number" min="1" max="28" value="${t.diaVto || ''}" placeholder="—"
+            onchange="actualizarTarjetaCfg('${t.id}','diaVto',this.value)"
+            class="fi" style="width:76px;font-size:var(--fs-sm);padding:6px 8px;text-align:center">
+        </div>
+        <div style="font-size:.6rem;color:var(--muted);margin:4px 0 2px">
+          Define en qué mes se paga cada resumen: el primer día ${t.diaVto ? '<b>'+t.diaVto+'</b>' : 'de vencimiento'} posterior al cierre.
+          Sin esto, un cierre corrido (01/10) o a mitad de mes (12/10) se iba al mes equivocado.
+        </div>
+        <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:10px;margin-bottom:4px">📅 Períodos de resumen</div>
         ${periodosHTML}
         ${alertaHTML}
       </div>
@@ -6681,7 +6725,7 @@ function actualizarPresupuestoTrasConciliar(tarjetaId, cierre, conciliado) {
   if (!periodo || !periodo.inicio) return;
 
   const label = categoriaPresupuestoTarjeta(tarjeta);
-  const mesDePago = mesDePagoDeCierre(cierre);
+  const mesDePago = mesDePagoDeCierre(cierre, tarjetaId);
   const contribs = DB.get('tc_contribs_presupuesto', {});
   const key = tarjetaId + '|' + cierre;
 
@@ -6756,7 +6800,8 @@ function detectarApilados() {
     if (!c || !c.mesDePago) return;
     const cierre = key.slice(key.indexOf('|') + 1);
     if (!cierre || cierre.length < 10) return;
-    const correcto = mesDePagoDeCierre(cierre);
+    const tarjetaId = key.slice(0, key.indexOf('|'));
+    const correcto = mesDePagoDeCierre(cierre, tarjetaId);
     if (correcto !== c.mesDePago) {
       mal.push({ key, cierre, label: c.label, monto: c.monto, de: c.mesDePago, a: correcto });
     }
@@ -6798,7 +6843,13 @@ function renderApilados() {
   if (!cont) return;
   const mal = detectarApilados();
   const colisiones = detectarColisiones();
-  if (!mal.length && !colisiones.length) { cont.style.display = 'none'; cont.innerHTML = ''; return; }
+  // Tarjetas con movimiento pero sin día de vencimiento cargado: hasta que no esté, el mes
+  // de pago se adivina con la red por defecto y puede caer mal.
+  const sinVto = (typeof getTarjetas === 'function' ? getTarjetas() : [])
+    .filter(t => !(parseInt(t.diaVto, 10) >= 1 && parseInt(t.diaVto, 10) <= 28));
+  if (!mal.length && !colisiones.length && !sinVto.length) {
+    cont.style.display = 'none'; cont.innerHTML = ''; return;
+  }
 
   // Colisiones que el botón NO resuelve (dos cierres de la misma tarjeta en un mes que la
   // regla del cierre corrido no separa). Se muestran igual, para no esconder el problema.
@@ -6847,8 +6898,19 @@ function renderApilados() {
         </div>`).join('')}
     </div>`;
 
+  const bloqueSinVto = !sinVto.length ? '' : `
+    <div class="card" style="border-color:rgba(59,130,246,.35);background:rgba(59,130,246,.05);margin-bottom:14px">
+      <div class="ct" style="color:var(--blue)">💳 Falta el día de vencimiento (${sinVto.length})</div>
+      <p style="font-size:var(--fs-sm);color:var(--muted2);line-height:1.5;margin-bottom:8px">
+        El mes en que se paga un resumen lo define el <b>vencimiento</b>, no el cierre.
+        Sin ese dato la app lo estima, y con cierres corridos (01/10) o a mitad de mes (12/10)
+        se equivoca de mes. Cargalo en <b>Config → Tarjetas</b>:
+      </p>
+      ${sinVto.map(t => `<div style="font-size:var(--fs-sm);padding:5px 0;border-bottom:1px solid var(--border)">${t.nombre}</div>`).join('')}
+    </div>`;
+
   cont.style.display = 'block';
-  cont.innerHTML = bloqueMal + bloqueColision;
+  cont.innerHTML = bloqueMal + bloqueColision + bloqueSinVto;
 }
 
 function aplicarApilados() {
@@ -6958,7 +7020,7 @@ function migrarCategoriasTarjetaPresupuesto() {
     if (!(totalArs > 0)) return;
 
     contribs[key] = {
-      mesDePago: mesDePagoDeCierre(cierre),
+      mesDePago: mesDePagoDeCierre(cierre, tarjetaId),
       label: categoriaPresupuestoTarjeta(tarjeta),
       monto: Math.round(totalArs),
     };
@@ -12369,7 +12431,7 @@ function renderEvolCategorias() {
     // al arranque del mes). Sin período configurado no hay cierre que interpretar: cae al
     // criterio viejo sobre el mes de la compra.
     const mesDePago = cierreReal
-      ? mesDePagoDeCierre(cierreReal)
+      ? mesDePagoDeCierre(cierreReal, g.tarjetaId)
       : mesSiguiente(g.fecha.slice(0,7));
     if (!gastosTarjPorMesDePago[mesDePago]) gastosTarjPorMesDePago[mesDePago] = [];
     gastosTarjPorMesDePago[mesDePago].push(g);
