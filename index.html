@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- 
-  CL-Finanzas v1.3.0
+  CL-Finanzas v1.4.0
   Cambios: Fix mesKeys hoisting (ReferenceError), cuentas mejorado — reconciliar saldo (⟳),
   historial completo con débitos rojo/créditos verde, filtro por tipo, tipografía uppercase.
 -->
@@ -68,7 +68,7 @@
 })();
 </script>
 <link rel="apple-touch-icon" href="icon-192.png">
-<title>CL · Finanzas v1.3.0</title>
+<title>CL · Finanzas v1.4.0</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&family=Quicksand:wght@500;600;700&family=Poppins:wght@400;500;600;700&family=Nunito+Sans:wght@400;600;700&display=swap" rel="stylesheet">
@@ -2601,7 +2601,7 @@ input[type="month"].fi::-webkit-calendar-picker-indicator{
     <div class="card">
       <div class="ct">ℹ️ Acerca de</div>
       <p style="font-size:var(--fs-sm);color:var(--muted2);line-height:1.7">
-        Dashboard financiero personal — CL Finanzas <span style="color:var(--muted);font-size:.7em">v1.2.2</span><br>
+        Dashboard financiero personal — CL Finanzas <span style="color:var(--muted);font-size:.7em">v1.4.0</span><br>
         Datos sincronizados en la nube con Firebase.<br>
         Form de gastos: <a href="https://forms.gle/cgxE8FDbhaZPkwjn9" target="_blank" style="color:var(--green)">forms.gle/cgxE8FDbhaZPkwjn9</a>
       </p>
@@ -4043,10 +4043,14 @@ function loadPlanUI() {
   curPlan = getPlan(curMes);
   renderPlanSections();
   updateHeaderMes();
-  if (typeof renderApilados === 'function') { try { renderApilados(); } catch (e) {} }
 }
 
 function renderPlanSections() {
+  // El aviso de resúmenes apilados se dibuja acá y no en loadPlanUI: loadPlanUI solo corre
+  // al cambiar el mes con el selector, mientras que abrir la pestaña Presupuesto entra por
+  // setGlobalMes/go y llega directo a renderPlanSections. Colgado de loadPlanUI, el panel
+  // no aparecía nunca al abrir la pestaña.
+  if (typeof renderApilados === 'function') { try { renderApilados(); } catch (e) {} }
   renderSection('ing',   'plan-ing-rows',  'var(--green)');
   renderSection('fijos', 'plan-fijos-rows','var(--blue)');
   renderSection('vars',  'plan-vars-rows', 'var(--orange)');
@@ -6760,11 +6764,46 @@ function detectarApilados() {
   return mal.sort((a, b) => a.cierre.localeCompare(b.cierre));
 }
 
+// Red de seguridad, independiente de la regla de los 5 días: dos resúmenes de la MISMA
+// tarjeta cargados al mismo mes de pago. Eso no puede pasar en la vida real — una tarjeta
+// cierra una vez por mes. Si aparece, la línea de ese mes está inflada, sea cual sea la causa.
+function detectarColisiones() {
+  const contribs = DB.get('tc_contribs_presupuesto', {});
+  const porTarjetaMes = {};
+  Object.keys(contribs).forEach(key => {
+    const c = contribs[key];
+    if (!c || !c.mesDePago) return;
+    const tarjetaId = key.slice(0, key.indexOf('|'));
+    const cierre = key.slice(key.indexOf('|') + 1);
+    const k = tarjetaId + '@' + c.mesDePago;
+    (porTarjetaMes[k] = porTarjetaMes[k] || []).push({ key, cierre, label: c.label, monto: c.monto });
+  });
+  const tarjetas = getTarjetas();
+  return Object.keys(porTarjetaMes)
+    .filter(k => porTarjetaMes[k].length > 1)
+    .map(k => {
+      const tarjetaId = k.slice(0, k.indexOf('@'));
+      const t = tarjetas.find(x => x.id === tarjetaId);
+      return {
+        tarjeta: t ? t.nombre : tarjetaId,
+        mes: k.slice(k.indexOf('@') + 1),
+        items: porTarjetaMes[k].sort((a, b) => a.cierre.localeCompare(b.cierre)),
+      };
+    })
+    .sort((a, b) => a.mes.localeCompare(b.mes));
+}
+
 function renderApilados() {
   const cont = document.getElementById('plan-apilados');
   if (!cont) return;
   const mal = detectarApilados();
-  if (!mal.length) { cont.style.display = 'none'; cont.innerHTML = ''; return; }
+  const colisiones = detectarColisiones();
+  if (!mal.length && !colisiones.length) { cont.style.display = 'none'; cont.innerHTML = ''; return; }
+
+  // Colisiones que el botón NO resuelve (dos cierres de la misma tarjeta en un mes que la
+  // regla del cierre corrido no separa). Se muestran igual, para no esconder el problema.
+  const clavesQueSeMueven = new Set(mal.map(m => m.key));
+  const sinResolver = colisiones.filter(c => !c.items.some(i => clavesQueSeMueven.has(i.key)));
 
   const filas = mal.map(m => `
     <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)">
@@ -6775,8 +6814,7 @@ function renderApilados() {
       <div style="font-family:var(--fm);font-size:var(--fs-sm);flex-shrink:0">${fmt(m.monto)}</div>
     </div>`).join('');
 
-  cont.style.display = 'block';
-  cont.innerHTML = `
+  const bloqueMal = !mal.length ? '' : `
     <div class="card" style="border-color:rgba(251,191,36,.35);background:rgba(251,191,36,.05);margin-bottom:14px">
       <div class="ct" style="color:var(--yellow)">⚠ Resúmenes en el mes equivocado (${mal.length})</div>
       <p style="font-size:var(--fs-sm);color:var(--muted2);line-height:1.5;margin-bottom:10px">
@@ -6791,6 +6829,26 @@ function renderApilados() {
         Se recalculan solo las líneas de tarjeta de los meses afectados.
       </div>
     </div>`;
+
+  const bloqueColision = !sinResolver.length ? '' : `
+    <div class="card" style="border-color:rgba(244,63,94,.35);background:rgba(244,63,94,.05);margin-bottom:14px">
+      <div class="ct" style="color:var(--red)">⚠ Dos resúmenes de la misma tarjeta en un mes (${sinResolver.length})</div>
+      <p style="font-size:var(--fs-sm);color:var(--muted2);line-height:1.5;margin-bottom:10px">
+        Una tarjeta cierra una vez por mes, así que esto infla la línea del Presupuesto.
+        El botón de arriba no lo arregla: revisá los períodos de esa tarjeta en Config,
+        o desmarcá la conciliación del resumen que no corresponde.
+      </p>
+      ${sinResolver.map(c => `
+        <div style="padding:7px 0;border-bottom:1px solid var(--border)">
+          <div style="font-size:var(--fs-sm)">${c.tarjeta} · ${mesLabel(c.mes)}</div>
+          ${c.items.map(i => `<div style="font-size:var(--fs-xs);color:var(--muted);display:flex;justify-content:space-between;gap:8px">
+            <span>cierre ${i.cierre.slice(8,10)}/${i.cierre.slice(5,7)}/${i.cierre.slice(0,4)}</span>
+            <span style="font-family:var(--fm)">${fmt(i.monto)}</span></div>`).join('')}
+        </div>`).join('')}
+    </div>`;
+
+  cont.style.display = 'block';
+  cont.innerHTML = bloqueMal + bloqueColision;
 }
 
 function aplicarApilados() {
