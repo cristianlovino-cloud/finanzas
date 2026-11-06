@@ -13611,18 +13611,190 @@ async function renderInvList() {
         ? (m.pnl != null ? (m.pnl>=0?P.green:P.red) : 'var(--muted2)')
         : 'var(--muted2)';
       const brokerTag = m.broker ? ` <span class="tag">${m.broker}</span>` : '';
-      return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);font-size:var(--fs-sm)">
+      return `<div id="invmov-${m.ts}" style="padding:9px 0;border-bottom:1px solid var(--border);font-size:var(--fs-sm)">
+       <div style="display:flex;align-items:center;gap:10px">
         <div style="flex:1;min-width:0">
           <div style="color:var(--text);font-weight:700">${m.ticker} <span style="font-weight:400;color:var(--muted);font-size:var(--fs-xs)">${icon} · ${m.cant} nom. × ${fmt(m.precio)}</span>${pnlStr}${brokerTag}</div>
           <div style="font-size:var(--fs-xs);color:var(--muted)">${m.fecha}</div>
         </div>
         <div style="color:${montoColor};font-weight:700;white-space:nowrap">${esVenta?'+':'-'}${fmt(m.monto)}</div>
+        <button onclick="editarInvMov('${m.ts}')" title="Corregir"
+          style="background:none;border:none;color:var(--muted);font-size:1rem;padding:4px 2px;cursor:pointer;flex-shrink:0">✎</button>
+       </div>
+       <div id="invmov-ed-${m.ts}" style="display:none"></div>
       </div>`;
     }).join('');
   }
 
   // Análisis de riesgo de cartera (se recalcula con los datos ya actualizados)
   if (typeof renderAnalisisCartera === 'function') renderAnalisisCartera();
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// CORRECCIÓN DE MOVIMIENTOS DE INVERSIÓN
+//
+// Hasta acá un movimiento cargado mal no se podía arreglar: ni editar ni borrar. La única
+// salida era tocar la posición a mano desde "Editar posiciones", y eso dejaba el saldo bien
+// pero el historial mintiendo — que es justo cómo la cartera se despegó del broker sin que
+// nadie lo notara durante dos meses.
+//
+// Al corregir la cantidad hay que mover la posición también, si no el arreglo es cosmético.
+// Por eso el formulario dice ANTES de aplicar en cuánto queda la posición, y pide confirmar.
+// Nada se toca solo.
+// ══════════════════════════════════════════════════════════════════════
+
+// Posiciones candidatas a recibir el ajuste: mismo ticker y mismo broker.
+function posicionesDeMovimiento(m) {
+  const invs = getInv();
+  const tk = String(m.ticker || '').toUpperCase();
+  return invs.map((inv, idx) => ({ inv, idx }))
+    .filter(({ inv }) => String(inv.activo || inv.ticker || '').toUpperCase() === tk
+                      && (!m.broker || (inv.broker || '') === m.broker))
+    // Las posiciones vivas primero: son las que casi siempre hay que ajustar. Si la cerrada
+    // queda arriba, el ajuste cae por defecto en un lote en cero y el total termina bien
+    // pero repartido mal entre lotes.
+    .sort((a, b) => (b.inv.cantidad || 0) - (a.inv.cantidad || 0));
+}
+
+function editarInvMov(ts) {
+  const movs = DB.get('inv_movimientos', []);
+  const m = movs.find(x => String(x.ts) === String(ts));
+  const cont = document.getElementById('invmov-ed-' + ts);
+  if (!m || !cont) return;
+  if (cont.style.display !== 'none') { cont.style.display = 'none'; cont.innerHTML = ''; return; }
+
+  const cands = posicionesDeMovimiento(m);
+  const opciones = cands.map(({ inv, idx }) =>
+    `<option value="${idx}">${inv.activo} · ${inv.cantidad} nom. · ${inv.broker || 'sin broker'}</option>`
+  ).join('') + '<option value="">No tocar ninguna posición</option>';
+
+  cont.style.display = 'block';
+  cont.innerHTML = `
+    <div style="background:var(--bg);border-radius:8px;padding:10px;margin-top:8px">
+      <div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:8px">
+        Corregir ${m.tipo} de ${m.ticker} del ${m.fecha}
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+        <div style="font-size:var(--fs-sm);flex:1">Nominales</div>
+        <input type="number" id="invmov-cant-${ts}" value="${m.cant}" min="0" step="any"
+          class="fi" style="width:96px;text-align:center;font-size:var(--fs-sm);padding:6px"
+          oninput="previsualizarInvMov('${ts}')">
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+        <div style="font-size:var(--fs-sm);flex:1">Total ARS</div>
+        <input type="number" id="invmov-monto-${ts}" value="${Math.round(m.monto||0)}" min="0" step="any"
+          class="fi" style="width:124px;text-align:right;font-size:var(--fs-sm);padding:6px">
+      </div>
+      <div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:4px">Ajustar esta posición</div>
+      <select id="invmov-pos-${ts}" class="fi" style="width:100%;font-size:var(--fs-sm);padding:6px;margin-bottom:8px"
+        onchange="previsualizarInvMov('${ts}')">${opciones}</select>
+      <div id="invmov-prev-${ts}" style="font-size:var(--fs-xs);color:var(--muted2);line-height:1.5;margin-bottom:10px"></div>
+      <div style="display:flex;gap:8px">
+        <button onclick="guardarInvMov('${ts}')" class="btn btn-g" style="flex:1;font-size:var(--fs-sm);padding:8px">Guardar</button>
+        <button onclick="borrarInvMov('${ts}')" class="btn" style="font-size:var(--fs-sm);padding:8px;color:var(--red)">🗑 Borrar</button>
+      </div>
+    </div>`;
+  previsualizarInvMov(ts);
+}
+
+// Cuánto cambia la posición con la cantidad nueva. Compra suma, venta resta.
+function _deltaInvMov(m, cantNueva) {
+  const delta = (Number(cantNueva) || 0) - (Number(m.cant) || 0);
+  return m.tipo === 'venta' ? -delta : delta;
+}
+
+function previsualizarInvMov(ts) {
+  const movs = DB.get('inv_movimientos', []);
+  const m = movs.find(x => String(x.ts) === String(ts));
+  const prev = document.getElementById('invmov-prev-' + ts);
+  if (!m || !prev) return;
+  const cant = parseFloat(document.getElementById('invmov-cant-' + ts).value);
+  const sel  = document.getElementById('invmov-pos-' + ts).value;
+  if (!(cant >= 0)) { prev.innerHTML = '<span style="color:var(--red)">Poné una cantidad válida</span>'; return; }
+  const efecto = _deltaInvMov(m, cant);
+  if (sel === '') {
+    prev.innerHTML = 'Solo se corrige el registro del historial. <b>Ninguna posición cambia</b>.';
+    return;
+  }
+  const inv = getInv()[parseInt(sel)];
+  if (!inv) { prev.innerHTML = ''; return; }
+  const antes = inv.cantidad || 0, despues = antes + efecto;
+  prev.innerHTML = despues < 0
+    ? `<span style="color:var(--red)">${inv.activo} quedaría en ${despues} nominales. No puede ser negativo: revisá la cantidad o elegí otra posición.</span>`
+    : `${m.cant} → <b>${cant}</b> nominales. ${inv.activo} pasa de <b>${antes}</b> a <b>${despues}</b>.`;
+}
+
+function guardarInvMov(ts) {
+  const movs = DB.get('inv_movimientos', []);
+  const i = movs.findIndex(x => String(x.ts) === String(ts));
+  if (i < 0) return;
+  const m = movs[i];
+  const cant  = parseFloat(document.getElementById('invmov-cant-' + ts).value);
+  const monto = parseFloat(document.getElementById('invmov-monto-' + ts).value);
+  const sel   = document.getElementById('invmov-pos-' + ts).value;
+  if (!(cant > 0))  { showToast('Poné una cantidad válida', P.red); return; }
+  if (!(monto > 0)) { showToast('Poné un total válido', P.red); return; }
+
+  const efecto = _deltaInvMov(m, cant);
+  const invs = getInv();
+  if (sel !== '') {
+    const inv = invs[parseInt(sel)];
+    if (!inv) { showToast('No encontré esa posición', P.red); return; }
+    const nueva = (inv.cantidad || 0) + efecto;
+    if (nueva < 0) { showToast('La posición quedaría negativa', P.red); return; }
+    // El costo acompaña a la cantidad, con el costo unitario que la posición tiene hoy.
+    // Sin esto el rendimiento queda calculado contra un costo que ya no corresponde.
+    const unit = (inv.cantidad > 0) ? (inv.costo || 0) / inv.cantidad : 0;
+    inv.cantidad = nueva;
+    if (nueva === 0) { inv.ars = 0; inv.costo = 0; }
+    else if (unit > 0) { inv.costo = Math.max(0, Math.round((inv.costo || 0) + unit * efecto)); }
+    inv.rend = inv.costo > 0 ? ((inv.ars || 0) - inv.costo) / inv.costo : 0;
+    inv.pos  = `${inv.cantidad} acciones`;
+    DB.set('inversiones', invs);
+  }
+
+  movs[i] = { ...m, cant, monto, precio: monto / cant };
+  DB.set('inv_movimientos', movs);
+  showToast(`✓ ${m.ticker}: ${m.cant} → ${cant} nominales`);
+  renderInvList();
+}
+
+async function borrarInvMov(ts) {
+  const movs = DB.get('inv_movimientos', []);
+  const i = movs.findIndex(x => String(x.ts) === String(ts));
+  if (i < 0) return;
+  const m = movs[i];
+  const sel = document.getElementById('invmov-pos-' + ts)?.value ?? '';
+  let aviso = `¿Borrar la ${m.tipo} de ${m.cant} ${m.ticker} del ${m.fecha}?`;
+  const invs = getInv();
+  let inv = null, nueva = 0;
+  if (sel !== '') {
+    inv = invs[parseInt(sel)];
+    if (inv) {
+      // Borrar = deshacer: una compra se resta, una venta se devuelve.
+      nueva = (inv.cantidad || 0) + (m.tipo === 'venta' ? (m.cant || 0) : -(m.cant || 0));
+      if (nueva < 0) { showToast('La posición quedaría negativa', P.red); return; }
+      aviso += `\n\n${inv.activo} pasa de ${inv.cantidad} a ${nueva} nominales.`;
+    }
+  } else {
+    aviso += '\n\nNinguna posición cambia.';
+  }
+  if (!(await appConfirm(aviso))) return;
+
+  if (inv) {
+    const unit = (inv.cantidad > 0) ? (inv.costo || 0) / inv.cantidad : 0;
+    const delta = nueva - (inv.cantidad || 0);
+    inv.cantidad = nueva;
+    if (nueva === 0) { inv.ars = 0; inv.costo = 0; }
+    else if (unit > 0) { inv.costo = Math.max(0, Math.round((inv.costo || 0) + unit * delta)); }
+    inv.rend = inv.costo > 0 ? ((inv.ars || 0) - inv.costo) / inv.costo : 0;
+    inv.pos  = `${inv.cantidad} acciones`;
+    DB.set('inversiones', invs);
+  }
+  movs.splice(i, 1);
+  DB.set('inv_movimientos', movs);
+  showToast(`✓ Movimiento de ${m.ticker} borrado`);
+  renderInvList();
 }
 
 function toggleInvEditor() {
