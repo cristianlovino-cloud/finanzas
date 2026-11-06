@@ -2,7 +2,7 @@
 // Estrategia: NETWORK FIRST para todo — siempre descarga lo nuevo
 // Cache solo como fallback offline
 
-const CACHE = 'cl-finanzas-v20';
+const CACHE = 'cl-finanzas-v21';
 
 // Al instalar: activar inmediatamente sin esperar
 self.addEventListener('install', e => {
@@ -43,6 +43,9 @@ self.addEventListener('fetch', e => {
     url.hostname.includes('argentinadatos') ||
     url.hostname.includes('allorigins') ||
     url.hostname.includes('corsproxy') ||
+    url.hostname.includes('codetabs') ||
+    url.hostname.includes('thingproxy') ||
+    url.hostname.includes('r.jina.ai') ||
     url.hostname.includes('fonts.googleapis.com') ||
     url.hostname.includes('fonts.gstatic.com')
   ) return;
