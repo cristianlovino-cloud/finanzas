@@ -12928,13 +12928,30 @@ async function fetchCotizaciones() {
   try {
     // CEDEARs via Yahoo Finance with multiple proxy fallbacks
     const invs = getInv();
-    const cedearTickers = invs
+    // .toUpperCase() OBLIGATORIO: la clave del resultado se arma con lo que se pidió, pero
+    // getArsFromCotiz busca 'CEDEAR_' + activo.toUpperCase(). Si el activo quedó guardado en
+    // minúscula o mezclado, el precio se bajaba bien y después no lo encontraba nadie.
+    const cedearTickers = [...new Set(invs
       .filter(i => i.tipo === 'CEDEAR' && i.cantidad > 0)
-      .map(i => i.activo + '.BA');
+      .map(i => String(i.activo || i.ticker || '').toUpperCase().trim())
+      .filter(Boolean)
+      .map(a => a + '.BA'))];
+
+    // CEDEARs sin nominales: no se piden ni se pueden valuar. Se avisan aparte.
+    results._cedearSinCantidad = invs
+      .filter(i => i.tipo === 'CEDEAR' && !(i.cantidad > 0))
+      .map(i => String(i.activo || i.ticker || '?').toUpperCase());
     
+    // Varias rutas porque los proxies CORS públicos se caen o tiran 429 seguido. Se prueban
+    // en orden y la primera que conteste gana; agregar alternativas sube la tasa de éxito
+    // sin costo cuando la primera anda.
     const PROXIES = [
+      url => url,                                                              // directo, si Yahoo manda CORS
+      url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
       url => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
-      url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+      url => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+      url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+      url => `https://r.jina.ai/${url}`,
       url => `https://thingproxy.freeboard.io/fetch/${url}`,
     ];
 
@@ -12942,11 +12959,20 @@ async function fetchCotizaciones() {
       const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d`;
       for (const makeProxy of PROXIES) {
         try {
-          const res = await fetch(makeProxy(url), {cache:'no-cache', signal: AbortSignal.timeout(5000)});
+          const res = await fetch(makeProxy(url), {cache:'no-cache', signal: AbortSignal.timeout(6000)});
           if (!res.ok) continue;
-          const data = await res.json();
-          // allorigins wraps in {contents}, others return directly
-          const raw = data.contents ? JSON.parse(data.contents) : data;
+          // Se lee como texto: algunos proxies devuelven content-type raro o envuelven la
+          // respuesta, y res.json() tiraba excepción antes de poder mirar el contenido.
+          const texto = await res.text();
+          let data;
+          try { data = JSON.parse(texto); }
+          catch (e) {
+            const i = texto.indexOf('{"chart"');     // r.jina.ai y similares agregan texto alrededor
+            if (i < 0) continue;
+            try { data = JSON.parse(texto.slice(i)); } catch (e2) { continue; }
+          }
+          // allorigins /get envuelve en {contents}, el resto devuelve directo
+          const raw = (data && typeof data.contents === 'string') ? JSON.parse(data.contents) : data;
           const meta = raw?.chart?.result?.[0]?.meta;
           const price = meta?.regularMarketPrice;
           const prevClose = meta?.previousClose || meta?.chartPreviousClose;
@@ -12976,16 +13002,28 @@ async function fetchCotizaciones() {
       );
 
       let fetched = 0;
+      const fallidos = [];
       prices.forEach(({ticker, price, prevClose}) => {
         if (price) {
           results['CEDEAR_' + ticker] = price;
           if (prevClose) results['CHG_' + ticker] = ((price - prevClose) / prevClose) * 100;
           fetched++;
+        } else {
+          fallidos.push(ticker);
         }
       });
-      console.log(`CEDEARs: ${fetched}/${cedearTickers.length} precios actualizados`);
+      // Sin esto el fallo era mudo: si ningún proxy respondía, la app seguía mostrando el
+      // último valor guardado como si fuera de hoy, y una posición nueva (valor = costo)
+      // quedaba clavada en +0,00% sin explicación.
+      results._cedearPedidos = cedearTickers.length;
+      results._cedearOk = fetched;
+      results._cedearFallidos = fallidos;
+      console.log(`CEDEARs: ${fetched}/${cedearTickers.length} precios actualizados`, fallidos.length ? ('sin precio: ' + fallidos.join(', ')) : '');
     }
-  } catch(e) { console.log('CEDEAR fetch error:', e.message); }
+  } catch(e) {
+    results._cedearError = e.message;
+    console.log('CEDEAR fetch error:', e.message);
+  }
 
   cotizCache = results;
   cotizTs    = now;
@@ -13284,6 +13322,15 @@ function toggleInvPosGroup(pbid) {
   chev.textContent = open ? '▼' : '▶';
 }
 
+// Fuerza una consulta nueva salteando el cache de 10 minutos. Cuando el fallo es un 429
+// transitorio de los proxies, un reintento a mano suele alcanzar.
+function reintentarCotizaciones() {
+  cotizTs = 0;
+  cotizCache = {};
+  showToast('Buscando cotizaciones…');
+  renderInvList();
+}
+
 async function renderInvList() {
   const invs = getInv();
 
@@ -13502,8 +13549,34 @@ async function renderInvList() {
       o restaurarla desde un backup en <b>Config → Backup</b>.
     </div>`;
 
+  // ── Aviso de cotizaciones que no llegaron ──
+  // Yahoo se consulta a través de proxies CORS públicos. Cuando se caen o dan 429, antes no
+  // pasaba nada visible: la app seguía mostrando el último valor guardado. Una posición vieja
+  // disimula (muestra una ganancia vieja); una nueva queda en +0,00% y parece un bug de carga.
+  const fallidos    = Array.isArray(cotiz._cedearFallidos) ? cotiz._cedearFallidos : [];
+  const sinCantidad = Array.isArray(cotiz._cedearSinCantidad) ? cotiz._cedearSinCantidad : [];
+  const avisoCotiz = (!fallidos.length && !sinCantidad.length && !cotiz._cedearError) ? '' : `
+    <div style="border:1px solid rgba(251,191,36,.35);background:rgba(251,191,36,.06);border-radius:10px;padding:12px;margin-bottom:12px">
+      <div style="font-size:var(--fs-sm);font-weight:600;color:var(--yellow);margin-bottom:6px">
+        ${fallidos.length
+          ? `⚠ Cotizaciones sin actualizar (${fallidos.length} de ${cotiz._cedearPedidos || fallidos.length})`
+          : '⚠ Posiciones sin valuar'}
+      </div>
+      ${fallidos.length ? `<div style="font-size:var(--fs-xs);color:var(--muted2);line-height:1.5">
+        No llegó precio en vivo de <b>${fallidos.join(', ')}</b>. Se muestra el último valor
+        guardado, así que el rendimiento de esas posiciones no es de hoy — y una comprada
+        recién se ve en +0,00% porque su valor todavía es igual a lo que pagaste.
+      </div>` : ''}
+      ${sinCantidad.length ? `<div style="font-size:var(--fs-xs);color:var(--muted2);line-height:1.5;margin-top:6px">
+        Sin nominales cargados: <b>${sinCantidad.join(', ')}</b>. Sin cantidad no se puede valuar.
+      </div>` : ''}
+      ${cotiz._cedearError ? `<div style="font-size:var(--fs-xs);color:var(--muted);margin-top:6px">Error: ${cotiz._cedearError}</div>` : ''}
+      ${fallidos.length ? `<button onclick="reintentarCotizaciones()" class="btn btn-full" style="margin-top:10px;font-size:var(--fs-sm);padding:8px">⟳ Reintentar ahora</button>` : ''}
+    </div>`;
+
   document.getElementById('inv-list').innerHTML = pnlBanner +
     `<div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:10px;text-align:right">Cotizaciones: ${tsLabel}</div>` +
+    avisoCotiz +
     (vacioHtml || portafolioHtml);
 
   // Donut de Distribución eliminado — con muchos tickers no aportaba, la lista de abajo
