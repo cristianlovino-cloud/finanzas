@@ -12937,9 +12937,13 @@ async function fetchCotizaciones() {
       .filter(Boolean)
       .map(a => a + '.BA'))];
 
-    // CEDEARs sin nominales: no se piden ni se pueden valuar. Se avisan aparte.
+    // Posiciones sin nominales que SÍ tienen plata asociada: ahí falta el dato y hay que avisar.
+    //
+    // Una posición vendida del todo también queda en cantidad 0, pero con costo 0 y valor 0:
+    // esa está cerrada, no rota, y avisarla era ruido puro (QQQ, EEM, XLK, XLE, MSFT, NVDA,
+    // BTC eran todas ventas completas). El costo/valor es lo que separa un caso del otro.
     results._cedearSinCantidad = invs
-      .filter(i => i.tipo === 'CEDEAR' && !(i.cantidad > 0))
+      .filter(i => i.tipo === 'CEDEAR' && !(i.cantidad > 0) && ((i.costo > 0) || (i.ars > 0)))
       .map(i => String(i.activo || i.ticker || '?').toUpperCase());
     
     // Varias rutas porque los proxies CORS públicos se caen o tiran 429 seguido. Se prueban
