@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- 
-  CL-Finanzas v1.5.0
+  CL-Finanzas v1.5.1
   Cambios: Fix mesKeys hoisting (ReferenceError), cuentas mejorado — reconciliar saldo (⟳),
   historial completo con débitos rojo/créditos verde, filtro por tipo, tipografía uppercase.
 -->
@@ -68,7 +68,7 @@
 })();
 </script>
 <link rel="apple-touch-icon" href="icon-192.png">
-<title>CL · Finanzas v1.5.0</title>
+<title>CL · Finanzas v1.5.1</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&family=Quicksand:wght@500;600;700&family=Poppins:wght@400;500;600;700&family=Nunito+Sans:wght@400;600;700&display=swap" rel="stylesheet">
@@ -2601,7 +2601,7 @@ input[type="month"].fi::-webkit-calendar-picker-indicator{
     <div class="card">
       <div class="ct">ℹ️ Acerca de</div>
       <p style="font-size:var(--fs-sm);color:var(--muted2);line-height:1.7">
-        Dashboard financiero personal — CL Finanzas <span style="color:var(--muted);font-size:.7em">v1.5.0</span><br>
+        Dashboard financiero personal — CL Finanzas <span style="color:var(--muted);font-size:.7em">v1.5.1</span><br>
         Datos sincronizados en la nube con Firebase.<br>
         Form de gastos: <a href="https://forms.gle/cgxE8FDbhaZPkwjn9" target="_blank" style="color:var(--green)">forms.gle/cgxE8FDbhaZPkwjn9</a>
       </p>
@@ -14566,6 +14566,12 @@ function saveTc() {
 // ── Aplica (factor=1) o revierte (factor=-1) el efecto de una tx sobre el saldo de su cuenta.
 // Se usa al editar/borrar transacciones, que antes dejaban el saldo desactualizado para
 // siempre porque solo se tocaba al CREAR la tx, nunca al editarla o borrarla.
+// Guarda el ts del movimiento que se saca del historial al revertir, para que la versión
+// editada lo recupere en lugar de nacer con la fecha de hoy. Editar el TEXTO de un gasto de
+// marzo no puede hacer que el movimiento aparezca como de hoy: la plata se movió cuando se
+// movió, y re-fecharlo rompe el orden del historial y la conciliación contra el banco.
+const _tsMovPorOrigen = {};
+
 function aplicarDeltaSaldoTx(tx, factor) {
   if (!tx || !tx.medio || !tx.monto) return;
   const cuentas = getCuentas();
@@ -14580,6 +14586,8 @@ function aplicarDeltaSaldoTx(tx, factor) {
   // saldo ya esté corregido.
   if (factor < 0 && tx.ts) {
     const movs = DB.get('ct_movimientos', []);
+    const original = movs.find(m => m.origenTs === tx.ts);
+    if (original && original.ts) _tsMovPorOrigen[tx.ts] = original.ts;
     const filtrados = movs.filter(m => m.origenTs !== tx.ts);
     if (filtrados.length !== movs.length) {
       DB.set('ct_movimientos', filtrados);
@@ -14590,7 +14598,16 @@ function aplicarDeltaSaldoTx(tx, factor) {
   // dejar un hueco donde antes había uno.
   if (factor > 0 && tx.ts) {
     const movs = DB.get('ct_movimientos', []);
-    movs.unshift({ ts: Date.now(), cuenta: tx.medio, tipo: tx.tipo === 'ingreso' ? 'ingreso' : 'gasto', monto: tx.monto, moneda: tx.moneda, desc: tx.desc || tx.medio, origenTs: tx.ts });
+    // El ts del movimiento que había; si no había (tx vieja, de antes de que se registraran),
+    // el de creación de la propia tx. Date.now() solo si no hay nada mejor.
+    const tsMov = _tsMovPorOrigen[tx.ts] || tx.ts || Date.now();
+    delete _tsMovPorOrigen[tx.ts];
+    const nuevo = { ts: tsMov, cuenta: tx.medio, tipo: tx.tipo === 'ingreso' ? 'ingreso' : 'gasto', monto: tx.monto, moneda: tx.moneda, desc: tx.desc || tx.medio, origenTs: tx.ts };
+    // La lista se muestra en el orden en que está guardada (no se reordena al renderizar), así
+    // que hay que insertarlo donde corresponde por fecha. Con unshift quedaba arriba de todo
+    // con fecha vieja, descolocado.
+    const pos = movs.findIndex(m => (m.ts || 0) <= tsMov);
+    if (pos < 0) movs.push(nuevo); else movs.splice(pos, 0, nuevo);
     DB.set('ct_movimientos', movs.slice(0, 2000));
     if (typeof renderHistorialTransf === 'function') renderHistorialTransf();
   }
