@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- 
-  CL-Finanzas v1.5.1
+  CL-Finanzas v1.5.2
   Cambios: Fix mesKeys hoisting (ReferenceError), cuentas mejorado — reconciliar saldo (⟳),
   historial completo con débitos rojo/créditos verde, filtro por tipo, tipografía uppercase.
 -->
@@ -68,7 +68,7 @@
 })();
 </script>
 <link rel="apple-touch-icon" href="icon-192.png">
-<title>CL · Finanzas v1.5.1</title>
+<title>CL · Finanzas v1.5.2</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&family=Quicksand:wght@500;600;700&family=Poppins:wght@400;500;600;700&family=Nunito+Sans:wght@400;600;700&display=swap" rel="stylesheet">
@@ -2601,7 +2601,7 @@ input[type="month"].fi::-webkit-calendar-picker-indicator{
     <div class="card">
       <div class="ct">ℹ️ Acerca de</div>
       <p style="font-size:var(--fs-sm);color:var(--muted2);line-height:1.7">
-        Dashboard financiero personal — CL Finanzas <span style="color:var(--muted);font-size:.7em">v1.5.1</span><br>
+        Dashboard financiero personal — CL Finanzas <span style="color:var(--muted);font-size:.7em">v1.5.2</span><br>
         Datos sincronizados en la nube con Firebase.<br>
         Form de gastos: <a href="https://forms.gle/cgxE8FDbhaZPkwjn9" target="_blank" style="color:var(--green)">forms.gle/cgxE8FDbhaZPkwjn9</a>
       </p>
@@ -8322,13 +8322,45 @@ function setMesEstadoCuenta(mes) {
 }
 
 // Movimientos de la cuenta, del más nuevo al más viejo, con el saldo resultante de cada uno.
+// Fecha REAL de un movimiento: la de la transacción que lo originó, no la de cuándo se cargó.
+//
+// El ts de un movimiento es el momento en que se tipeó. Mientras se carga todo el mismo día
+// no se nota, pero si algo se carga una semana tarde (o se edita), el movimiento queda fuera
+// de lugar y el saldo corrido de TODAS las filas anteriores sale mal — que es justo lo que no
+// cuadra contra el resumen del banco. El banco ordena por cuándo se movió la plata.
+//
+// Transferencias y ajustes no vienen de una transacción de Flujo: para esos el ts es la única
+// fecha que hay, y se usa tal cual.
+// Índice ts→fecha de todas las transacciones. Se arma una vez por render: buscar la tx
+// recorriendo todos los meses por cada movimiento era O(n×m) y con 1200 transacciones y 450
+// movimientos se notaba.
+function indiceFechasTx() {
+  const txs = DB.get('txs', {});
+  const idx = {};
+  for (const mes in txs) (txs[mes] || []).forEach(t => { if (t.ts && t.fecha) idx[t.ts] = t.fecha; });
+  return idx;
+}
+
+function fechaDeMovimiento(m, idx) {
+  if (!m) return 0;
+  const fechaTx = m.origenTs ? (idx || indiceFechasTx())[m.origenTs] : null;
+  if (!fechaTx) return m.ts || 0;
+  // Se conserva la hora del ts para no amontonar todo a medianoche ni perder el desempate
+  // entre varios movimientos del mismo día.
+  const h = new Date(m.ts || 0);
+  const d = new Date(fechaTx + 'T00:00:00');
+  d.setHours(h.getHours(), h.getMinutes(), h.getSeconds(), 0);
+  return d.getTime();
+}
+
 function movimientosConSaldo(nombre) {
   const ct = getCuentas().find(c => c.nombre === nombre);
   if (!ct) return [];
+  const idx = indiceFechasTx();
   const propios = getMovimientos()
     .filter(m => m.cuenta === nombre && (m.moneda || 'ARS') === ct.moneda)
-    .slice()
-    .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+    .map(m => ({ ...m, _fecha: fechaDeMovimiento(m, idx) }))
+    .sort((a, b) => (b._fecha || 0) - (a._fecha || 0));
 
   // Hacia atrás desde el saldo de hoy: el saldo DESPUÉS del movimiento más nuevo es el actual,
   // y para cada movimiento anterior se le deshace el efecto del que vino después.
@@ -8466,12 +8498,14 @@ function renderEstadoCuenta() {
   if (!ct) { cont.innerHTML = ''; return; }
 
   const todas = movimientosConSaldo(cuentaDetalle);
-  const meses = [...new Set(todas.map(f => new Date(f.m.ts).toISOString().slice(0, 7)))].sort().reverse();
+  // Se agrupa y filtra por la fecha REAL del movimiento (la de la transacción), igual que
+  // el orden del listado: si no, el selector de mes muestra una cosa y las filas otra.
+  const meses = [...new Set(todas.map(f => new Date(f.m._fecha || f.m.ts).toISOString().slice(0, 7)))].sort().reverse();
   // Sin filtro de mes se muestran las más recientes: dibujar cientos de filas de una en el
   // teléfono lo pone pesado, y para ir más atrás está el selector de mes.
   const TOPE_VISIBLE = 120;
   const delMes = cuentaDetalleMes
-    ? todas.filter(f => new Date(f.m.ts).toISOString().slice(0, 7) === cuentaDetalleMes)
+    ? todas.filter(f => new Date(f.m._fecha || f.m.ts).toISOString().slice(0, 7) === cuentaDetalleMes)
     : todas;
   const filas = delMes.slice(0, TOPE_VISIBLE);
   const recortadas = delMes.length - filas.length;
@@ -8513,7 +8547,7 @@ function renderEstadoCuenta() {
             catPorMov[m.ts] ? `<span style="color:var(--muted)">${catPorMov[m.ts]}</span> · ` : ''
           }${m.desc || '(sin detalle)'}</span>
         </div>
-        <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:2px;padding-left:14px">${fFecha(m.ts)}</div>
+        <div style="font-size:var(--fs-xs);color:var(--muted);margin-top:2px;padding-left:14px">${fFecha(m._fecha || m.ts)}</div>
       </div>
       <div style="text-align:right;font-family:var(--fh);font-weight:700;color:${efecto >= 0 ? 'var(--green)' : 'var(--red)'};white-space:nowrap">${importe}</div>
       <div style="text-align:right;font-family:var(--fh);font-weight:700;color:${f.saldoDespues < 0 ? 'var(--red)' : 'var(--text)'};white-space:nowrap">${plata(f.saldoDespues)}</div>
