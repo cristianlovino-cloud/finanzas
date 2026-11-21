@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- 
-  CL-Finanzas v1.5.3
+  CL-Finanzas v1.5.4
   Cambios: Fix mesKeys hoisting (ReferenceError), cuentas mejorado — reconciliar saldo (⟳),
   historial completo con débitos rojo/créditos verde, filtro por tipo, tipografía uppercase.
 -->
@@ -68,7 +68,7 @@
 })();
 </script>
 <link rel="apple-touch-icon" href="icon-192.png">
-<title>CL · Finanzas v1.5.3</title>
+<title>CL · Finanzas v1.5.4</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&family=Quicksand:wght@500;600;700&family=Poppins:wght@400;500;600;700&family=Nunito+Sans:wght@400;600;700&display=swap" rel="stylesheet">
@@ -2601,7 +2601,7 @@ input[type="month"].fi::-webkit-calendar-picker-indicator{
     <div class="card">
       <div class="ct">ℹ️ Acerca de</div>
       <p style="font-size:var(--fs-sm);color:var(--muted2);line-height:1.7">
-        Dashboard financiero personal — CL Finanzas <span style="color:var(--muted);font-size:.7em">v1.5.3</span><br>
+        Dashboard financiero personal — CL Finanzas <span style="color:var(--muted);font-size:.7em">v1.5.4</span><br>
         Datos sincronizados en la nube con Firebase.<br>
         Form de gastos: <a href="https://forms.gle/cgxE8FDbhaZPkwjn9" target="_blank" style="color:var(--green)">forms.gle/cgxE8FDbhaZPkwjn9</a>
       </p>
@@ -8428,6 +8428,82 @@ function cuadreDeCuenta(nombre) {
   };
 }
 
+// ══════════════════════════════════════════════════════════════════════
+// RESOLVER HUÉRFANOS
+// Un huérfano es un movimiento que movió el saldo sin una transacción de Flujo detrás.
+// Hasta ahora no se podía hacer nada con él: ajustar el saldo deja el saldo bien pero el
+// huérfano sigue contado (el ajuste es tipo 'ajuste' y el cuadre solo mira gasto/ingreso),
+// así que el cartel volvía siempre y daba la sensación de que la diferencia se recalculaba.
+//
+// Solo hay dos salidas honestas, y las decide la persona mirando el resumen del banco:
+//   · NO PASÓ  → la plata nunca salió. Se borra el movimiento y se deshace su efecto.
+//   · SÍ PASÓ  → la plata salió. Se crea la transacción que falta en Flujo. El saldo NO se
+//                toca: ya estaba descontado, volver a aplicarlo lo contaría dos veces.
+// ══════════════════════════════════════════════════════════════════════
+
+function _buscarHuerfano(ts) {
+  const movs = getMovimientos();
+  const i = movs.findIndex(m => String(m.ts) === String(ts));
+  return i < 0 ? null : { movs, i, m: movs[i] };
+}
+
+async function huerfanoNoPaso(ts) {
+  const h = _buscarHuerfano(ts);
+  if (!h) { showToast('No encontré ese movimiento', '#f43f5e'); return; }
+  const { movs, i, m } = h;
+  const cuentas = getCuentas();
+  const ct = cuentas.find(c => c.nombre === m.cuenta);
+  const efecto = efectoDeMovimiento(m);
+  const nuevo = ct ? (parseFloat(ct.saldo) || 0) - efecto : null;
+  const ok = await appConfirm(
+    `Borrar "${m.desc || m.cuenta}" (${m.tipo === 'gasto' ? '−' : '+'}${fmt(m.monto)}).` +
+    (ct ? `\n\n${ct.nombre} pasa de ${fmtSaldo(ct.saldo, ct.moneda)} a ${fmtSaldo(nuevo, ct.moneda)}.` : '') +
+    `\n\nHacelo solo si esa plata NUNCA se movió en el banco.`
+  );
+  if (!ok) return;
+  if (ct) { ct.saldo = nuevo; saveCuentas(cuentas); }
+  movs.splice(i, 1);
+  setMovimientos(movs);
+  showToast(`✓ Movimiento borrado · ${ct ? ct.nombre + ': ' + fmtSaldo(nuevo, ct.moneda) : ''}`);
+  renderHistorialTransf();
+  if (typeof renderEstadoCuenta === 'function') renderEstadoCuenta();
+  if (typeof renderCuentas === 'function') renderCuentas();
+  if (typeof updateOverviewSaldos === 'function') updateOverviewSaldos();
+}
+
+async function huerfanoSiPaso(ts) {
+  const h = _buscarHuerfano(ts);
+  if (!h) { showToast('No encontré ese movimiento', '#f43f5e'); return; }
+  const { movs, i, m } = h;
+  if (m.tipo !== 'gasto' && m.tipo !== 'ingreso') { showToast('Solo para gastos e ingresos', '#f43f5e'); return; }
+  const fecha = new Date(m.ts).toISOString().slice(0, 10);
+  const ok = await appConfirm(
+    `Crear en Flujo la transacción que le falta a "${m.desc || m.cuenta}" (${m.tipo === 'gasto' ? '−' : '+'}${fmt(m.monto)}, ${fecha}).` +
+    `\n\nEl saldo NO cambia: esa plata ya está descontada. Solo se completa el registro.`
+  );
+  if (!ok) return;
+
+  const mes = fecha.slice(0, 7);
+  const txsAll = DB.get('txs', {});
+  if (!Array.isArray(txsAll[mes])) txsAll[mes] = [];
+  // El ts de la tx tiene que ser el mismo que el origenTs del movimiento para que queden
+  // emparejados de forma estable, y no solo por coincidencia de monto y texto.
+  const txTs = m.origenTs || m.ts;
+  const tx = {
+    fecha, monto: Math.abs(parseFloat(m.monto) || 0),
+    desc: m.desc || m.cuenta, cat: normalizeCat(m.tipo === 'ingreso' ? 'Otros ingresos' : 'Otros'),
+    medio: m.cuenta, tipo: m.tipo, moneda: m.moneda || 'ARS', ts: txTs,
+    notas: 'Creada desde el cuadre de cuenta (el movimiento ya existía)',
+  };
+  txsAll[mes].unshift(tx);
+  DB.set('txs', txsAll);
+  if (!m.origenTs) { movs[i] = { ...m, origenTs: txTs }; setMovimientos(movs); }
+
+  showToast(`✓ Transacción creada en ${mesLabel(mes)} · revisá la categoría`);
+  if (typeof renderEstadoCuenta === 'function') renderEstadoCuenta();
+  if (typeof renderFlujo === 'function') { try { renderFlujo(); } catch (e) {} }
+}
+
 // Registrar el movimiento que le falta a una transacción, y mover el saldo en consecuencia.
 function aplicarMovimientoFaltante(nombre, txTs) {
   const txsAll = DB.get('txs', {});
@@ -8585,6 +8661,18 @@ function renderEstadoCuenta() {
       ${huerf.length ? `<div>
         <b>${huerf.length}</b> ${huerf.length === 1 ? 'movimiento movió' : 'movimientos movieron'} el saldo sin una transacción en Flujo que lo respalde
         (${plata(netoHuerf)} de efecto). Suelen ser transacciones borradas después, o cargadas antes de tener cuentas.
+        <div style="color:var(--muted);margin-top:4px;font-size:.58rem">Ajustar el saldo no los saca: el ajuste es otro tipo de movimiento y no entra en este conteo. Hay que resolver cada uno.</div>
+        ${huerf.slice(0, 8).map(h => `<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">
+            <div style="display:flex;justify-content:space-between;gap:8px;color:var(--muted)">
+              <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${new Date(h.ts).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'})} · ${h.desc || '(sin descripción)'}</span>
+              <span style="flex-shrink:0">${h.tipo === 'gasto' ? '−' : '+'}${fmt(h.monto)}</span>
+            </div>
+            <div style="display:flex;gap:6px;margin-top:4px">
+              <button onclick="huerfanoNoPaso(${h.ts})" style="background:rgba(244,63,94,.12);border:1px solid rgba(244,63,94,.3);color:var(--red);border-radius:4px;padding:2px 8px;font-size:.55rem;cursor:pointer">no pasó → borrar</button>
+              <button onclick="huerfanoSiPaso(${h.ts})" style="background:rgba(34,211,160,.14);border:1px solid rgba(34,211,160,.3);color:var(--green);border-radius:4px;padding:2px 8px;font-size:.55rem;cursor:pointer">sí pasó → crear en Flujo</button>
+            </div>
+          </div>`).join('')}
+        ${huerf.length > 8 ? `<div style="color:var(--muted);margin-top:3px">… y ${huerf.length - 8} más</div>` : ''}
       </div>` : ''}
     </div>`;
   }
