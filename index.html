@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- 
-  CL-Finanzas v1.5.2
+  CL-Finanzas v1.5.3
   Cambios: Fix mesKeys hoisting (ReferenceError), cuentas mejorado — reconciliar saldo (⟳),
   historial completo con débitos rojo/créditos verde, filtro por tipo, tipografía uppercase.
 -->
@@ -68,7 +68,7 @@
 })();
 </script>
 <link rel="apple-touch-icon" href="icon-192.png">
-<title>CL · Finanzas v1.5.2</title>
+<title>CL · Finanzas v1.5.3</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&family=Quicksand:wght@500;600;700&family=Poppins:wght@400;500;600;700&family=Nunito+Sans:wght@400;600;700&display=swap" rel="stylesheet">
@@ -2601,7 +2601,7 @@ input[type="month"].fi::-webkit-calendar-picker-indicator{
     <div class="card">
       <div class="ct">ℹ️ Acerca de</div>
       <p style="font-size:var(--fs-sm);color:var(--muted2);line-height:1.7">
-        Dashboard financiero personal — CL Finanzas <span style="color:var(--muted);font-size:.7em">v1.5.2</span><br>
+        Dashboard financiero personal — CL Finanzas <span style="color:var(--muted);font-size:.7em">v1.5.3</span><br>
         Datos sincronizados en la nube con Firebase.<br>
         Form de gastos: <a href="https://forms.gle/cgxE8FDbhaZPkwjn9" target="_blank" style="color:var(--green)">forms.gle/cgxE8FDbhaZPkwjn9</a>
       </p>
@@ -7762,11 +7762,11 @@ function ajustarSaldo(i) {
   // cuenten como gasto ni ingreso real — es una corrección de registro, no plata que se movió.
   registrarMovimiento(
     cuentas[i].nombre, 'ajuste', ajuste, cuentas[i].moneda,
-    `Ajuste manual: ${fmt(saldoAnterior)} → ${fmt(cuentas[i].saldo)}`
+    `Ajuste manual: ${fmtSaldo(saldoAnterior, cuentas[i].moneda)} → ${fmtSaldo(cuentas[i].saldo, cuentas[i].moneda)}`
   );
   document.getElementById('ajuste-'+i).value = '';
   const signo = ajuste >= 0 ? '+' : '';
-  showToast('✓ Ajuste ' + cuentas[i].nombre + ': ' + signo + fmt(ajuste) + ' → nuevo saldo: ' + fmt(cuentas[i].saldo));
+  showToast('✓ Ajuste ' + cuentas[i].nombre + ': ' + signo + fmt(ajuste) + ' → nuevo saldo: ' + fmtSaldo(cuentas[i].saldo, cuentas[i].moneda));
 }
 
 // ── Recategorizar una cuenta existente (ej: banco -> FCI) sin borrarla ──
@@ -7802,7 +7802,10 @@ async function reconciliarSaldo(i) {
   // Igual que el ajuste: la reconciliación queda asentada con el antes y el después,
   // así siempre se puede rastrear por qué el saldo dejó de coincidir con los movimientos.
   if (diff !== 0) {
-    const f = (v) => ct.moneda === 'USD' ? 'U$S ' + v.toFixed(2) : fmt(v);
+    // fmtSaldo y no fmt: fmt() devuelve el valor absoluto, así que un saldo negativo salía
+    // sin el signo y la leyenda quedaba contradictoria ("-$3 → $3" se leía "$3 → $3", con un
+    // ajuste de +$6 al lado y nada que lo explicara).
+    const f = (v) => fmtSaldo(v, ct.moneda);
     registrarMovimiento(
       ct.nombre, 'ajuste', diff, ct.moneda,
       `Reconciliado con saldo real: ${f(saldoAnterior)} → ${f(nuevoNum)}`
