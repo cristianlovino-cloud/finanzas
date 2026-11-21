@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- 
-  CL-Finanzas v1.5.6
+  CL-Finanzas v1.5.7
   Cambios: Fix mesKeys hoisting (ReferenceError), cuentas mejorado — reconciliar saldo (⟳),
   historial completo con débitos rojo/créditos verde, filtro por tipo, tipografía uppercase.
 -->
@@ -68,7 +68,7 @@
 })();
 </script>
 <link rel="apple-touch-icon" href="icon-192.png">
-<title>CL · Finanzas v1.5.6</title>
+<title>CL · Finanzas v1.5.7</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&family=Quicksand:wght@500;600;700&family=Poppins:wght@400;500;600;700&family=Nunito+Sans:wght@400;600;700&display=swap" rel="stylesheet">
@@ -2601,7 +2601,7 @@ input[type="month"].fi::-webkit-calendar-picker-indicator{
     <div class="card">
       <div class="ct">ℹ️ Acerca de</div>
       <p style="font-size:var(--fs-sm);color:var(--muted2);line-height:1.7">
-        Dashboard financiero personal — CL Finanzas <span style="color:var(--muted);font-size:.7em">v1.5.6</span><br>
+        Dashboard financiero personal — CL Finanzas <span style="color:var(--muted);font-size:.7em">v1.5.7</span><br>
         Datos sincronizados en la nube con Firebase.<br>
         Form de gastos: <a href="https://forms.gle/cgxE8FDbhaZPkwjn9" target="_blank" style="color:var(--green)">forms.gle/cgxE8FDbhaZPkwjn9</a>
       </p>
@@ -9774,10 +9774,28 @@ async function concilCargarFaltante(i) {
     // ya cerrados.
     const restantes = b.cuota.total - b.cuota.n;
     const limpio = concilDescLimpia(b.desc);
+    // ── Guardia contra duplicados ──
+    // Cargar no verificaba NADA antes de crear: tocar dos veces, o cargar algo que ya estaba
+    // en otro período, generaba una serie nueva entera con otro compraId. Así aparecieron dos
+    // "MERPAGO*FARMAVIP 01/06" idénticas, misma fecha y mismo monto.
+    const yaExiste = gastos.filter(g =>
+      g.tarjetaId === d.tarjeta.id &&
+      (g.cuotaTotal === b.cuota.total || concilNumeroCuota(g.tipo)?.total === b.cuota.total) &&
+      Math.abs((parseFloat(g.monto) || 0) - monto) <= 1 &&
+      (concilParecido(b.desc, g.nota || '') || concilParecido(b.desc, g.tipo || ''))
+    );
+    if (yaExiste.length) {
+      const muestra = yaExiste.slice(0, 4).map(g => `· ${g.tipo} — ${g.fecha} — ${fmt(g.monto)}`).join('\n');
+      const seguir = await appConfirm(
+        `Ya hay ${yaExiste.length} cuota${yaExiste.length > 1 ? 's' : ''} cargada${yaExiste.length > 1 ? 's' : ''} que parece${yaExiste.length > 1 ? 'n' : ''} ser de esta misma compra:\n\n${muestra}\n\nSi cargás igual vas a tener la compra DUPLICADA. ¿Seguir?`
+      );
+      if (!seguir) return;
+    }
+
     const aviso = restantes > 0
       ? `"${limpio}" es la cuota ${b.cuota.n} de ${b.cuota.total}.\n\nSe cargan ${restantes + 1} cuotas: la de este resumen y las ${restantes} que faltan.\n\nLas ${b.cuota.n - 1} anteriores no se tocan (ya se facturaron en resúmenes pasados).`
       : `"${limpio}" es la última cuota (${b.cuota.n}/${b.cuota.total}). Se carga solo esta.`;
-    if (!confirm(aviso)) return;
+    if (!(await appConfirm(aviso))) return;
 
     const compraId = 'compra_' + Date.now();
     for (let n = b.cuota.n; n <= b.cuota.total; n++) {
@@ -9802,6 +9820,21 @@ async function concilCargarFaltante(i) {
     renderGastosTarjetas();
     showToast(`✓ ${limpio}: ${restantes + 1} cuota${restantes ? 's' : ''} cargada${restantes ? 's' : ''} → ${quien}`);
     return;
+  }
+
+  // Misma guardia para un consumo suelto: mismo importe y mismo comercio dentro de 10 días
+  // es, casi siempre, el mismo consumo cargado dos veces.
+  const gemelo = gastos.find(g =>
+    g.tarjetaId === d.tarjeta.id && !g.compraId &&
+    Math.abs((parseFloat(g.monto) || 0) - monto) <= 1 &&
+    Math.abs((new Date(g.fecha) - new Date(b.fecha)) / 86400000) <= 10 &&
+    (concilParecido(b.desc, g.nota || '') || concilParecido(b.desc, g.tipo || ''))
+  );
+  if (gemelo) {
+    const seguir = await appConfirm(
+      `Ya hay un consumo muy parecido cargado:\n\n· ${gemelo.tipo} — ${gemelo.fecha} — ${fmt(gemelo.monto)}\n\nSi cargás igual queda duplicado. ¿Seguir?`
+    );
+    if (!seguir) return;
   }
 
   gastos.push({
