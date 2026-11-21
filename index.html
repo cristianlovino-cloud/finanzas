@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- 
-  CL-Finanzas v1.5.4
+  CL-Finanzas v1.5.5
   Cambios: Fix mesKeys hoisting (ReferenceError), cuentas mejorado — reconciliar saldo (⟳),
   historial completo con débitos rojo/créditos verde, filtro por tipo, tipografía uppercase.
 -->
@@ -68,7 +68,7 @@
 })();
 </script>
 <link rel="apple-touch-icon" href="icon-192.png">
-<title>CL · Finanzas v1.5.4</title>
+<title>CL · Finanzas v1.5.5</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&family=Quicksand:wght@500;600;700&family=Poppins:wght@400;500;600;700&family=Nunito+Sans:wght@400;600;700&display=swap" rel="stylesheet">
@@ -2601,7 +2601,7 @@ input[type="month"].fi::-webkit-calendar-picker-indicator{
     <div class="card">
       <div class="ct">ℹ️ Acerca de</div>
       <p style="font-size:var(--fs-sm);color:var(--muted2);line-height:1.7">
-        Dashboard financiero personal — CL Finanzas <span style="color:var(--muted);font-size:.7em">v1.5.4</span><br>
+        Dashboard financiero personal — CL Finanzas <span style="color:var(--muted);font-size:.7em">v1.5.5</span><br>
         Datos sincronizados en la nube con Firebase.<br>
         Form de gastos: <a href="https://forms.gle/cgxE8FDbhaZPkwjn9" target="_blank" style="color:var(--green)">forms.gle/cgxE8FDbhaZPkwjn9</a>
       </p>
@@ -9429,14 +9429,47 @@ async function concilLeerArchivo(input) {
   }
 }
 
+// ── A qué resumen pertenece el archivo ──
+// Antes se conciliaba SIEMPRE contra el período en curso. Pero uno sube el resumen que le
+// llegó, que es el que YA cerró: entonces todos los consumos caían en "ya cargado, en otro
+// período" y el GAP salía del 95%, como si faltara todo. El archivo trae la respuesta —
+// las fechas de sus movimientos — así que se elige el período que de verdad los contiene.
+//
+// NO toca ninguna fecha de período: solo decide contra cuál comparar.
+function concilPeriodoDelArchivo(tarjeta, movs, meta) {
+  const pers = periodosOrdenados(tarjeta).filter(p => p.inicio && p.cierre);
+  if (!pers.length) return null;
+  const fechas = movs.map(m => m.fecha).filter(Boolean);
+  if (!fechas.length) return null;
+
+  // Se puntúa cada período por cuántos movimientos del archivo caen dentro de su ventana.
+  // Es más confiable que el "próximo cierre" que declara el PDF, que a veces viene corrido
+  // un día respecto de las fechas cargadas en la app.
+  let mejor = null;
+  pers.forEach(p => {
+    const n = fechas.filter(f => f >= p.inicio && f <= p.cierre).length;
+    if (!mejor || n > mejor.n) mejor = { p, n };
+  });
+  if (!mejor || !mejor.n) return null;
+
+  // Empate o cobertura pobre: el archivo no encaja limpio en ningún resumen cargado.
+  const cobertura = mejor.n / fechas.length;
+  return { periodo: mejor.p, contenidos: mejor.n, total: fechas.length, cobertura };
+}
+
 function concilCruzar(movs, meta) {
   const tarjetaId = document.getElementById('concil-tarjeta').value;
   const tarjeta = getTarjetas().find(t => t.id === tarjetaId);
   const cont = document.getElementById('concil-resultado');
   if (!tarjeta) { cont.innerHTML = '<div style="color:var(--red)">Elegí una tarjeta.</div>'; return; }
 
-  const actual = ventanaPeriodos(tarjeta).actual;
-  if (!actual || !actual.inicio || !actual.cierre) { cont.innerHTML = '<div style="color:var(--red);font-size:var(--fs-sm)">Esa tarjeta no tiene un período en curso configurado.</div>'; return; }
+  const elegido = concilPeriodoDelArchivo(tarjeta, movs, meta);
+  const enCurso = ventanaPeriodos(tarjeta).actual;
+  const actual = (elegido && elegido.periodo) || enCurso;
+  if (!actual || !actual.inicio || !actual.cierre) { cont.innerHTML = '<div style="color:var(--red);font-size:var(--fs-sm)">Esa tarjeta no tiene un período en curso configurado, y el archivo no cae dentro de ninguno de los resúmenes ya cargados.</div>'; return; }
+  const periodoInfo = elegido
+    ? { ...elegido, esElEnCurso: !!enCurso && enCurso.cierre === actual.cierre }
+    : null;
 
   // Los pagos (importes negativos) no son consumos: cancelan el resumen anterior y no
   // forman parte de lo que se está conciliando.
@@ -9566,7 +9599,7 @@ function concilCruzar(movs, meta) {
   const totalBancoArs = banco.reduce((s, b) => s + b.k, 0);
   const totalAppArs   = app.reduce((s, a) => s + (a.esUsd ? 0 : a.m), 0);
 
-  _concilDatos = { tarjeta, actual, coinciden, desfasadas, montoDistinto, yaCargadas, faltan, sobran, meta, totalBancoArs, totalAppArs };
+  _concilDatos = { tarjeta, actual, periodoInfo, coinciden, desfasadas, montoDistinto, yaCargadas, faltan, sobran, meta, totalBancoArs, totalAppArs };
   concilRenderResultado();
 }
 
@@ -9580,9 +9613,18 @@ function concilRenderResultado() {
   // Aviso si el archivo parece de otro período: conciliar contra el resumen equivocado
   // es la forma más fácil de "arreglar" un total rompiendo otro.
   let avisoPeriodo = '';
-  if (d.meta.proximoCierre && d.meta.proximoCierre !== d.actual.cierre) {
+  const pi = d.periodoInfo;
+  if (pi && !pi.esElEnCurso) {
+    // Caso normal: subís el resumen que te llegó, que es el que ya cerró. Antes esto
+    // disparaba una advertencia de "revisá la tarjeta" que no correspondía.
+    avisoPeriodo = `<div style="background:rgba(34,211,160,.1);border:1px solid rgba(34,211,160,.3);border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:var(--fs-xs);color:var(--green)">
+      ✓ Conciliando contra el resumen <b>${d.actual.inicio} → ${d.actual.cierre}</b>, que es donde caen ${pi.contenidos} de los ${pi.total} consumos del archivo.</div>`;
+  } else if (pi && pi.cobertura < 0.8) {
     avisoPeriodo = `<div style="background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.3);border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:var(--fs-xs);color:var(--yellow)">
-      ⚠ El archivo dice que el próximo cierre es ${d.meta.proximoCierre}, pero el período en curso de ${d.tarjeta.nombre} cierra ${d.actual.cierre}. Revisá que sea la tarjeta correcta.</div>`;
+      ⚠ Solo ${pi.contenidos} de ${pi.total} consumos del archivo caen en el período ${d.actual.inicio} → ${d.actual.cierre}. Puede ser de otra tarjeta, o faltar cargar ese resumen en Config.</div>`;
+  } else if (!pi) {
+    avisoPeriodo = `<div style="background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.3);border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:var(--fs-xs);color:var(--yellow)">
+      ⚠ Ningún consumo del archivo cae dentro de un período cargado de ${d.tarjeta.nombre}. Se concilia contra el período en curso; revisá que sea la tarjeta correcta.</div>`;
   }
 
   const bloque = (titulo, color, items, render) => items.length === 0 ? '' : `
