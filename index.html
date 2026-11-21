@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- 
-  CL-Finanzas v1.5.7
+  CL-Finanzas v1.5.8
   Cambios: Fix mesKeys hoisting (ReferenceError), cuentas mejorado — reconciliar saldo (⟳),
   historial completo con débitos rojo/créditos verde, filtro por tipo, tipografía uppercase.
 -->
@@ -68,7 +68,7 @@
 })();
 </script>
 <link rel="apple-touch-icon" href="icon-192.png">
-<title>CL · Finanzas v1.5.7</title>
+<title>CL · Finanzas v1.5.8</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&family=Quicksand:wght@500;600;700&family=Poppins:wght@400;500;600;700&family=Nunito+Sans:wght@400;600;700&display=swap" rel="stylesheet">
@@ -2601,7 +2601,7 @@ input[type="month"].fi::-webkit-calendar-picker-indicator{
     <div class="card">
       <div class="ct">ℹ️ Acerca de</div>
       <p style="font-size:var(--fs-sm);color:var(--muted2);line-height:1.7">
-        Dashboard financiero personal — CL Finanzas <span style="color:var(--muted);font-size:.7em">v1.5.7</span><br>
+        Dashboard financiero personal — CL Finanzas <span style="color:var(--muted);font-size:.7em">v1.5.8</span><br>
         Datos sincronizados en la nube con Firebase.<br>
         Form de gastos: <a href="https://forms.gle/cgxE8FDbhaZPkwjn9" target="_blank" style="color:var(--green)">forms.gle/cgxE8FDbhaZPkwjn9</a>
       </p>
@@ -9514,10 +9514,19 @@ function concilCruzar(movs, meta) {
   });
 
   // Pase 2 — cuotas con el mismo número: "ZARA 01/03" contra "(cuota 1/3)"
+  // El comercio desempata antes que el importe: dos compras distintas en 6 cuotas pueden
+  // tener importes casi iguales ("LAS MARGARITAS 01/06" $16 y "FARMAVIP 01/06" $15), y
+  // tomando el primer candidato se cruzaban entre sí — dejando una como no cargada y
+  // ofreciéndola para duplicar.
+  const comercioDe = g => (g.servicio || g.nota || '').trim();
   app.forEach(a => {
     if (a.usado || !a.cuota) return;
     const c = banco.filter(b => !b.usado && b.cuota && b.cuota.n === a.cuota.n && b.cuota.total === a.cuota.total && Math.abs(montoBanco(b, a.esUsd) - a.m) <= 1.5);
     if (!c.length) return;
+    const com = comercioDe(a.g);
+    const txt = b => (com && concilParecido(b.desc, com)) ? 1 : 0;
+    c.sort((x, y) => (txt(y) - txt(x)) ||
+      (Math.abs(montoBanco(x, a.esUsd) - a.m) - Math.abs(montoBanco(y, a.esUsd) - a.m)));
     a.usado = c[0].usado = true; coinciden.push({ a, b: c[0] });
   });
 
@@ -9563,13 +9572,11 @@ function concilCruzar(movs, meta) {
                  cuota: concilNumeroCuota(g.tipo), cierre: cierreDe(g), usado: false }))
     .filter(f => !(f.cierre && conciliadosTarjeta[tarjetaId + '|' + f.cierre]));
 
-  // Ventanas máximas entre el movimiento del banco y el gasto candidato. Sin un tope, un
-  // consumo del mismo comercio y el mismo importe de hace cuatro meses se declaraba "ya
-  // cargado" y el consumo de ESTE resumen quedaba sin cargar — justo lo contrario de lo que
-  // uno quiere al conciliar. Una cuota puede estar corrida un par de resúmenes por el ancla,
-  // así que se le da más aire que a un consumo suelto.
+  // Ventana máxima entre el movimiento del banco y el gasto candidato, SOLO para consumos
+  // sueltos: sin tope, una compra del mismo comercio y el mismo importe de hace cuatro meses
+  // se declaraba "ya cargada" y el consumo de ESTE resumen quedaba sin cargar. Las cuotas no
+  // llevan tope (ver abajo: la fecha del banco es la de la compra, no la del resumen).
   const DIAS_MAX_SUELTO = 70;
-  const DIAS_MAX_CUOTA  = 150;
   const distDias = (b, f) => {
     const ref = f.cierre || f.g.fechaCompra || f.g.fecha;
     return ref ? Math.abs(new Date(b.fecha) - new Date(ref)) / 86400000 : Infinity;
@@ -9581,20 +9588,22 @@ function concilCruzar(movs, meta) {
     const cand = fuera.filter(f => {
       if (f.usado) return false;
       if (f.esUsd !== (b.usdK > 0 && b.ars === 0)) return false;
-      const mismoMonto = Math.abs(montoBanco(b, f.esUsd) - f.m) <= 1.0;
-      // Para identificar sirve el COMERCIO, no la categoría: 1.387 de 1.579 gastos solo
-      // tienen tipo ("Indumentaria", "Panadería"), que nunca se va a parecer a "ZARA 03/03".
-      // Si se exigiera coincidencia contra la categoría no emparejaría casi nada.
-      const comercio   = (f.g.servicio || '').trim();
+      const mismoMonto = Math.abs(montoBanco(b, f.esUsd) - f.m) <= 1.5;
+      // El comercio puede estar en `servicio` o, para lo importado del banco, en `nota`.
+      // `tipo` es la categoría ("Indumentaria", "Viajes") y no identifica nada: de las 186
+      // cuotas cargadas, 0 tienen servicio y 53 tienen nota.
+      const comercio   = (f.g.servicio || f.g.nota || '').trim();
       const mismoTexto = comercio ? concilParecido(b.desc, comercio) : false;
       if (b.cuota || f.cuota) {
         if (!b.cuota || !f.cuota) return false;
         if (b.cuota.total !== f.cuota.total || b.cuota.n !== f.cuota.n) return false;
-        if (distDias(b, f) > DIAS_MAX_CUOTA) return false;
-        // Los números de cuota solos no son identidad: "3/3" hay uno por cada compra en tres
-        // pagos. Con comercio cargado, que coincida. Sin comercio, al menos el importe —
-        // antes no se pedía ninguna de las dos cosas y emparejaba cualquier 3/3 con cualquier otra.
-        return comercio ? mismoTexto : mismoMonto;
+        // SIN tope de fecha. En una cuota, la fecha del banco es la de la COMPRA, no la del
+        // resumen: "PAX ASSISTANCE 11/12" se factura hoy pero se compró el 31/12/2025.
+        // Medir distancia contra el cierre resuelto descartaba 21 cuotas que SÍ estaban
+        // cargadas y las ofrecía para cargar de nuevo — duplicándolas.
+        // Medido contra el resumen real: números + importe encuentra candidato en las 22
+        // líneas de cuota del archivo, sin un solo falso faltante. El texto desempata abajo.
+        return mismoMonto;
       }
       if (distDias(b, f) > DIAS_MAX_SUELTO) return false;
       // Un recurrente se reconoce por el nombre aunque le hayan cambiado el precio
@@ -9604,8 +9613,17 @@ function concilCruzar(movs, meta) {
     if (!cand.length) return;
     // Con varios candidatos (un recurrente tiene uno por mes), gana el más cercano en el
     // tiempo al movimiento del banco; el importe desempata.
-    const dist = f => distDias(b, f);
-    cand.sort((x, y) => (dist(x) - dist(y)) ||
+    // Desempate, en orden: el que coincide en comercio, después el más cercano en fecha de
+    // COMPRA (comparable con la del banco), y por último el importe más parecido.
+    const txt = f => {
+      const c = (f.g.servicio || f.g.nota || '').trim();
+      return c && concilParecido(b.desc, c) ? 1 : 0;
+    };
+    const distCompra = f => {
+      const ref = f.g.fechaCompra || f.g.fecha;
+      return ref ? Math.abs(new Date(b.fecha) - new Date(ref)) / 86400000 : Infinity;
+    };
+    cand.sort((x, y) => (txt(y) - txt(x)) || (distCompra(x) - distCompra(y)) ||
       (Math.abs(montoBanco(b, x.esUsd) - x.m) - Math.abs(montoBanco(b, y.esUsd) - y.m)));
     cand[0].usado = true; b.usado = true;
     yaCargadas.push({ a: cand[0], b });
